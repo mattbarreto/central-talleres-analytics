@@ -12,8 +12,6 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin, get_db
-from app.db.base import Base
-from app.db.session import engine
 from app.models.certificate_center import CertificateCenter
 from app.models.certificate_issue import CertificateIssue
 from app.models.certificate_signer import CertificateSigner
@@ -54,23 +52,11 @@ router = APIRouter(prefix="/certificates", tags=["certificates"])
 ROOT_DIR = Path(__file__).resolve().parents[3]
 GENERATED_CERTS_DIR = ROOT_DIR / "generated" / "certificates"
 GENERATED_CERTS_DIR.mkdir(parents=True, exist_ok=True)
-_TABLES_READY = False
 
 
 def _ensure_certificate_tables():
-    global _TABLES_READY
-    if _TABLES_READY:
-        return
-    Base.metadata.create_all(
-        bind=engine,
-        tables=[
-            CertificateCenter.__table__,
-            CertificateTemplate.__table__,
-            CertificateSigner.__table__,
-            CertificateIssue.__table__,
-        ],
-    )
-    _TABLES_READY = True
+    # Schema must be provisioned via Alembic migrations.
+    return
 
 
 def _to_issue_out(issue: CertificateIssue) -> CertificateIssueOut:

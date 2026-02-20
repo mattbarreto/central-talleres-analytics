@@ -21,7 +21,9 @@ Aplicación web para administrar talleres, participantes, equipo, comunicaciones
    - copiar `.env.example` a `.env`
 4. Ejecutar migraciones:
    - `.\venv\Scripts\python.exe -m alembic upgrade head`
-5. Levantar servidor:
+5. Crear admin inicial:
+   - `.\venv\Scripts\python.exe scripts/create_admin.py --email admin@example.com --password admin123`
+6. Levantar servidor:
    - `.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000`
 
 ## Accesos locales
@@ -40,3 +42,5 @@ Aplicación web para administrar talleres, participantes, equipo, comunicaciones
 - `docs/`: documentación operativa
 - `generated/`: artefactos locales (ignorado por git)
 
+## Supabase
+- Guía completa: `docs/SUPABASE_SETUP.md`

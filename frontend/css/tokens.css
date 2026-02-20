@@ -1,0 +1,35 @@
+﻿:root {
+  /* Aliases: styles.css es la fuente de verdad visual */
+  --space-4: var(--space-xs);
+  --space-8: var(--space-sm);
+  --space-12: 0.75rem;
+  --space-16: var(--space-md);
+  --space-24: var(--space-lg);
+  --space-32: var(--space-xl);
+
+  --radius-10: var(--radius-md);
+  --radius-14: var(--radius-lg);
+  --radius-18: var(--radius-xl);
+
+  --shadow-1: var(--shadow-sm);
+  --shadow-2: var(--shadow-lg);
+
+  --font-12: var(--font-size-xs);
+  --font-14: var(--font-size-base);
+  --font-16: var(--font-size-lg);
+  --font-20: var(--font-size-xl);
+  --font-24: var(--font-size-2xl);
+
+  --color-bg: var(--bg-primary);
+  --color-surface: var(--bg-secondary);
+  --color-surface-alt: var(--bg-card);
+  --color-text: var(--text-primary);
+  --color-muted: var(--text-secondary);
+  --color-border: var(--border-color);
+  --color-primary: var(--accent);
+  --color-primary-contrast: var(--text-primary);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+}
+

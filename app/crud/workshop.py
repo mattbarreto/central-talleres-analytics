@@ -1,0 +1,9 @@
+from app.crud.base import CRUDBase
+from app.models.workshop import Workshop
+
+
+class CRUDWorkshop(CRUDBase):
+    pass
+
+
+workshop = CRUDWorkshop(Workshop)

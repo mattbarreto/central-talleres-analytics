@@ -370,6 +370,8 @@ a:hover {
 .sidebar-footer {
   padding: var(--space-md);
   border-top: 1px solid var(--border-color);
+  display: grid;
+  gap: var(--space-sm);
 }
 
 .user-info {
@@ -394,6 +396,71 @@ a:hover {
   font-weight: 600;
   color: white;
   flex-shrink: 0;
+}
+
+.sidebar-meta-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0 var(--space-sm);
+}
+
+.project-meta-badge {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.about-link {
+  color: var(--text-secondary);
+  padding-inline: 0.4rem !important;
+}
+
+.about-link:hover {
+  color: var(--text-primary);
+}
+
+.about-grid {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.about-row {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.about-label {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.about-value {
+  color: var(--text-primary);
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.about-value a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.about-value a:hover {
+  text-decoration: underline;
 }
 
 /* --- Main Content --- */
@@ -428,7 +495,8 @@ a:hover {
 .app-layout.sidebar-collapsed .nav-section-title,
 .app-layout.sidebar-collapsed .nav-item .nav-label,
 .app-layout.sidebar-collapsed #user-email,
-.app-layout.sidebar-collapsed #logout-btn {
+.app-layout.sidebar-collapsed #logout-btn,
+.app-layout.sidebar-collapsed .sidebar-meta-compact {
   display: none;
 }
 

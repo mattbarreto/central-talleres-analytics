@@ -4,6 +4,14 @@ const API_BASE = '/api/v1';
 const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollments', 'communications', 'team', 'admins'];
 const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
 const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
+const APP_META = {
+  author: 'Matías Barreto',
+  website: 'https://matiasbarreto.com',
+  repo: 'https://github.com/mattbarreto/central-talleres-analytics',
+  version: 'v2026.02.20',
+  release: 'Producción inicial Supabase',
+  stack: 'FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS',
+};
 
 const state = {
   workshops: [],
@@ -89,6 +97,46 @@ const api = {
   put: (path, body) => api.request('PUT', path, body),
   del: (path) => api.request('DELETE', path),
 };
+
+function hydrateAppMeta() {
+  const version = document.getElementById('meta-version');
+  if (version) version.textContent = APP_META.version;
+}
+
+function openAboutSystem() {
+  openModal(
+    'Acerca del sistema',
+    `
+      <div class="about-grid">
+        <div class="about-row">
+          <div class="about-label">Desarrollado por</div>
+          <div class="about-value">${escapeHTML(APP_META.author)}</div>
+        </div>
+        <div class="about-row">
+          <div class="about-label">Sitio web</div>
+          <div class="about-value"><a href="${escapeHTML(APP_META.website)}" target="_blank" rel="noopener noreferrer">${escapeHTML(APP_META.website.replace(/^https?:\/\//, ''))}</a></div>
+        </div>
+        <div class="about-row">
+          <div class="about-label">Repositorio</div>
+          <div class="about-value"><a href="${escapeHTML(APP_META.repo)}" target="_blank" rel="noopener noreferrer">${escapeHTML(APP_META.repo.replace(/^https?:\/\//, ''))}</a></div>
+        </div>
+        <div class="about-row">
+          <div class="about-label">Versión</div>
+          <div class="about-value">${escapeHTML(APP_META.version)}</div>
+        </div>
+        <div class="about-row">
+          <div class="about-label">Release</div>
+          <div class="about-value">${escapeHTML(APP_META.release)}</div>
+        </div>
+        <div class="about-row">
+          <div class="about-label">Stack</div>
+          <div class="about-value">${escapeHTML(APP_META.stack)}</div>
+        </div>
+      </div>
+    `,
+    `<button class="btn btn-secondary" type="button" onclick="closeModal()">Cerrar</button>`
+  );
+}
 
 function toast(message, type = 'info') {
   const c = document.getElementById('toast-container');
@@ -485,6 +533,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 });
 
 document.getElementById('logout-btn').addEventListener('click', logout);
+document.getElementById('btn-about-system')?.addEventListener('click', openAboutSystem);
 window.addEventListener('hashchange', applyRoute);
 document.getElementById('mobile-toggle')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');
@@ -3217,6 +3266,7 @@ async function applyRoute() {
 }
 
 (function init() {
+  hydrateAppMeta();
   const token = localStorage.getItem('tc_token');
   const email = localStorage.getItem('tc_email');
   if (token && email) { api.token = token; showApp(email); return; }

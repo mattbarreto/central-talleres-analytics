@@ -415,6 +415,27 @@ const statusLabels = { planned: 'Planificado', active: 'Activo', finished: 'Fina
 const badge = (s) => `<span class="badge badge-${s}">${statusLabels[s] || s}</span>`;
 const formatDate = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(d)) : '—';
 const formatDateTime = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d)) : '—';
+function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
+  const body = document.querySelector(`#view-${viewKey} .page-body`);
+  if (!body) return;
+  body.innerHTML = `
+    <div class="dashboard-v2">
+      <div class="dash-container">
+        <header class="dash-page-header">
+          <div>
+            <h2 class="dash-page-title">${escapeHTML(title)}</h2>
+            <p class="dash-page-subtitle">${escapeHTML(subtitle)}</p>
+          </div>
+        </header>
+        <div class="dash-skeleton" aria-hidden="true">
+          <div class="dash-skeleton-row"></div>
+          <div class="dash-skeleton-row"></div>
+          <div class="dash-skeleton-row"></div>
+        </div>
+      </div>
+    </div>
+  `;
+}
 
 function showApp(email) {
   document.getElementById('login-page').classList.add('hidden');
@@ -426,13 +447,16 @@ function showApp(email) {
 }
 
 function logout() {
+  const wasAuthenticated = Boolean(api.token);
   api.token = null;
   localStorage.removeItem('tc_token');
   localStorage.removeItem('tc_email');
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('app-layout').classList.add('hidden');
   document.getElementById('login-form').reset();
-  setHash('dashboard', {}, true);
+  if (wasAuthenticated) {
+    history.replaceState(null, '', `${window.location.pathname}${window.location.search}#dashboard`);
+  }
 }
 
 document.getElementById('login-form').addEventListener('submit', async (e) => {
@@ -718,6 +742,7 @@ function printDashboardExecutiveReport(payload) {
 
 async function loadDashboard() {
   if (window.DashboardPage?.render) {
+    renderViewLoading('dashboard', 'Panel');
     document.querySelector('#view-dashboard .page-header')?.classList.add('hidden');
     const root = document.querySelector('#view-dashboard .page-body');
     const workshops = await fetchWorkshops();
@@ -1128,6 +1153,7 @@ function renderInsights(data) {
 async function loadInsights() {
   try {
     if (window.InsightsPage?.render) {
+      renderViewLoading('insights', 'Insights');
       document.querySelector('#view-insights .page-header')?.classList.add('hidden');
       const workshops = await fetchWorkshops();
       const data = await fetchInsights(insightsFiltersQuery());
@@ -1810,11 +1836,14 @@ function renderWorkshopsOverview(rows) {
 
 async function loadWorkshops() {
   try {
+    if (window.WorkshopsPage?.render) {
+      renderViewLoading('workshops', 'Talleres');
+      document.querySelector('#view-workshops .page-header')?.classList.add('hidden');
+    }
     await fetchWorkshops();
     const q = state.workshopSearch.toLowerCase();
     const rows = state.workshops.filter((w) => !q || w.name.toLowerCase().includes(q));
     if (window.WorkshopsPage?.render) {
-      document.querySelector('#view-workshops .page-header')?.classList.add('hidden');
       const planned = rows.filter((w) => w.status === 'planned').length;
       const active = rows.filter((w) => w.status === 'active').length;
       const finished = rows.filter((w) => w.status === 'finished').length;
@@ -2342,6 +2371,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
 async function loadParticipants() {
   try {
     if (window.ParticipantsPage?.render) {
+      renderViewLoading('participants', 'Participantes');
       document.querySelector('#view-participants .page-header')?.classList.add('hidden');
       const [overview, workshops] = await Promise.all([fetchParticipantsOverview(), fetchWorkshops()]);
       const qs = participantFiltersQuery();
@@ -2568,11 +2598,14 @@ document.getElementById('btn-add-participant')?.addEventListener('click', () => 
 let enrollmentsData = [];
 async function loadEnrollments(initialWorkshop = '') {
   try {
+    if (window.EnrollmentsPage?.render) {
+      renderViewLoading('enrollments', 'Inscripciones');
+      document.querySelector('#view-enrollments .page-header')?.classList.add('hidden');
+    }
     const ws = await fetchWorkshops();
     const selected = initialWorkshop || state.enrollmentWorkshop || '';
     state.enrollmentWorkshop = selected;
     if (window.EnrollmentsPage?.render) {
-      document.querySelector('#view-enrollments .page-header')?.classList.add('hidden');
       let rows = [];
       let summary = { total: 0, active: 0, finished: 0, dropped: 0 };
       if (selected) {
@@ -2761,6 +2794,10 @@ window.resendFailedCommunication = async function (id) {
 
 async function loadCommunications() {
   try {
+    if (window.CommunicationsPage?.render) {
+      renderViewLoading('communications', 'Comunicaciones');
+      document.querySelector('#view-communications .page-header')?.classList.add('hidden');
+    }
     await Promise.all([fetchWorkshops(), fetchCommunications(), fetchCommSummary()]);
     const q = state.communicationSearch.toLowerCase();
     const map = Object.fromEntries(state.workshops.map((w) => [w.id, w]));
@@ -2774,7 +2811,6 @@ async function loadCommunications() {
     const deliveryRate = (commTotals.sent + commTotals.failed) ? Math.round((commTotals.sent / (commTotals.sent + commTotals.failed)) * 100) : 0;
     const pageData = paginateRows(rows, 'communications', 20);
     if (window.CommunicationsPage?.render) {
-      document.querySelector('#view-communications .page-header')?.classList.add('hidden');
       await window.CommunicationsPage.render({
         root: document.querySelector('#view-communications .page-body'),
         workshops: state.workshops,
@@ -2965,6 +3001,7 @@ window.deleteTeamAssignment = async function (assignmentId) {
 async function loadTeam() {
   try {
     if (window.TeamPage?.render) {
+      renderViewLoading('team', 'Equipo');
       document.querySelector('#view-team .page-header')?.classList.add('hidden');
       await fetchWorkshops();
       const years = [...new Set(state.workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
@@ -3045,6 +3082,10 @@ document.getElementById('filter-team-workshop-status')?.addEventListener('change
 let adminsData = [];
 async function loadAdmins() {
   try {
+    if (window.AdminsPage?.render) {
+      renderViewLoading('admins', 'Administradores');
+      document.querySelector('#view-admins .page-header')?.classList.add('hidden');
+    }
     adminsData = await api.get('/admins/');
     const me = localStorage.getItem('tc_email');
     const createdThisMonth = adminsData.filter((a) => {
@@ -3055,7 +3096,6 @@ async function loadAdmins() {
     }).length;
     const pageData = paginateRows(adminsData, 'admins', 20);
     if (window.AdminsPage?.render) {
-      document.querySelector('#view-admins .page-header')?.classList.add('hidden');
       await window.AdminsPage.render({
         root: document.querySelector('#view-admins .page-body'),
         rows: pageData.items.map((a) => ({ ...a, created_at_label: formatDate(a.created_at), isMe: a.email === me })),
@@ -3084,6 +3124,11 @@ document.getElementById('btn-add-admin')?.addEventListener('click', () => {
 window.deleteAdmin = async function (id) { if (!(await confirmDialog('¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
 
 async function applyRoute() {
+  if (!api.token) {
+    document.getElementById('login-page').classList.remove('hidden');
+    document.getElementById('app-layout').classList.add('hidden');
+    return;
+  }
   const { view, params } = parseHash();
   if (view === 'dashboard') {
     state.dashboardYear = params.year || '';

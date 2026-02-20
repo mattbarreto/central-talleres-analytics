@@ -35,6 +35,14 @@
     return `<div class="dash-table-wrap"><table class="dash-table">${head}<tbody>${body}</tbody></table></div>`;
   }
 
+  function collectFilters(root) {
+    return {
+      q: root.querySelector('#p-q')?.value || '',
+      status: root.querySelector('#p-status')?.value || 'all',
+      population: root.querySelector('#p-pop')?.value || 'all',
+    };
+  }
+
   async function render(opts) {
     if (!UI.Card || !store || !opts?.root) return false;
     const root = opts.root;
@@ -58,6 +66,7 @@
               <p class="dash-page-subtitle">Base histórica y actual. Modo: ${mode === 'advanced' ? 'avanzada' : 'resumen'}.</p>
             </div>
             <div class="dash-actions">
+              ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo participante', attrs: 'type="button" data-p-new="1"' })}
               ${UI.Button({ variant: 'secondary', size: 'md', label: 'Exportar CSV', attrs: 'type="button" data-p-export="1"' })}
               ${UI.Button({ variant: 'primary', size: 'md', label: mode === 'advanced' ? 'Volver a resumen' : 'Ir a vista avanzada', attrs: 'type="button" data-p-mode="1"' })}
             </div>
@@ -120,14 +129,14 @@
             </div>`
           })}
 
-          ${mode === 'advanced' ? UI.Section({
+          ${UI.Section({
             key: 'participants_table',
-            title: 'Detalle',
-            description: 'Registros para acción operativa.',
+            title: mode === 'advanced' ? 'Detalle' : 'Resultados',
+            description: mode === 'advanced' ? 'Registros para acción operativa.' : 'Vista rápida de coincidencias.',
             collapsible: true,
             collapsed: Boolean(store.state.collapsed.participants_table),
             content: rowTable(slice),
-          }) : ''}
+          })}
         </div>
       </div>
     `;
@@ -141,15 +150,32 @@
     }));
 
     root.querySelector('[data-p-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
+    root.querySelector('[data-p-new="1"]')?.addEventListener('click', () => opts.onNew?.());
     root.querySelector('[data-p-export="1"]')?.addEventListener('click', () => opts.onExport?.());
-    root.querySelector('[data-p-apply="1"]')?.addEventListener('click', () => {
-      opts.onFilterChange?.({
-        q: root.querySelector('#p-q')?.value || '',
-        status: root.querySelector('#p-status')?.value || 'all',
-        population: root.querySelector('#p-pop')?.value || 'all',
-      });
-    });
+    const triggerFilter = (extra = {}) => opts.onFilterChange?.({ ...collectFilters(root), ...extra });
+    root.querySelector('[data-p-apply="1"]')?.addEventListener('click', () => triggerFilter());
     root.querySelector('[data-p-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', status: 'all', population: 'all', reset: true }));
+    root.querySelector('#p-status')?.addEventListener('change', () => triggerFilter());
+    root.querySelector('#p-pop')?.addEventListener('change', () => triggerFilter());
+
+    let qTimer = null;
+    const queryInput = root.querySelector('#p-q');
+    queryInput?.addEventListener('input', () => {
+      if (qTimer) clearTimeout(qTimer);
+      qTimer = setTimeout(() => triggerFilter(), 250);
+    });
+    queryInput?.addEventListener('blur', () => {
+      if (qTimer) clearTimeout(qTimer);
+      qTimer = null;
+    });
+    queryInput?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      if (qTimer) clearTimeout(qTimer);
+      qTimer = null;
+      triggerFilter();
+    });
+
     root.querySelectorAll('[data-p-action="profile"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-p-id'))));
     root.querySelectorAll('[data-p-action="edit"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenEdit?.(btn.getAttribute('data-p-id'))));
     return true;

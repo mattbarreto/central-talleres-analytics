@@ -119,14 +119,29 @@
     }));
     root.querySelector('[data-t-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
     root.querySelector('[data-t-new="1"]')?.addEventListener('click', () => opts.onNew?.());
-    root.querySelector('[data-t-apply="1"]')?.addEventListener('click', () => {
+    const emitFilters = () => {
       opts.onFilterChange?.({
         q: root.querySelector('#t-q')?.value || '',
         role: root.querySelector('#t-role')?.value || 'all',
         year: root.querySelector('#t-year')?.value || '',
         wstatus: root.querySelector('#t-wstatus')?.value || 'all',
       });
+    };
+    let searchDebounce = null;
+    root.querySelector('[data-t-apply="1"]')?.addEventListener('click', emitFilters);
+    root.querySelector('#t-q')?.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(emitFilters, 180);
     });
+    root.querySelector('#t-q')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      clearTimeout(searchDebounce);
+      emitFilters();
+    });
+    root.querySelector('#t-role')?.addEventListener('change', emitFilters);
+    root.querySelector('#t-year')?.addEventListener('change', emitFilters);
+    root.querySelector('#t-wstatus')?.addEventListener('change', emitFilters);
     root.querySelector('[data-t-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', role: 'all', year: '', wstatus: 'all', reset: true }));
     root.querySelectorAll('[data-t-profile]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-t-profile'))));
     return true;

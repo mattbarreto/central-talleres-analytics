@@ -40,6 +40,7 @@ const state = {
   teamYear: '',
   teamWorkshopStatus: 'all',
   teamMode: 'summary',
+  teamHasLoaded: false,
   teamProfiles: [],
   teamOverview: null,
   dashboardYear: '',
@@ -246,6 +247,20 @@ function closeModal() {
   modalState.handler = null;
   modalState.open = false;
   modalState.previousFocused?.focus?.();
+}
+
+function modalFooterActions({
+  primaryLabel = 'Guardar',
+  primaryId = 'save-entity-btn',
+  secondaryLabel = 'Cancelar',
+  secondaryAction = 'closeModal()',
+  dangerLabel = '',
+  dangerId = 'delete-entity-btn',
+} = {}) {
+  const dangerGroup = dangerLabel
+    ? `<div class="modal-footer-group modal-footer-group--left"><button type="button" class="btn btn-danger" id="${dangerId}">${dangerLabel}</button></div>`
+    : '';
+  return `${dangerGroup}<div class="modal-footer-group"><button type="button" class="btn btn-secondary" onclick="${secondaryAction}">${secondaryLabel}</button><button type="button" class="btn btn-primary" id="${primaryId}">${primaryLabel}</button></div>`;
 }
 
 window.closeModal = closeModal;
@@ -1764,7 +1779,24 @@ function workshopFormHTML(w = null) {
 
 window.openWorkshopForm = function (id = null) {
   const w = id ? state.workshops.find((x) => x.id === id) : null;
-  openModal(w ? 'Editar taller' : 'Nuevo taller', workshopFormHTML(w), `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Guardar</button>`);
+  const actions = modalFooterActions({
+    primaryLabel: 'Guardar',
+    dangerLabel: w ? 'Eliminar' : '',
+  });
+  openModal(w ? 'Editar taller' : 'Nuevo taller', workshopFormHTML(w), actions);
+  if (w) {
+    document.getElementById('delete-entity-btn').onclick = async () => {
+      if (!(await confirmDialog('¿Eliminar este taller?'))) return;
+      try {
+        await api.del(`/workshops/${w.id}`);
+        toast('Taller eliminado', 'success');
+        closeModal();
+        await loadWorkshops();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+  }
   document.getElementById('save-entity-btn').onclick = async () => {
     const form = document.getElementById('entity-form');
     if (!form.reportValidity()) return;
@@ -1959,7 +1991,23 @@ window.openParticipantForm = function (id = null) {
         }
       }
     }
-    openModal(p ? 'Editar participante' : 'Nuevo participante', participantFormHTML(p), `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Guardar</button>`);
+    const actions = p
+      ? modalFooterActions({ primaryLabel: 'Guardar', dangerLabel: 'Eliminar' })
+      : modalFooterActions({ primaryLabel: 'Guardar' });
+    openModal(p ? 'Editar participante' : 'Nuevo participante', participantFormHTML(p), actions);
+    if (p) {
+      document.getElementById('delete-entity-btn').onclick = async () => {
+        if (!(await confirmDialog('¿Eliminar este participante?'))) return;
+        try {
+          await api.del(`/participants/${p.id}`);
+          toast('Participante eliminado', 'success');
+          closeModal();
+          await loadParticipants();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+    }
     document.getElementById('save-entity-btn').onclick = async () => {
       const form = document.getElementById('entity-form');
       if (!form.reportValidity()) return;
@@ -2004,7 +2052,7 @@ function demographicRowsHTML(map, labels) {
 
 function participantFiltersQuery() {
   return toQuery({
-    q: state.participantSearchMode === 'filter' ? state.participantSearch : '',
+    q: (state.participantSearch || '').trim(),
     workshop_id: state.participantWorkshop,
     enrollment_status: state.participantEnrollmentStatus || 'all',
     population: state.participantPopulation || 'all',
@@ -2420,12 +2468,15 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
 async function loadParticipants() {
   try {
     if (window.ParticipantsPage?.render) {
-      renderViewLoading('participants', 'Participantes');
+      if (!state.participantHasLoaded) {
+        renderViewLoading('participants', 'Participantes');
+      }
       document.querySelector('#view-participants .page-header')?.classList.add('hidden');
       const [overview, workshops] = await Promise.all([fetchParticipantsOverview(), fetchWorkshops()]);
       const qs = participantFiltersQuery();
       const rows = await api.get(`/participants/profiles${qs ? `?${qs}` : ''}`);
       state.participantProfiles = rows;
+      state.participantHasLoaded = true;
       await window.ParticipantsPage.render({
         root: document.querySelector('#view-participants .page-body'),
         overview,
@@ -2437,6 +2488,7 @@ async function loadParticipants() {
           population: state.participantPopulation,
         },
         onModeChange: (mode) => setParticipantsMode(mode),
+        onNew: () => openParticipantForm(),
         onExport: () => exportParticipantsCSV(),
         onOpenProfile: (id) => openParticipantProfile(id),
         onOpenEdit: (id) => openParticipantForm(id),
@@ -2751,7 +2803,20 @@ async function loadEnrollmentsForWorkshop(workshopId) {
   document.getElementById('enrollments-table-body').innerHTML = enrollmentsData.length ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Estado</th><th>Inscripto el</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((e) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(pMap[e.participant_id]?.name || 'Desconocido')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || '—')}</td><td>${badge(e.status)}</td><td>${formatDate(e.created_at)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openEnrollmentStatusForm('${e.id}','${e.status}')" aria-label="Editar estado">${icon('edit')}</button><button class="btn btn-ghost btn-sm" onclick="deleteEnrollment('${e.id}','${workshopId}')" aria-label="Eliminar inscripción">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('enrollments', pageData, 'inscripciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>Nadie está inscripto en este taller.</p></div>`;
 }
 window.openEnrollmentStatusForm = function (id, currentStatus) {
-  openModal('Actualizar estado', `<form id="entity-form"><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" class="form-select"><option value="enrolled" ${currentStatus === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${currentStatus === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${currentStatus === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${currentStatus === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></form>`, `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Actualizar</button>`);
+  openModal('Actualizar estado', `<form id="entity-form"><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" class="form-select"><option value="enrolled" ${currentStatus === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${currentStatus === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${currentStatus === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${currentStatus === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Actualizar', dangerLabel: 'Eliminar', dangerId: 'delete-enrollment-btn' }));
+  document.getElementById('delete-enrollment-btn').onclick = async () => {
+    if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return;
+    try {
+      await api.del(`/enrollments/${id}`);
+      closeModal();
+      toast('Inscripción eliminada', 'success');
+      resetTablePage('enrollments');
+      const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
+      if (wid) await loadEnrollments(wid);
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
   document.getElementById('save-entity-btn').onclick = async () => { try { await api.put(`/enrollments/${id}`, { status: document.getElementById('f-status').value }); closeModal(); toast('Estado actualizado', 'success'); const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value; if (wid) await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
 };
 window.deleteEnrollment = async function (id, workshopId) { if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return; try { await api.del(`/enrollments/${id}`); toast('Inscripción eliminada', 'success'); resetTablePage('enrollments'); await loadEnrollments(workshopId || state.enrollmentWorkshop); } catch (err) { toast(err.message, 'error'); } };
@@ -2760,7 +2825,7 @@ window.openAddEnrollment = async function () {
   if (!wid) { toast('Seleccioná un taller primero', 'info'); return; }
   const participants = await fetchParticipants();
   if (!participants.length) { toast('No hay participantes. Creá uno primero.', 'info'); return; }
-  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">Seleccioná un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Inscribir</button>`);
+  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">Seleccioná un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, modalFooterActions({ primaryLabel: 'Inscribir' }));
   document.getElementById('save-entity-btn').onclick = async () => { const pid = document.getElementById('f-participant').value; if (!pid) return; try { await api.post(`/workshops/${wid}/enrollments`, { workshop_id: wid, participant_id: pid, status: 'enrolled' }); closeModal(); toast('Participante inscripto', 'success'); await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
 };
 if (!window.EnrollmentsPage?.render) {
@@ -2972,7 +3037,24 @@ function renderTeamTable(rows) {
 
 window.openTeamMemberForm = async function (id = null) {
   const existing = id ? await api.get(`/team-members/${id}`).catch(() => null) : null;
-  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>Coordinación</option></select></div></form>`, `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Guardar</button>`);
+  const actions = modalFooterActions({
+    primaryLabel: 'Guardar',
+    dangerLabel: existing ? 'Eliminar' : '',
+  });
+  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>Coordinación</option></select></div></form>`, actions);
+  if (existing) {
+    document.getElementById('delete-entity-btn').onclick = async () => {
+      if (!(await confirmDialog('¿Eliminar este perfil del equipo?'))) return;
+      try {
+        await api.del(`/team-members/${existing.id}`);
+        closeModal();
+        toast('Perfil eliminado', 'success');
+        await loadTeam();
+      } catch (err) {
+        toast(err.message, 'error');
+      }
+    };
+  }
   document.getElementById('save-entity-btn').onclick = async () => {
     const form = document.getElementById('entity-form');
     if (!form.reportValidity()) return;
@@ -3003,7 +3085,7 @@ window.deleteTeamMember = async function (id) {
 
 window.openTeamAssignmentForm = async function (memberId) {
   const [member, workshops] = await Promise.all([api.get(`/team-members/${memberId}`), fetchWorkshops()]);
-  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">Coordinación</option></select></div></form>`, `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Asignar</button>`);
+  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">Coordinación</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Asignar' }));
   document.getElementById('save-entity-btn').onclick = async () => {
     const workshopId = document.getElementById('f-workshop').value;
     if (!workshopId) return;
@@ -3050,7 +3132,9 @@ window.deleteTeamAssignment = async function (assignmentId) {
 async function loadTeam() {
   try {
     if (window.TeamPage?.render) {
-      renderViewLoading('team', 'Equipo');
+      if (!state.teamHasLoaded) {
+        renderViewLoading('team', 'Equipo');
+      }
       document.querySelector('#view-team .page-header')?.classList.add('hidden');
       await fetchWorkshops();
       const years = [...new Set(state.workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
@@ -3060,6 +3144,7 @@ async function loadTeam() {
       ]);
       state.teamOverview = overview;
       state.teamProfiles = profiles;
+      state.teamHasLoaded = true;
       await window.TeamPage.render({
         root: document.querySelector('#view-team .page-body'),
         overview,
@@ -3074,6 +3159,7 @@ async function loadTeam() {
         },
         onModeChange: (mode) => {
           state.teamMode = mode;
+          state.teamHasLoaded = true;
           syncViewParams();
           loadTeam();
         },
@@ -3090,6 +3176,7 @@ async function loadTeam() {
             state.teamWorkshopStatus = next.wstatus || 'all';
           }
           resetTablePage('team');
+          state.teamHasLoaded = true;
           syncViewParams();
           loadTeam();
         },
@@ -3121,12 +3208,22 @@ async function loadTeam() {
 
 document.getElementById('btn-team-refresh')?.addEventListener('click', () => loadTeam());
 document.getElementById('btn-add-team-member')?.addEventListener('click', () => openTeamMemberForm());
-document.getElementById('btn-team-apply')?.addEventListener('click', () => { resetTablePage('team'); loadTeam(); syncViewParams(); });
-document.getElementById('search-team')?.addEventListener('input', (e) => { state.teamSearch = e.target.value; syncViewParams(); });
-document.getElementById('search-team')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); resetTablePage('team'); loadTeam(); syncViewParams(); } });
-document.getElementById('filter-team-role')?.addEventListener('change', (e) => { state.teamRole = e.target.value; resetTablePage('team'); loadTeam(); syncViewParams(); });
-document.getElementById('filter-team-year')?.addEventListener('change', (e) => { state.teamYear = e.target.value; resetTablePage('team'); loadTeam(); syncViewParams(); });
-document.getElementById('filter-team-workshop-status')?.addEventListener('change', (e) => { state.teamWorkshopStatus = e.target.value; resetTablePage('team'); loadTeam(); syncViewParams(); });
+document.getElementById('btn-team-apply')?.addEventListener('click', () => { resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
+let teamSearchDebounce = null;
+document.getElementById('search-team')?.addEventListener('input', (e) => {
+  state.teamSearch = e.target.value;
+  syncViewParams();
+  clearTimeout(teamSearchDebounce);
+  teamSearchDebounce = setTimeout(() => {
+    resetTablePage('team');
+    state.teamHasLoaded = true;
+    loadTeam();
+  }, 180);
+});
+document.getElementById('search-team')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(teamSearchDebounce); resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); } });
+document.getElementById('filter-team-role')?.addEventListener('change', (e) => { state.teamRole = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
+document.getElementById('filter-team-year')?.addEventListener('change', (e) => { state.teamYear = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
+document.getElementById('filter-team-workshop-status')?.addEventListener('change', (e) => { state.teamWorkshopStatus = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
 
 let adminsData = [];
 async function loadAdmins() {
@@ -3167,7 +3264,7 @@ async function loadAdmins() {
 }
 
 document.getElementById('btn-add-admin')?.addEventListener('click', () => {
-  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">Contraseña</label><input type="password" id="f-password" name="password" minlength="6" class="form-input" required></div></form>`, `<button class="btn btn-secondary" onclick="closeModal()">Cancelar</button><button class="btn btn-primary" id="save-entity-btn">Crear admin</button>`);
+  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">Contraseña</label><input type="password" id="f-password" name="password" minlength="6" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
   document.getElementById('save-entity-btn').onclick = async () => { const form = document.getElementById('entity-form'); if (!form.reportValidity()) return; const fd = new FormData(form); try { await api.post('/admins/', { email: fd.get('email'), password: fd.get('password') }); closeModal(); toast('Administrador creado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
 });
 window.deleteAdmin = async function (id) { if (!(await confirmDialog('¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };

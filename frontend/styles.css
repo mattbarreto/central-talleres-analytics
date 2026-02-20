@@ -1344,6 +1344,23 @@ tr:hover td {
   display: flex;
   justify-content: flex-end;
   gap: var(--space-sm);
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.modal-footer:empty {
+  display: none;
+}
+
+.modal-footer-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.modal-footer-group--left {
+  margin-right: auto;
 }
 
 .profile-modal-layout {
@@ -1840,6 +1857,22 @@ tr:hover td {
 
   .modal.modal-profile {
     width: 96vw;
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .modal-footer-group,
+  .modal-footer-group--left {
+    width: 100%;
+    margin-right: 0;
+    justify-content: flex-end;
+  }
+
+  .modal-footer-group .btn {
+    flex: 1 1 auto;
   }
 
   .profile-head {

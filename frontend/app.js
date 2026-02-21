@@ -664,8 +664,12 @@ function monthlySeries(dates) {
 }
 
 function trendCard(title, series) {
-  const max = Math.max(...series.map((x) => x.value), 1);
-  return `<div class="trend-card"><h4>${title}</h4>${series.map((r) => `<div class="trend-row"><span>${r.label}</span><div class="trend-track"><div class="trend-fill" style="width:${Math.max(6, (r.value / max) * 100)}%"></div></div><strong>${r.value}</strong></div>`).join('')}</div>`;
+  const max = Math.max(...series.map((x) => Number(x.value) || 0), 0);
+  return `<div class="trend-card"><h4>${title}</h4>${series.map((r) => {
+    const value = Number(r.value) || 0;
+    const pct = value <= 0 || max <= 0 ? 0 : Math.max(6, (value / max) * 100);
+    return `<div class="trend-row"><span>${r.label}</span><div class="trend-track"><div class="trend-fill" style="width:${pct}%"></div></div><strong>${value}</strong></div>`;
+  }).join('')}</div>`;
 }
 
 function renderDashboardMode() {
@@ -761,47 +765,25 @@ function downloadDashboardCSV(payload) {
   URL.revokeObjectURL(url);
 }
 
-function printDashboardExecutiveReport(payload) {
-  const { range, filteredWorkshops, filteredEnrollments, filteredCommunications } = payload;
-  const participantIds = new Set(filteredEnrollments.map((e) => e.participant_id));
-  const active = filteredEnrollments.filter((e) => e.status === 'active').length;
-  const finished = filteredEnrollments.filter((e) => e.status === 'finished').length;
-  const dropped = filteredEnrollments.filter((e) => e.status === 'dropped').length;
-  const progress = filteredEnrollments.length ? Math.round((finished / filteredEnrollments.length) * 100) : 0;
-  const rows = filteredWorkshops.slice(0, 30).map((w) => `<tr><td>${escapeHTML(w.name)}</td><td>${w.cohort_year || '—'}</td><td>${escapeHTML(statusLabels[w.status] || w.status || '—')}</td><td>${formatDate(w.created_at)}</td></tr>`).join('');
-  const w = window.open('', '_blank', 'noopener,noreferrer');
-  if (!w) {
-    toast('Permití ventanas emergentes para generar el reporte', 'info');
-    return;
+async function printDashboardExecutiveReport() {
+  const range = window.DashboardState?.state?.filters?.range || '30d';
+  const query = toQuery({
+    range,
+    year: state.dashboardYear || '',
+    status: state.dashboardStatus || '',
+    workshop_id: state.dashboardWorkshop || '',
+  });
+  try {
+    toast('Generando reporte del panel...', 'info');
+    await window.ReportJobs.createAndDownload({
+      createUrl: `${API_BASE}/metrics/dashboard-report-jobs/pdf${query ? `?${query}` : ''}`,
+      headers: api.headers(false),
+      filename: `panel_${new Date().toISOString().slice(0, 10)}.pdf`,
+    });
+    toast('Reporte PDF del panel descargado', 'success');
+  } catch (err) {
+    toast(err.message || 'No se pudo generar el reporte del panel', 'error');
   }
-  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de Panel</title><style>
-    body{font-family:Inter,Arial,sans-serif;margin:24px;background:#0a0a0f;color:#f0f0f5}
-    h1{margin:0 0 6px;font-size:24px} p{margin:0 0 12px;color:#8b8b9e}
-    .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin:12px 0 16px}
-    .k{border:1px solid rgba(255,255,255,.12);background:#12121a;border-radius:10px;padding:10px}
-    .k b{display:block;font-size:11px;color:#8b8b9e;margin-bottom:4px;text-transform:uppercase}
-    .k span{font-size:20px;font-weight:700}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid rgba(255,255,255,.12);text-align:left;font-size:12px}
-    th{color:#8b8b9e}
-    @media print {.k{break-inside:avoid}}
-  </style></head><body>
-    <h1>Reporte ejecutivo del panel</h1>
-    <p>Rango: ${escapeHTML(range)} · Filtros: Año ${escapeHTML(state.dashboardYear || 'Todos')} · Estado ${escapeHTML(state.dashboardStatus || 'Todos')}</p>
-    <section class="kpis">
-      <div class="k"><b>Talleres</b><span>${filteredWorkshops.length}</span></div>
-      <div class="k"><b>Participantes únicos</b><span>${participantIds.size}</span></div>
-      <div class="k"><b>Inscripciones</b><span>${filteredEnrollments.length}</span></div>
-      <div class="k"><b>Activos</b><span>${active}</span></div>
-      <div class="k"><b>Finalizados</b><span>${finished}</span></div>
-      <div class="k"><b>Comunicaciones</b><span>${filteredCommunications.length}</span></div>
-    </section>
-    <p>Narrativa: avance ${progress}% · bajas ${dropped} · foco en trazabilidad operativa por taller.</p>
-    <table><thead><tr><th>Taller</th><th>Cohorte</th><th>Estado</th><th>Creado</th></tr></thead><tbody>${rows || '<tr><td colspan="4">Sin talleres para los filtros actuales.</td></tr>'}</tbody></table>
-  </body></html>`);
-  w.document.close();
-  w.focus();
-  w.print();
 }
 
 async function loadDashboard() {
@@ -837,8 +819,7 @@ async function loadDashboard() {
         toast('CSV del panel descargado', 'success');
       },
       onReport: () => {
-        const payload = getDashboardFilteredData(workshops, communications, enrollments);
-        printDashboardExecutiveReport(payload);
+        printDashboardExecutiveReport();
       },
       onNewActivity: () => setHash('workshops', {}),
       onWorkshopDetail: (workshopId) => setHash('workshops', { detail: workshopId, tab: 'overview' }),
@@ -1144,8 +1125,12 @@ function narrativeCardsHTML(items = []) {
 
 function simpleBarList(title, rows, valueKey, labelKey = 'period_label') {
   if (!rows.length) return `<article class="trend-card"><h4>${title}</h4><p class="muted">Sin datos para el filtro actual.</p></article>`;
-  const max = Math.max(...rows.map((r) => r[valueKey] || 0), 1);
-  return `<article class="trend-card"><h4>${title}</h4>${rows.map((r) => `<div class="trend-row"><span>${escapeHTML(String(r[labelKey]))}</span><div class="trend-track"><div class="trend-fill" style="width:${Math.max(6, ((r[valueKey] || 0) / max) * 100)}%"></div></div><strong>${r[valueKey] || 0}</strong></div>`).join('')}</article>`;
+  const max = Math.max(...rows.map((r) => Number(r[valueKey]) || 0), 0);
+  return `<article class="trend-card"><h4>${title}</h4>${rows.map((r) => {
+    const value = Number(r[valueKey]) || 0;
+    const pct = value <= 0 || max <= 0 ? 0 : Math.max(6, (value / max) * 100);
+    return `<div class="trend-row"><span>${escapeHTML(String(r[labelKey]))}</span><div class="trend-track"><div class="trend-fill" style="width:${pct}%"></div></div><strong>${value}</strong></div>`;
+  }).join('')}</article>`;
 }
 
 function renderInsights(data) {
@@ -1167,12 +1152,16 @@ function renderInsights(data) {
   const story = buildInsightsStory(data);
   document.getElementById('insights-story').innerHTML = narrativeCardsHTML(story);
   const funnel = data.funnel || [];
-  const maxFunnel = Math.max(...funnel.map((f) => f.total || 0), 1);
+  const maxFunnel = Math.max(...funnel.map((f) => Number(f.total) || 0), 0);
   const firstFunnel = funnel[0]?.total || 0;
   document.getElementById('insights-funnel-card').innerHTML = `
     <h3 class="section-title">Camino de las personas (Embudo)</h3>
     <div class="trends-grid">
-      ${funnel.map((f) => `<article class="trend-card"><h4>${escapeHTML(f.label)}</h4><div class="trend-row"><span>Total (${formatPct(f.total || 0, firstFunnel || 1)})</span><div class="trend-track"><div class="trend-fill" style="width:${Math.max(6, ((f.total || 0) / maxFunnel) * 100)}%"></div></div><strong>${f.total || 0}</strong></div></article>`).join('')}
+      ${funnel.map((f) => {
+        const total = Number(f.total) || 0;
+        const pct = total <= 0 || maxFunnel <= 0 ? 0 : Math.max(6, (total / maxFunnel) * 100);
+        return `<article class="trend-card"><h4>${escapeHTML(f.label)}</h4><div class="trend-row"><span>Total (${formatPct(total, firstFunnel || 1)})</span><div class="trend-track"><div class="trend-fill" style="width:${pct}%"></div></div><strong>${total}</strong></div></article>`;
+      }).join('')}
     </div>
   `;
   const series = data.series || [];
@@ -1426,11 +1415,29 @@ async function exportInsightsReportExcel() {
   }
 }
 
-function printInsightsReportPDF() {
+async function printInsightsReportPDF() {
   const data = state.insightsData;
   if (!data) {
     toast('Primero cargá la analítica', 'error');
     return;
+  }
+  const query = toQuery({
+    period: state.insightsReportPeriod || state.insightsPeriod,
+    workshop_id: state.insightsWorkshop || '',
+    start_date: state.insightsStartDate || '',
+    end_date: state.insightsEndDate || '',
+  });
+  try {
+    toast('Generando reporte de insights...', 'info');
+    await window.ReportJobs.createAndDownload({
+      createUrl: `${API_BASE}/insights/report-jobs/pdf${query ? `?${query}` : ''}`,
+      headers: api.headers(false),
+      filename: `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.pdf`,
+    });
+    toast('Reporte PDF descargado', 'success');
+    return;
+  } catch {
+    // Fallback al flujo de impresión HTML si falla la generación PDF en backend.
   }
   const w = window.open('', '_blank', 'noopener,noreferrer,width=1000,height=720');
   if (!w) {

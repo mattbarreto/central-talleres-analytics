@@ -8,6 +8,17 @@ from app.services.report_jobs import report_job_store
 router = APIRouter(prefix="/report-jobs", tags=["report-jobs"])
 
 
+@router.get("/metrics")
+def report_jobs_metrics(_: str = Depends(get_current_admin)):
+    return report_job_store.metrics()
+
+
+@router.delete("/cleanup")
+def report_jobs_cleanup(older_than_hours: int = 24, _: str = Depends(get_current_admin)):
+    deleted = report_job_store.cleanup(older_than_hours=older_than_hours)
+    return {"deleted": deleted}
+
+
 @router.get("/{job_id}")
 def report_job_status(job_id: str, _: str = Depends(get_current_admin)):
     job = report_job_store.get(job_id)

@@ -58,7 +58,7 @@ Ver `.env.example`.
 Campos mínimos:
 - `DATABASE_URL`
 - `SECRET_KEY`
-- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`\r\n- `REPORT_JOBS_TTL_SECONDS`\r\n- `REPORT_JOBS_MAX_JOBS`
 
 ### Base de datos y migraciones
 - Esquema gestionado por **Alembic**.
@@ -146,7 +146,7 @@ See `.env.example`.
 Required keys:
 - `DATABASE_URL`
 - `SECRET_KEY`
-- `ACCESS_TOKEN_EXPIRE_MINUTES`
+- `ACCESS_TOKEN_EXPIRE_MINUTES`\r\n- `REPORT_JOBS_TTL_SECONDS`\r\n- `REPORT_JOBS_MAX_JOBS`
 
 ### Database and migrations
 - Schema is managed with **Alembic**.
@@ -185,3 +185,4 @@ Actively developed, currently focused on:
 **Matías Barreto**  
 Website: https://matiasbarreto.com  
 Repository: https://github.com/mattbarreto/central-talleres-analytics
+

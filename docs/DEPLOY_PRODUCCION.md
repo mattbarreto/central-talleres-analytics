@@ -25,14 +25,14 @@ ssh hostinger-vps
 cd /opt/dashboard-talleres
 git fetch --all
 git reset --hard origin/main
-docker compose up -d --build --force-recreate
+docker compose up -d --build --force-recreate\r\ndocker compose exec app alembic upgrade head
 ```
 
 ## 3) Validación post-deploy
 ```bash
 docker ps | grep dashboard_talleres_api
 curl -f http://127.0.0.1:8000/health
-python scripts/phase2_smoke.py --base-url http://127.0.0.1:8000 --email admin@example.com --password admin123
+python scripts/phase2_smoke.py --base-url http://127.0.0.1:8000 --email admin@example.com --password admin123\r\ncurl -H "Authorization: Bearer <TOKEN>" http://127.0.0.1:8000/api/v1/report-jobs/metrics
 ```
 
 ## 4) Validación de routing público
@@ -44,10 +44,11 @@ python scripts/phase2_smoke.py --base-url http://127.0.0.1:8000 --email admin@ex
 ```bash
 cd /opt/dashboard-talleres
 git reset --hard <commit_anterior>
-docker compose up -d --build --force-recreate
+docker compose up -d --build --force-recreate\r\ndocker compose exec app alembic upgrade head
 ```
 
 ## 6) Notas operativas
 - No usar `--reload` para benchmarks o producción.
 - Evitar cambiar `container_name` en producción: rompe el mapping del File Provider.
 - Mantener backups de DB en Supabase según política del proyecto.
+

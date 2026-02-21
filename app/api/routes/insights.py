@@ -152,17 +152,30 @@ def participant_journey(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_admin),
 ):
-    participant = db.query(Participant).filter(Participant.id == participant_id).first()
+    participant = (
+        db.query(Participant.id, Participant.name, Participant.email)
+        .filter(Participant.id == participant_id)
+        .first()
+    )
     if not participant:
         raise HTTPException(status_code=404, detail="Participante no encontrado")
 
-    enrollments_q = db.query(Enrollment).filter(Enrollment.participant_id == participant_id)
+    enrollments_q = db.query(
+        Enrollment.workshop_id,
+        Enrollment.status,
+        Enrollment.created_at,
+    ).filter(Enrollment.participant_id == participant_id)
     if workshop_id:
         enrollments_q = enrollments_q.filter(Enrollment.workshop_id == workshop_id)
     enrollments = enrollments_q.all()
 
     comm_q = (
-        db.query(CommunicationRecipient, Communication)
+        db.query(
+            CommunicationRecipient.status,
+            CommunicationRecipient.email_snapshot,
+            CommunicationRecipient.created_at,
+            Communication.workshop_id,
+        )
         .join(Communication, Communication.id == CommunicationRecipient.communication_id)
         .filter(CommunicationRecipient.participant_id == participant_id)
     )
@@ -171,10 +184,10 @@ def participant_journey(
     comm_pairs = comm_q.all()
 
     workshop_ids = {e.workshop_id for e in enrollments}
-    workshop_ids.update(c.workshop_id for _, c in comm_pairs if c and c.workshop_id)
+    workshop_ids.update(workshop_ref for _, _, _, workshop_ref in comm_pairs if workshop_ref)
     workshop_map = {}
     if workshop_ids:
-        workshop_rows = db.query(Workshop).filter(Workshop.id.in_(workshop_ids)).all()
+        workshop_rows = db.query(Workshop.id, Workshop.name).filter(Workshop.id.in_(workshop_ids)).all()
         workshop_map = {w.id: w for w in workshop_rows}
 
     events = []
@@ -202,25 +215,25 @@ def participant_journey(
             }
         )
 
-    for recipient, comm in comm_pairs:
-        when = to_date(recipient.created_at)
+    for recipient_status, recipient_email_snapshot, recipient_created_at, comm_workshop_id in comm_pairs:
+        when = to_date(recipient_created_at)
         if when and (first_seen is None or when < first_seen):
             first_seen = when
         if when and (last_seen is None or when > last_seen):
             last_seen = when
-        if recipient.status == "sent":
+        if recipient_status == "sent":
             totals["communications_sent"] += 1
-        if recipient.status == "failed":
+        if recipient_status == "failed":
             totals["communications_failed"] += 1
-        wk = workshop_map.get(comm.workshop_id) if comm else None
+        wk = workshop_map.get(comm_workshop_id) if comm_workshop_id else None
         events.append(
             {
                 "at": when,
                 "type": "communication",
-                "workshop_id": comm.workshop_id if comm else None,
+                "workshop_id": comm_workshop_id,
                 "workshop_name": wk.name if wk else None,
-                "status": recipient.status,
-                "detail": f"Comunicación {recipient.status}: {recipient.email_snapshot}",
+                "status": recipient_status,
+                "detail": f"Comunicación {recipient_status}: {recipient_email_snapshot}",
             }
         )
 

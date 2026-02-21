@@ -9,6 +9,8 @@ class Settings(BaseSettings):
 
     database_url: str
     sql_pool_pre_ping: bool = True
+    report_jobs_ttl_seconds: int = 3600
+    report_jobs_max_jobs: int = 300
     secret_key: str
     access_token_expire_minutes: int = 60 * 24
 

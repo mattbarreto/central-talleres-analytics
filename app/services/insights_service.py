@@ -6,6 +6,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.models.communication import Communication
@@ -179,7 +180,14 @@ def build_insights_payload(
     if cached and now_ts - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
 
-    workshops_q = db.query(Workshop)
+    workshops_q = db.query(
+        Workshop.id,
+        Workshop.name,
+        Workshop.cohort_year,
+        Workshop.status,
+        Workshop.start_date,
+        Workshop.created_at,
+    )
     if workshop_id:
         workshops_q = workshops_q.filter(Workshop.id == workshop_id)
     workshops = workshops_q.all()
@@ -187,33 +195,90 @@ def build_insights_payload(
     selected_workshops = set(workshops_map.keys())
 
     if selected_workshops:
-        enrollments = db.query(Enrollment).filter(Enrollment.workshop_id.in_(selected_workshops)).all()
-        communications = db.query(Communication).filter(Communication.workshop_id.in_(selected_workshops)).all()
-        assignments = db.query(WorkshopStaffAssignment).filter(WorkshopStaffAssignment.workshop_id.in_(selected_workshops)).all()
+        enrollments_q = db.query(
+            Enrollment.workshop_id,
+            Enrollment.participant_id,
+            Enrollment.status,
+            Enrollment.created_at,
+        ).filter(Enrollment.workshop_id.in_(selected_workshops))
+        if end_date:
+            enrollments_q = enrollments_q.filter(Enrollment.created_at <= end_date)
+        enrollments = enrollments_q.all()
+
+        communications_q = db.query(
+            Communication.workshop_id,
+            Communication.created_at,
+            Communication.sent_at,
+        ).filter(Communication.workshop_id.in_(selected_workshops))
+        if start_date:
+            communications_q = communications_q.filter(
+                or_(Communication.sent_at.is_(None), Communication.sent_at >= start_date)
+            )
+        if end_date:
+            communications_q = communications_q.filter(
+                or_(Communication.sent_at.is_(None), Communication.sent_at <= end_date)
+            )
+        communications = communications_q.all()
+
+        assignments = db.query(
+            WorkshopStaffAssignment.team_member_id,
+            WorkshopStaffAssignment.workshop_id,
+            WorkshopStaffAssignment.created_at,
+        ).filter(WorkshopStaffAssignment.workshop_id.in_(selected_workshops)).all()
     else:
         enrollments = []
         communications = []
         assignments = []
 
     participant_ids_in_scope = {e.participant_id for e in enrollments}
-    if workshop_id:
-        participants = db.query(Participant).filter(Participant.id.in_(participant_ids_in_scope)).all() if participant_ids_in_scope else []
-    else:
-        participants = db.query(Participant).all()
-    participants_map = {p.id: p for p in participants}
+    participants_scope = (
+        db.query(
+            Participant.id,
+            Participant.name,
+            Participant.email,
+            Participant.birth_date,
+            Participant.gender,
+        )
+        .filter(Participant.id.in_(participant_ids_in_scope))
+        .all()
+        if participant_ids_in_scope
+        else []
+    )
+    participants_map = {p.id: p for p in participants_scope}
+
+    participants_total_count = (
+        len(participants_scope)
+        if workshop_id
+        else int(db.query(func.count(Participant.id)).scalar() or 0)
+    )
 
     team_member_ids = {a.team_member_id for a in assignments}
-    if workshop_id:
-        team_members = db.query(TeamMember).filter(TeamMember.id.in_(team_member_ids)).all() if team_member_ids else []
-    else:
-        team_members = db.query(TeamMember).all()
+    team_members = (
+        db.query(TeamMember.id, TeamMember.name, TeamMember.role)
+        .filter(TeamMember.id.in_(team_member_ids))
+        .all()
+        if team_member_ids
+        else []
+    )
+    team_members_total_count = (
+        len(team_members)
+        if workshop_id
+        else int(db.query(func.count(TeamMember.id)).scalar() or 0)
+    )
 
     age_distribution = {"0_17": 0, "18_24": 0, "25_34": 0, "35_44": 0, "45_54": 0, "55_64": 0, "65_plus": 0, "unknown": 0}
     gender_distribution = {"female": 0, "male": 0, "non_binary": 0, "other": 0, "undisclosed": 0}
-    for p in participants:
-        age_distribution[age_bucket(calculate_age(p.birth_date))] += 1
-        g = p.gender if p.gender in gender_distribution else "undisclosed"
-        gender_distribution[g] += 1
+    if workshop_id:
+        for p in participants_scope:
+            age_distribution[age_bucket(calculate_age(p.birth_date))] += 1
+            g = p.gender if p.gender in gender_distribution else "undisclosed"
+            gender_distribution[g] += 1
+    else:
+        for (birth_date,) in db.query(Participant.birth_date).all():
+            age_distribution[age_bucket(calculate_age(birth_date))] += 1
+        for g, total in db.query(Participant.gender, func.count(Participant.id)).group_by(Participant.gender).all():
+            key = g if g in gender_distribution else "undisclosed"
+            gender_distribution[key] += int(total or 0)
 
     series: dict[str, dict] = {}
 
@@ -502,13 +567,13 @@ def build_insights_payload(
         "to_date": end_date,
         "kpis": {
             "workshops_total": len(selected_workshops),
-            "participants_total": len(participants),
+            "participants_total": participants_total_count,
             "enrollments_total": enrollment_totals["total"],
             "active_enrollments_total": enrollment_totals["active"],
             "finished_enrollments_total": enrollment_totals["finished"],
             "dropped_enrollments_total": enrollment_totals["dropped"],
             "communications_total": communications_total,
-            "team_members_total": len(team_members),
+            "team_members_total": team_members_total_count,
             "active_team_members": active_team_members,
             "active_participants_total": len(active_participants),
             "certifiable_participants_total": len(certifiable_participants),
@@ -528,4 +593,3 @@ def build_insights_payload(
     }
     INSIGHTS_CACHE[cache_key] = (now_ts, payload)
     return payload
-

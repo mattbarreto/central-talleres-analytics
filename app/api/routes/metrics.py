@@ -30,7 +30,13 @@ def _range_start(range_key: str | None):
 
 
 def _dashboard_dataset(db: Session, range_key: str, year: str | None, status: str | None, workshop_id: str | None):
-    q = db.query(Workshop)
+    q = db.query(
+        Workshop.id,
+        Workshop.name,
+        Workshop.cohort_year,
+        Workshop.status,
+        Workshop.created_at,
+    )
     if year:
         try:
             q = q.filter(Workshop.cohort_year == int(year))
@@ -47,8 +53,13 @@ def _dashboard_dataset(db: Session, range_key: str, year: str | None, status: st
     workshops = q.order_by(Workshop.created_at.desc()).all()
     workshop_ids = [w.id for w in workshops]
 
-    enrollments_q = db.query(Enrollment)
-    communications_q = db.query(Communication)
+    enrollments_q = db.query(
+        Enrollment.participant_id,
+        Enrollment.status,
+        Enrollment.workshop_id,
+        Enrollment.created_at,
+    )
+    communications_q = db.query(Communication.created_at)
     if workshop_ids:
         enrollments_q = enrollments_q.filter(Enrollment.workshop_id.in_(workshop_ids))
         communications_q = communications_q.filter(Communication.workshop_id.in_(workshop_ids))

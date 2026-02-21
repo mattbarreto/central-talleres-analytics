@@ -13,7 +13,7 @@ router = APIRouter(prefix="/admins", tags=["admins"])
 
 
 @router.get("/", response_model=list[AdminOut])
-def list_admins(db: Session = Depends(get_db), _: Admin = Depends(get_current_admin)):
+def list_admins(db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
     try:
         with open("admin_debug.log", "a") as f: f.write("Entering list_admins\n")
         items = db.query(Admin).order_by(Admin.created_at.desc()).all()
@@ -28,7 +28,7 @@ def list_admins(db: Session = Depends(get_db), _: Admin = Depends(get_current_ad
 
 
 @router.post("/", response_model=AdminOut, status_code=status.HTTP_201_CREATED)
-def create_admin(payload: AdminCreate, db: Session = Depends(get_db), _: Admin = Depends(get_current_admin)):
+def create_admin(payload: AdminCreate, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
     try:
         with open("admin_debug.log", "a") as f: f.write(f"Creating admin: {payload.email}\n")
         existing = admin_crud.get_by_email(db, payload.email)
@@ -43,7 +43,7 @@ def create_admin(payload: AdminCreate, db: Session = Depends(get_db), _: Admin =
 
 
 @router.delete("/{admin_id}", status_code=status.HTTP_200_OK)
-def delete_admin(admin_id: str, db: Session = Depends(get_db), current: Admin = Depends(get_current_admin)):
+def delete_admin(admin_id: str, db: Session = Depends(get_db), current_email: str = Depends(get_current_admin)):
     try:
         aid = uuid.UUID(admin_id)
     except ValueError:
@@ -51,7 +51,7 @@ def delete_admin(admin_id: str, db: Session = Depends(get_db), current: Admin = 
     target = db.query(Admin).filter(Admin.id == aid).first()
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Admin no encontrado")
-    if str(target.id) == str(current.id):
+    if (target.email or "").lower() == current_email.lower():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No podés eliminarte a vos mismo")
     db.delete(target)
     db.commit()

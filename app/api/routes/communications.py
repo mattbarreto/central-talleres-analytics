@@ -1,13 +1,14 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_admin, get_db
 from app.models.communication import Communication
 from app.models.communication_recipient import CommunicationRecipient
+from app.models.admin import Admin
 from app.models.enrollment import Enrollment
 from app.models.participant import Participant
 from app.schemas.communication import CommunicationCreate, CommunicationOut
@@ -59,7 +60,7 @@ def list_emails(workshop_id: str, db: Session = Depends(get_db), _: str = Depend
 
 @router.post("/workshops/{workshop_id}/emails", response_model=CommunicationOut)
 def send_email_to_workshop(
-    workshop_id: str, payload: CommunicationCreate, db: Session = Depends(get_db), admin=Depends(get_current_admin)
+    workshop_id: str, payload: CommunicationCreate, db: Session = Depends(get_db), admin_email: str = Depends(get_current_admin)
 ):
     if str(payload.workshop_id) != workshop_id:
         raise HTTPException(status_code=400, detail="Workshop ID mismatch")
@@ -73,6 +74,10 @@ def send_email_to_workshop(
     )
     if not participants:
         raise HTTPException(status_code=404, detail="No participants for this workshop")
+
+    admin = db.query(Admin).filter(Admin.email == admin_email).first()
+    if not admin:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials")
 
     communication = Communication(
         workshop_id=payload.workshop_id,

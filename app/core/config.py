@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     api_v1_prefix: str = "/api/v1"
 
     database_url: str
+    sql_pool_pre_ping: bool = True
     secret_key: str
     access_token_expire_minutes: int = 60 * 24
 

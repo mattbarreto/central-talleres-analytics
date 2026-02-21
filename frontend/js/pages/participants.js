@@ -9,8 +9,12 @@
 
   function demoRows(map, labels) {
     const entries = Object.entries(map || {});
-    const max = Math.max(...entries.map(([, v]) => Number(v) || 0), 1);
-    return entries.map(([k, v]) => ({ label: labels[k] || k, value: Number(v) || 0, pct: Math.max(6, ((Number(v) || 0) / max) * 100) }));
+    const max = Math.max(...entries.map(([, v]) => Number(v) || 0), 0);
+    return entries.map(([k, v]) => {
+      const value = Number(v) || 0;
+      const pct = value <= 0 || max <= 0 ? 0 : Math.max(6, (value / max) * 100);
+      return { label: labels[k] || k, value, pct };
+    });
   }
 
   function rowTable(rows) {

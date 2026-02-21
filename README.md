@@ -70,6 +70,12 @@ Campos mínimos:
 docker compose up --build
 ```
 
+### Producción (VPS)
+- Base de datos: Supabase (PostgreSQL).
+- Proxy: Traefik global.
+- En VPS el ruteo del dashboard se mantiene por File Provider externo de Traefik.
+- Runbook: `docs/DEPLOY_PRODUCCION.md`.
+
 ### Estructura del proyecto
 ```text
 app/         Backend (API, modelos, schemas, CRUD)
@@ -179,4 +185,3 @@ Actively developed, currently focused on:
 **Matías Barreto**  
 Website: https://matiasbarreto.com  
 Repository: https://github.com/mattbarreto/central-talleres-analytics
-

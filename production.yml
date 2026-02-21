@@ -5,10 +5,10 @@ services:
     build: .
     container_name: dashboard_talleres_api
     restart: unless-stopped
+    networks:
+      - root_default
     env_file:
       - .env
-    expose:
-      - "8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -17,16 +17,12 @@ services:
       start_period: 40s
     labels:
       - "traefik.enable=true"
-      # En VPS se usa File Provider en Traefik. Estas labels quedan como respaldo documental.
-      - "traefik.docker.network=root_default"
       - "traefik.http.routers.dashboard-talleres.rule=Host(`dashboard.matiasbarreto.com`)"
       - "traefik.http.routers.dashboard-talleres.entrypoints=websecure"
       - "traefik.http.routers.dashboard-talleres.tls=true"
       - "traefik.http.routers.dashboard-talleres.tls.certresolver=mytlschallenge"
-      - "traefik.http.routers.dashboard-talleres.service=dashboard-talleres-svc"
-      - "traefik.http.services.dashboard-talleres-svc.loadbalancer.server.port=8000"
+      - "traefik.http.services.dashboard-talleres.loadbalancer.server.port=8000"
 
 networks:
-  default:
+  root_default:
     external: true
-    name: root_default

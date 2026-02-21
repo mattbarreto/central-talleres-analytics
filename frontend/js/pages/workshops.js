@@ -15,8 +15,8 @@
     const pagination = opts.pagination || '';
 
     const table = rows.length
-      ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
-      : UI.EmptyState({ title: 'Sin talleres', message: 'No hay talleres para el filtro actual.', action: UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' }) });
+      ? `<div class="dash-table-wrap"><table class="dash-table dash-table-workshops"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="dash-row-actions"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
+      : UI.EmptyState({ title: 'Sin talleres', message: 'No hay talleres para el filtro actual.', action: UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1" onclick="openWorkshopForm()"' }) });
 
     root.innerHTML = `
       <div class="dashboard-v2">
@@ -27,7 +27,7 @@
               <p class="dash-page-subtitle">Gestión operativa de oferta y estado de cohortes.</p>
             </div>
             <div class="dash-actions">
-              ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' })}
+              ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1" onclick="openWorkshopForm()"' })}
             </div>
           </header>
 
@@ -76,22 +76,30 @@
       </div>
     `;
 
-    root.querySelector('[data-w-new="1"]')?.addEventListener('click', () => opts.onNew?.());
-    root.querySelector('[data-w-apply="1"]')?.addEventListener('click', () => {
-      opts.onFilterChange?.({
-        q: root.querySelector('#w-q')?.value || '',
-        density: root.querySelector('#w-density')?.value || 'regular',
-      });
+    root.addEventListener('click', (e) => {
+      const source = e.target instanceof Element ? e.target : null;
+      if (!source) return;
+      const target = source.closest('button,[data-w-enrollments],[data-w-comm],[data-w-edit],[data-w-delete]');
+      if (!target) return;
+      if (target.matches('[data-w-new]')) { opts.onNew?.(); return; }
+      if (target.matches('[data-w-apply]')) {
+        opts.onFilterChange?.({
+          q: root.querySelector('#w-q')?.value || '',
+          density: root.querySelector('#w-density')?.value || 'regular',
+        });
+        return;
+      }
+      if (target.matches('[data-w-reset]')) { opts.onFilterChange?.({ q: '', density: 'regular', reset: true }); return; }
+      if (target.matches('[data-w-enrollments]')) { opts.onOpenEnrollments?.(target.getAttribute('data-w-enrollments')); return; }
+      if (target.matches('[data-w-comm]')) { opts.onCommunicate?.(target.getAttribute('data-w-comm')); return; }
+      if (target.matches('[data-w-edit]')) { opts.onEdit?.(target.getAttribute('data-w-edit')); return; }
+      if (target.matches('[data-w-delete]')) { opts.onDelete?.(target.getAttribute('data-w-delete')); }
     });
-    root.querySelector('[data-w-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', density: 'regular', reset: true }));
-
-    root.querySelectorAll('[data-w-status]').forEach((el) => el.addEventListener('change', (e) => {
-      opts.onQuickStatus?.(el.getAttribute('data-w-status'), e.target.value);
-    }));
-    root.querySelectorAll('[data-w-enrollments]').forEach((el) => el.addEventListener('click', () => opts.onOpenEnrollments?.(el.getAttribute('data-w-enrollments'))));
-    root.querySelectorAll('[data-w-comm]').forEach((el) => el.addEventListener('click', () => opts.onCommunicate?.(el.getAttribute('data-w-comm'))));
-    root.querySelectorAll('[data-w-edit]').forEach((el) => el.addEventListener('click', () => opts.onEdit?.(el.getAttribute('data-w-edit'))));
-    root.querySelectorAll('[data-w-delete]').forEach((el) => el.addEventListener('click', () => opts.onDelete?.(el.getAttribute('data-w-delete'))));
+    root.addEventListener('change', (e) => {
+      const target = e.target.closest('[data-w-status]');
+      if (!target) return;
+      opts.onQuickStatus?.(target.getAttribute('data-w-status'), target.value);
+    });
     return true;
   }
 

@@ -74,9 +74,10 @@
   };
 
   const ChartCard = ({ title = '', subtitle = '', rows = [] } = {}) => {
-    const max = Math.max(...rows.map((r) => Number(r.value) || 0), 1);
+    const max = Math.max(...rows.map((r) => Number(r.value) || 0), 0);
     const bars = rows.map((r) => {
-      const pct = Math.max(6, ((Number(r.value) || 0) / max) * 100);
+      const value = Number(r.value) || 0;
+      const pct = value <= 0 || max <= 0 ? 0 : Math.max(6, (value / max) * 100);
       return `<li><span>${r.label}</span><div class="dash-bar-track"><span style="width:${pct}%"></span></div><strong>${r.value}</strong></li>`;
     }).join('');
 

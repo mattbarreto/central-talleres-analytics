@@ -1,24 +1,53 @@
-# Deploy a ProducciÃ³n
+# Deploy a Producción (VPS Hostinger)
 
-## OpciÃ³n 1: Docker
-1. Configurar `.env` con PostgreSQL/Supabase real.
-2. Ejecutar:
-   - `docker compose up --build -d`
-3. Verificar:
-   - `http://<host>:8000/health`
+## Resumen de arquitectura
+- App: `dashboard_talleres_api` (FastAPI/Uvicorn) en `/opt/dashboard-talleres`.
+- Proxy: Traefik global en stack `root`.
+- Red compartida: `root_default` (externa).
+- Dominio: `dashboard.matiasbarreto.com`.
+- Base de datos productiva: Supabase (PostgreSQL, SSL require).
+- Routing activo en VPS: **Traefik File Provider** (las labels del compose son secundarias).
 
-## OpciÃ³n 2: Proceso Python directo
-1. Instalar dependencias:
-   - `python -m pip install -r requirements.txt`
-2. Migrar:
-   - `python -m alembic upgrade head`
-3. Correr API:
-   - `python -m uvicorn app.main:app --host 0.0.0.0 --port 8000`
+## 1) Pre-requisitos
+1. Variables en `.env`:
+   - `DATABASE_URL` (Supabase pooler)
+   - `SECRET_KEY`
+   - `ACCESS_TOKEN_EXPIRE_MINUTES`
+   - `SQL_POOL_PRE_PING=false` (recomendado para DB remota)
+2. `container_name` fijo:
+   - Debe ser `dashboard_talleres_api`.
+3. Red externa presente:
+   - `root_default`.
 
-## Recomendaciones
-- Ejecutar detrÃ¡s de reverse proxy (Nginx/Caddy).
-- Configurar TLS.
-- Rotar `SECRET_KEY`.
-- No usar SQLite en producciÃ³n.
-- Habilitar backups de PostgreSQL.
+## 2) Deploy estándar
+```bash
+ssh hostinger-vps
+cd /opt/dashboard-talleres
+git fetch --all
+git reset --hard origin/main
+docker compose up -d --build --force-recreate
+```
 
+## 3) Validación post-deploy
+```bash
+docker ps | grep dashboard_talleres_api
+curl -f http://127.0.0.1:8000/health
+python scripts/phase2_smoke.py --base-url http://127.0.0.1:8000 --email admin@example.com --password admin123
+```
+
+## 4) Validación de routing público
+- Comprobar que `https://dashboard.matiasbarreto.com` responde.
+- Si aparece 404 de Traefik, verificar que el archivo dinámico de Traefik para dashboard esté presente y apunte a:
+  - `http://dashboard_talleres_api:8000`
+
+## 5) Rollback rápido
+```bash
+cd /opt/dashboard-talleres
+git reset --hard <commit_anterior>
+docker compose up -d --build --force-recreate
+```
+
+## 6) Notas operativas
+- No usar `--reload` para benchmarks o producción.
+- Evitar cambiar `container_name` en producción: rompe el mapping del File Provider.
+- Mantener backups de DB en Supabase según política del proyecto.

@@ -287,24 +287,27 @@ function confirmDialog(message) {
   });
 }
 
+const hashRouter = window.AppHashRouter?.create({
+  views,
+  getParamsForView: (targetView) => window.AppRouteState?.paramsForView?.(state, targetView, {
+    getEnrollmentWorkshop: () => document.getElementById('enrollment-workshop-select')?.value || '',
+  }) || {},
+  onApplyRoute: () => applyRoute(),
+});
+
 function parseHash() {
-  const raw = window.location.hash.replace(/^#/, '');
-  const [v, q = ''] = raw.split('?');
-  const view = views.includes(v) ? v : 'dashboard';
-  const params = Object.fromEntries(new URLSearchParams(q).entries());
-  return { view, params };
+  return hashRouter ? hashRouter.parseHash() : { view: 'dashboard', params: {} };
 }
 
 function buildHash(view, params = {}) {
-  const q = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v) q.set(k, String(v));
-  });
-  const qs = q.toString();
-  return qs ? `${view}?${qs}` : view;
+  return hashRouter ? hashRouter.buildHash(view, params) : view;
 }
 
 function setHash(view, params = {}, replace = false) {
+  if (hashRouter) {
+    hashRouter.setHash(view, params, replace);
+    return;
+  }
   const hash = buildHash(view, params);
   if (replace) {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`);
@@ -315,51 +318,15 @@ function setHash(view, params = {}, replace = false) {
 }
 
 function syncViewParams() {
+  if (hashRouter) {
+    hashRouter.syncCurrentViewParams();
+    return;
+  }
   const { view } = parseHash();
-  const paramsForView = (targetView) => {
-    let params = {};
-    if (targetView === 'dashboard') params = { year: state.dashboardYear, status: state.dashboardStatus, workshop: state.dashboardWorkshop, mode: state.dashboardMode, adv: state.dashboardAdvancedTab };
-    if (targetView === 'insights') params = {
-      period: state.insightsPeriod,
-      workshop: state.insightsWorkshop,
-      from: state.insightsStartDate,
-      to: state.insightsEndDate,
-      mode: state.insightsMode,
-      report: state.insightsReportPeriod,
-      participant: state.insightsJourneyParticipant,
-    };
-    if (targetView === 'workshops') params = { q: state.workshopSearch, density: state.workshopsDensity, detail: state.detailWorkshopId, tab: state.detailTab, p: state.tablePages.workshops };
-    if (targetView === 'participants') params = {
-      q: state.participantSearch,
-      smode: state.participantSearchMode,
-      workshop: state.participantWorkshop,
-      status: state.participantEnrollmentStatus,
-      population: state.participantPopulation,
-      engagement: state.participantEngagement,
-      gender: state.participantGender,
-      age_min: state.participantAgeMin,
-      age_max: state.participantAgeMax,
-      mode: state.participantMode,
-      pview: state.participantAdvancedView,
-      pp: state.tablePages.participantsPerson,
-      pw: state.tablePages.participantsWorkshop,
-    };
-    if (targetView === 'enrollments') params = { workshop: state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value || '', p: state.tablePages.enrollments };
-    if (targetView === 'communications') params = { q: state.communicationSearch, workshop: state.communicationWorkshop, p: state.tablePages.communications };
-    if (targetView === 'team') params = {
-      q: state.teamSearch,
-      role: state.teamRole,
-      year: state.teamYear,
-      wstatus: state.teamWorkshopStatus,
-      mode: state.teamMode,
-      p: state.tablePages.team,
-    };
-    if (targetView === 'admins') params = { p: state.tablePages.admins };
-    return params;
-  };
-  let p = {};
-  p = paramsForView(view);
-  setHash(view, p, true);
+  const params = window.AppRouteState?.paramsForView?.(state, view, {
+    getEnrollmentWorkshop: () => document.getElementById('enrollment-workshop-select')?.value || '',
+  }) || {};
+  setHash(view, params, true);
 }
 
 function escapeHTML(s) {
@@ -549,7 +516,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
 document.getElementById('logout-btn').addEventListener('click', logout);
 document.getElementById('btn-about-system')?.addEventListener('click', openAboutSystem);
-window.addEventListener('hashchange', applyRoute);
+hashRouter?.start?.();
 document.getElementById('mobile-toggle')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');
@@ -3276,6 +3243,17 @@ document.getElementById('btn-add-admin')?.addEventListener('click', () => {
 });
 window.deleteAdmin = async function (id) { if (!(await confirmDialog('¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
 
+const routeLoaders = {
+  dashboard: () => loadDashboard(),
+  insights: () => loadInsights(),
+  workshops: () => loadWorkshops(),
+  participants: () => loadParticipants(),
+  enrollments: (params) => loadEnrollments(params?.workshop || ''),
+  communications: () => loadCommunications(),
+  team: () => loadTeam(),
+  admins: () => loadAdmins(),
+};
+
 async function applyRoute() {
   if (!api.token) {
     document.getElementById('login-page').classList.remove('hidden');
@@ -3283,90 +3261,13 @@ async function applyRoute() {
     return;
   }
   const { view, params } = parseHash();
-  if (view === 'dashboard') {
-    state.dashboardYear = params.year || '';
-    state.dashboardStatus = params.status || '';
-    state.dashboardWorkshop = params.workshop || '';
-    state.dashboardMode = params.mode === 'advanced' ? 'advanced' : 'summary';
-    state.dashboardAdvancedTab = ['status', 'trends', 'recent'].includes(params.adv) ? params.adv : 'status';
-    renderDashboardMode();
-  }
-  if (view === 'insights') {
-    state.insightsPeriod = ['monthly', 'quarterly', 'semesterly', 'yearly'].includes(params.period) ? params.period : 'monthly';
-    state.insightsWorkshop = params.workshop || '';
-    state.insightsStartDate = params.from || '';
-    state.insightsEndDate = params.to || '';
-    state.insightsMode = params.mode === 'advanced' ? 'advanced' : 'summary';
-    state.insightsReportPeriod = ['monthly', 'quarterly', 'semesterly', 'yearly'].includes(params.report) ? params.report : state.insightsPeriod;
-    state.insightsJourneyParticipant = params.participant || '';
-    renderInsightsMode();
-  }
-  if (view === 'workshops') {
-    state.workshopSearch = params.q || '';
-    state.workshopsDensity = params.density || 'regular';
-    state.detailWorkshopId = params.detail || '';
-    state.detailTab = params.tab || 'overview';
-    state.tablePages.workshops = Math.max(1, Number(params.p) || 1);
-  }
-  if (view === 'participants') {
-    state.participantSearch = params.q || '';
-    state.participantSearchMode = params.smode === 'filter' ? 'filter' : 'explore';
-    state.participantWorkshop = params.workshop || '';
-    state.participantEnrollmentStatus = params.status || 'all';
-    state.participantPopulation = params.population || 'all';
-    state.participantEngagement = params.engagement || '';
-    state.participantGender = params.gender || '';
-    state.participantAgeMin = params.age_min || '';
-    state.participantAgeMax = params.age_max || '';
-    state.participantMode = params.mode === 'advanced' ? 'advanced' : 'summary';
-    state.participantAdvancedView = params.pview === 'workshop' ? 'workshop' : 'person';
-    state.tablePages.participantsPerson = Math.max(1, Number(params.pp) || 1);
-    state.tablePages.participantsWorkshop = Math.max(1, Number(params.pw) || 1);
-    state.participantHasLoaded = Boolean(
-      state.participantSearch
-      || state.participantWorkshop
-      || (state.participantPopulation && state.participantPopulation !== 'all')
-      || state.participantEngagement
-      || state.participantGender
-      || state.participantAgeMin
-      || state.participantAgeMax
-      || (state.participantEnrollmentStatus && state.participantEnrollmentStatus !== 'all')
-    );
-  }
-  if (view === 'communications') {
-    state.communicationSearch = params.q || '';
-    state.communicationWorkshop = params.workshop || '';
-    state.tablePages.communications = Math.max(1, Number(params.p) || 1);
-  }
-  if (view === 'team') {
-    state.teamSearch = params.q || '';
-    state.teamRole = params.role || 'all';
-    state.teamYear = params.year || '';
-    state.teamWorkshopStatus = params.wstatus || 'all';
-    state.teamMode = params.mode === 'advanced' ? 'advanced' : 'summary';
-    state.tablePages.team = Math.max(1, Number(params.p) || 1);
-  }
-  if (view === 'enrollments') {
-    state.tablePages.enrollments = Math.max(1, Number(params.p) || 1);
-    state.enrollmentWorkshop = params.workshop || '';
-  }
-  if (view === 'admins') state.tablePages.admins = Math.max(1, Number(params.p) || 1);
+  window.AppRouteState?.applyFromRoute?.(state, view, params, {
+    onDashboardMode: renderDashboardMode,
+    onInsightsMode: renderInsightsMode,
+  });
 
-  views.forEach((v) => document.getElementById(`view-${v}`)?.classList.toggle('hidden', v !== view));
-  document.querySelectorAll('.nav-item').forEach((btn) => btn.classList.toggle('active', btn.dataset.view === view));
-  document.getElementById('sidebar').classList.remove('open');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (overlay) overlay.hidden = true;
-  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'false');
-
-  if (view === 'dashboard') await loadDashboard();
-  if (view === 'insights') await loadInsights();
-  if (view === 'workshops') await loadWorkshops();
-  if (view === 'participants') await loadParticipants();
-  if (view === 'enrollments') await loadEnrollments(params.workshop || '');
-  if (view === 'communications') await loadCommunications();
-  if (view === 'team') await loadTeam();
-  if (view === 'admins') await loadAdmins();
+  window.AppViewShell?.activate?.({ views, view, doc: document });
+  await window.AppViewLoader?.load?.(view, params, routeLoaders);
 }
 
 (function init() {

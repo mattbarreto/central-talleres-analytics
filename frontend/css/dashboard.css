@@ -452,6 +452,19 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+.dashboard-v2 .dash-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+.dashboard-v2 .dash-table-workshops th:last-child,
+.dashboard-v2 .dash-table-workshops td:last-child {
+  min-width: 280px;
+}
+
 .dashboard-v2 .dash-empty,
 .dashboard-v2 .dash-error {
   border: 1px dashed var(--color-border);
@@ -619,6 +632,15 @@
   .dashboard-v2 .dash-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .dashboard-v2 .dash-row-actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-v2 .dash-table-workshops th:last-child,
+  .dashboard-v2 .dash-table-workshops td:last-child {
+    min-width: 240px;
   }
 
   .dashboard-v2.insights-v2 .dash-actions > * {

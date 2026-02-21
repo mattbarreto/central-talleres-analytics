@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 from typing import Callable
 from uuid import uuid4
 
@@ -32,6 +33,8 @@ class ReportJobStore:
         self._session_factory = session_factory
         self._ttl_seconds = ttl_seconds
         self._max_jobs = max_jobs
+        self._schema_lock = Lock()
+        self._schema_checked = False
 
     def _now(self) -> datetime:
         return datetime.now(UTC)
@@ -53,6 +56,15 @@ class ReportJobStore:
             filename=row.filename,
             media_type=row.media_type,
         )
+
+    def _ensure_schema(self, db: Session):
+        if self._schema_checked:
+            return
+        with self._schema_lock:
+            if self._schema_checked:
+                return
+            ReportJobRecord.__table__.create(bind=db.bind, checkfirst=True)
+            self._schema_checked = True
 
     def _prune_expired_locked(self, db: Session) -> int:
         now = self._now()
@@ -89,6 +101,7 @@ class ReportJobStore:
             expires_at=self._expires_at(now),
         )
         with self._session_factory() as db:
+            self._ensure_schema(db)
             self._prune_expired_locked(db)
             db.add(row)
             self._enforce_max_locked(db)
@@ -98,6 +111,7 @@ class ReportJobStore:
 
     def get(self, job_id: str) -> ReportJob | None:
         with self._session_factory() as db:
+            self._ensure_schema(db)
             self._prune_expired_locked(db)
             row = db.query(ReportJobRecord).filter(ReportJobRecord.id == job_id).first()
             db.commit()
@@ -108,6 +122,7 @@ class ReportJobStore:
     def run(self, job_id: str, builder: Callable[[], tuple[bytes, str, str]]):
         now = self._now()
         with self._session_factory() as db:
+            self._ensure_schema(db)
             row = db.query(ReportJobRecord).filter(ReportJobRecord.id == job_id).first()
             if not row:
                 return
@@ -121,6 +136,7 @@ class ReportJobStore:
             content, filename, media_type = builder()
             finish = self._now()
             with self._session_factory() as db:
+                self._ensure_schema(db)
                 row = db.query(ReportJobRecord).filter(ReportJobRecord.id == job_id).first()
                 if not row:
                     return
@@ -138,6 +154,7 @@ class ReportJobStore:
         except Exception as exc:  # pragma: no cover - defensive path
             finish = self._now()
             with self._session_factory() as db:
+                self._ensure_schema(db)
                 row = db.query(ReportJobRecord).filter(ReportJobRecord.id == job_id).first()
                 if not row:
                     return
@@ -153,6 +170,7 @@ class ReportJobStore:
     def cleanup(self, older_than_hours: int = 24) -> int:
         threshold = self._now() - timedelta(hours=max(1, older_than_hours))
         with self._session_factory() as db:
+            self._ensure_schema(db)
             self._prune_expired_locked(db)
             deleted = (
                 db.query(ReportJobRecord)
@@ -169,6 +187,7 @@ class ReportJobStore:
         now = self._now()
         since_24h = now - timedelta(hours=24)
         with self._session_factory() as db:
+            self._ensure_schema(db)
             self._prune_expired_locked(db)
 
             status_rows = (

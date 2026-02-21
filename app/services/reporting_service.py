@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from io import BytesIO
 from typing import Any
 
@@ -13,7 +13,23 @@ except Exception:  # pragma: no cover
     A4 = None
     canvas = None
 
-from app.core.pdf_utils import draw_bar_list, draw_kpi_grid, draw_pdf_header, draw_story_box, draw_table
+from app.core.pdf_utils import (
+    draw_bar_list,
+    draw_dual_line_chart,
+    draw_editorial_header,
+    draw_highlighted_bar_chart,
+    draw_insight_panel,
+    draw_kpi_grid,
+    draw_kpi_strip,
+    draw_lollipop_rank_chart,
+    draw_minimal_table,
+    draw_page_footer,
+    draw_pdf_header,
+    draw_section_heading,
+    draw_stacked_composition_bar,
+    draw_story_box,
+    draw_table,
+)
 
 
 def _ensure_reportlab():
@@ -27,12 +43,23 @@ def _month_label(dt: datetime) -> str:
 
 
 def _series_6m(rows: list[datetime]):
+    return _series_months(rows, months=6)
+
+
+def _series_months(rows: list[datetime], months: int = 12):
     now = datetime.now(UTC)
-    keys = []
-    for i in range(5, -1, -1):
-        d = datetime(now.year, now.month, 1, tzinfo=UTC) - timedelta(days=30 * i)
-        keys.append((d.year, d.month))
-    agg = {(y, m): 0 for y, m in keys}
+    y = now.year
+    m = now.month
+    keys: list[tuple[int, int]] = []
+    for _ in range(months):
+        keys.append((y, m))
+        m -= 1
+        if m == 0:
+            m = 12
+            y -= 1
+    keys.reverse()
+
+    agg = {(yy, mm): 0 for yy, mm in keys}
     for dt in rows:
         if not dt:
             continue
@@ -40,8 +67,8 @@ def _series_6m(rows: list[datetime]):
         if key in agg:
             agg[key] += 1
     out = []
-    for y, m in keys:
-        out.append({"label": _month_label(datetime(y, m, 1, tzinfo=UTC)), "value": agg[(y, m)]})
+    for yy, mm in keys:
+        out.append({"label": _month_label(datetime(yy, mm, 1, tzinfo=UTC)), "value": agg[(yy, mm)]})
     return out
 
 
@@ -164,72 +191,259 @@ def build_dashboard_pdf_bytes(
 ) -> bytes:
     _ensure_reportlab()
     participant_ids = {e.participant_id for e in enrollments}
+    total_enrollments = len(enrollments)
+    total_communications = len(communications)
     active = sum(1 for e in enrollments if e.status == "active")
     finished = sum(1 for e in enrollments if e.status == "finished")
     dropped = sum(1 for e in enrollments if e.status == "dropped")
-    progress = round((finished / len(enrollments)) * 100) if enrollments else 0
+    progress = round((finished / total_enrollments) * 100, 1) if total_enrollments else 0.0
+    drop_rate = round((dropped / total_enrollments) * 100, 1) if total_enrollments else 0.0
 
     by_workshop: dict[str, int] = {}
+    participants_by_workshop: dict[str, set[str]] = {}
     for e in enrollments:
         wk = str(e.workshop_id)
         by_workshop[wk] = by_workshop.get(wk, 0) + 1
-    top = None
-    if by_workshop:
-        top_id = max(by_workshop.items(), key=lambda x: x[1])[0]
-        top = next((w for w in workshops if str(w.id) == top_id), None)
+        participants_by_workshop.setdefault(wk, set()).add(str(e.participant_id))
 
-    story = [
-        f"El panel concentra {len(workshops)} talleres y {len(participant_ids)} participantes unicos.",
-        (f"Convocatoria lider: {top.name} con {by_workshop.get(str(top.id), 0)} inscripciones." if top else "No hay un taller dominante en este recorte."),
-        f"Resultado de trayectoria: {progress}% finalizados, {active} activos y {dropped} bajas.",
+    workshop_names = {str(w.id): str(w.name) for w in workshops}
+    workshop_year = {str(w.id): str(w.cohort_year or "-") for w in workshops}
+    workshop_status = {str(w.id): str(w.status or "-") for w in workshops}
+
+    workshops_by_year: dict[str, int] = {}
+    workshops_by_status: dict[str, int] = {}
+    for w in workshops:
+        yk = str(w.cohort_year or "-")
+        sk = str(w.status or "-")
+        workshops_by_year[yk] = workshops_by_year.get(yk, 0) + 1
+        workshops_by_status[sk] = workshops_by_status.get(sk, 0) + 1
+
+    active_workshops = workshops_by_status.get("active", 0)
+    comm_per_enrollment = round((total_communications / total_enrollments), 2) if total_enrollments else 0.0
+
+    enroll_series = _series_months([e.created_at for e in enrollments if e.created_at], months=12)
+    comm_series = _series_months([c.created_at for c in communications if c.created_at], months=12)
+    enroll_values = [int(r.get("value", 0) or 0) for r in enroll_series]
+    comm_values = [int(r.get("value", 0) or 0) for r in comm_series]
+
+    def _delta_pct(values: list[int]) -> float:
+        if not values:
+            return 0.0
+        cur = values[-1]
+        prev = values[-2] if len(values) > 1 else 0
+        if prev == 0:
+            return 100.0 if cur > 0 else 0.0
+        return round(((cur - prev) / prev) * 100, 1)
+
+    kpis = [
+        {"label": "Inscripciones", "value": total_enrollments, "delta_pct": _delta_pct(enroll_values), "sparkline": enroll_values},
+        {"label": "Participantes", "value": len(participant_ids), "delta_pct": _delta_pct([len(participant_ids)] + enroll_values[-5:]), "sparkline": enroll_values},
+        {"label": "Talleres activos", "value": active_workshops, "delta_pct": _delta_pct(list(workshops_by_status.values())[-2:]), "sparkline": list(workshops_by_status.values())[-6:]},
+        {"label": "Comunicaciones", "value": total_communications, "delta_pct": _delta_pct(comm_values), "sparkline": comm_values},
     ]
 
-    enroll_series = _series_6m([e.created_at for e in enrollments if e.created_at])
-    comm_series = _series_6m([c.created_at for c in communications if c.created_at])
+    peak_idx = 0
+    if enroll_values:
+        peak_idx = max(range(len(enroll_values)), key=lambda i: enroll_values[i])
+    peak_label = enroll_series[peak_idx]["label"] if enroll_series else "-"
+    peak_value = enroll_values[peak_idx] if enroll_values else 0
+    comm_gap = max(total_enrollments - total_communications, 0)
+    insight_lines = [
+        f"Pico de demanda en {peak_label}: {peak_value} inscripciones.",
+        f"Trayectoria general: {progress}% finalizacion, {drop_rate}% bajas y {active} activos.",
+        f"Intensidad operativa: {total_communications} comunicaciones ({comm_per_enrollment} por inscripcion).",
+    ]
+    if comm_gap > max(2, total_enrollments // 4):
+        insight_lines[2] = f"Brecha operativa: faltan al menos {comm_gap} comunicaciones para cubrir la demanda reciente."
+
+    ranked_workshops = sorted(by_workshop.items(), key=lambda item: item[1], reverse=True)
+    rank_rows = [{"label": workshop_names.get(wid, "Taller"), "value": total} for wid, total in ranked_workshops[:10]]
+    year_rows = [{"label": yr, "value": total} for yr, total in sorted(workshops_by_year.items(), key=lambda item: item[0])]
+
+    rows_full: list[list[str]] = []
+    for wid, total in ranked_workshops:
+        participant_total = len(participants_by_workshop.get(wid, set()))
+        rows_full.append(
+            [
+                workshop_names.get(wid, "Taller"),
+                workshop_year.get(wid, "-"),
+                workshop_status.get(wid, "-"),
+                f"{total} / {participant_total}",
+            ]
+        )
+    if not rows_full:
+        rows_full.append(["Sin datos", "-", "-", "0 / 0"])
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     page_w, page_h = A4
-    content_w = page_w - 52
+    margin_x = 34
+    content_w = page_w - (margin_x * 2)
+    x = margin_x
 
-    draw_pdf_header(c, page_w, page_h, "Reporte ejecutivo del panel", f"Rango {range_key} | Ano {year or 'Todos'} | Estado {status or 'Todos'}", bg_hex="#0f172a")
-    y = page_h - 66
-    c.setFillColor(HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(26, y, "Senales clave")
-    y -= 8
-    y = draw_kpi_grid(
+    y = draw_editorial_header(
         c,
-        26,
-        y,
-        content_w,
-        [
-            ("Talleres", len(workshops), "brand"),
-            ("Participantes unicos", len(participant_ids), "blue"),
-            ("Inscripciones", len(enrollments), "green"),
-            ("Activos", active, "blue"),
-            ("Finalizados", finished, "green"),
-            ("Comunicaciones", len(communications), "amber"),
+        page_w,
+        page_h,
+        "Reporte Global del Dashboard",
+        f"Rango {range_key} | Ano {year or 'Todos'} | Estado {status or 'Todos'}",
+        accent_hex="#4f46e5",
+        margin_x=x,
+    )
+    y = draw_kpi_strip(c, x, y, content_w, kpis, accent_hex="#4f46e5")
+    y = draw_insight_panel(c, x, y, content_w, "Narrativa ejecutiva", insight_lines, accent_hex="#4f46e5")
+    y = draw_section_heading(c, x, y, content_w, "Pulso temporal", "Demanda vs traccion operativa en los ultimos 12 meses.")
+
+    gap = 14
+    left_w = (content_w * 0.64) - (gap / 2)
+    right_w = content_w - left_w - gap
+    right_x = x + left_w + gap
+
+    left_y_end = draw_dual_line_chart(
+        c,
+        x=x,
+        y=y,
+        width=left_w,
+        height=166,
+        labels=[str(r.get("label", "")) for r in enroll_series],
+        primary=enroll_values,
+        secondary=comm_values,
+        primary_label="Inscripciones",
+        secondary_label="Comunicaciones",
+        accent_hex="#4f46e5",
+    )
+    right_y = draw_stacked_composition_bar(
+        c,
+        x=right_x,
+        y=y,
+        width=right_w,
+        title="Composicion de trayectoria",
+        segments=[
+            ("Activos", active, "#64748b"),
+            ("Finalizados", finished, "#4f46e5"),
+            ("Bajas", dropped, "#94a3b8"),
         ],
     )
-    y = draw_story_box(c, 26, y, content_w, story, bullet="*")
-    y = draw_bar_list(c, enroll_series, 26, y, content_w, "Inscripciones por mes (ultimos 6 meses)", "value", "#60a5fa")
-    y = draw_bar_list(c, comm_series, 26, y, content_w, "Comunicaciones por mes (ultimos 6 meses)", "value", "#34d399")
+    right_y = draw_lollipop_rank_chart(
+        c,
+        x=right_x,
+        y=right_y + 2,
+        width=right_w,
+        title="Top talleres por demanda",
+        rows=rank_rows[:5],
+        label_key="label",
+        value_key="value",
+        accent_hex="#4f46e5",
+        max_rows=5,
+    )
+    draw_page_footer(c, page_w, page_h, "Reporte Global Dashboard", 1, margin_x=x)
 
     c.showPage()
-    draw_pdf_header(c, page_w, page_h, "Detalle operativo", "Talleres recientes y estado", bg_hex="#0f172a")
-    y = page_h - 70
-    rows: list[list[str]] = []
-    for w in workshops:
-        rows.append(
-            [
-                w.name,
-                str(w.cohort_year or "-"),
-                str(w.status or "-"),
-                w.created_at.strftime("%d/%m/%Y") if w.created_at else "-",
-            ]
-        )
-    draw_table(c, 26, y, content_w, ["Taller", "Ano", "Estado", "Creado"], rows, max_rows=34)
+    y = draw_editorial_header(
+        c,
+        page_w,
+        page_h,
+        "Cobertura y capacidad operativa",
+        "Profundizacion por talleres, cohortes y estructura del sistema",
+        accent_hex="#4f46e5",
+        margin_x=x,
+    )
+    y = draw_section_heading(c, x, y, content_w, "Comparativas estructurales", "Ranking por demanda y distribucion por cohorte.")
+
+    left_w = (content_w * 0.58) - (gap / 2)
+    right_w = content_w - left_w - gap
+    right_x = x + left_w + gap
+    left_y = draw_lollipop_rank_chart(
+        c,
+        x=x,
+        y=y,
+        width=left_w,
+        title="Ranking de talleres",
+        rows=rank_rows,
+        label_key="label",
+        value_key="value",
+        accent_hex="#4f46e5",
+        max_rows=8,
+    )
+    right_y = draw_highlighted_bar_chart(
+        c,
+        x=right_x,
+        y=y,
+        width=right_w,
+        title="Talleres por cohorte",
+        subtitle="Distribucion anual",
+        rows=year_rows,
+        value_key="value",
+        label_key="label",
+        highlight_idx=max(len(year_rows) - 1, 0),
+        accent_hex="#4f46e5",
+        label_col_w=42,
+        value_col_w=24,
+    )
+    right_y = draw_highlighted_bar_chart(
+        c,
+        x=right_x,
+        y=right_y + 4,
+        width=right_w,
+        title="Comunicaciones mensuales",
+        subtitle="Seguimiento operativo por mes",
+        rows=comm_series[-8:],
+        value_key="value",
+        label_key="label",
+        highlight_idx=7,
+        accent_hex="#4f46e5",
+        label_col_w=40,
+        value_col_w=24,
+    )
+
+    y = min(left_y, right_y) - 2
+    y = draw_section_heading(c, x, y, content_w, "Detalle de talleres", "Inscripciones y participantes unicos por taller.")
+    y = draw_minimal_table(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        columns=["Taller", "Ano", "Estado", "Insc/Part"],
+        rows=rows_full,
+        max_rows=10,
+        col_ratios=[0.45, 0.15, 0.20, 0.20],
+    )
+    draw_page_footer(c, page_w, page_h, "Reporte Global Dashboard", 2, margin_x=x)
+
+    c.showPage()
+    y = draw_editorial_header(
+        c,
+        page_w,
+        page_h,
+        "Anexo global",
+        "Inventario completo de talleres ordenado por demanda",
+        accent_hex="#4f46e5",
+        margin_x=x,
+    )
+    y = draw_insight_panel(
+        c,
+        x,
+        y,
+        content_w,
+        "Lectura metodologica",
+        [
+            "Consolida talleres, participantes, inscripciones y comunicaciones en una sola lectura.",
+            "Prioriza comparabilidad temporal, composicion y ranking para decisiones de gestion.",
+            "El anexo preserva el detalle operativo para auditoria y seguimiento.",
+        ],
+        accent_hex="#4f46e5",
+    )
+    draw_minimal_table(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        columns=["Taller", "Ano", "Estado", "Insc/Part"],
+        rows=rows_full,
+        max_rows=34,
+        col_ratios=[0.45, 0.15, 0.20, 0.20],
+    )
+    draw_page_footer(c, page_w, page_h, "Reporte Global Dashboard", 3, margin_x=x)
     c.showPage()
     c.save()
 

@@ -180,6 +180,8 @@ Actively developed, currently focused on:
 - `docs/DESARROLLO.md`
 - `docs/DEPLOY_PRODUCCION.md`
 - `docs/SUPABASE_SETUP.md`
+- `docs/ESTADO_DESARROLLO_2026-02-21.md`
+- `docs/SESSION_HANDOFF_2026-02-21_PDF_GLOBAL_REBUILD.md`
 
 ## Autor | Author
 **Matías Barreto**  

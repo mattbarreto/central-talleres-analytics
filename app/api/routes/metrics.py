@@ -121,7 +121,10 @@ def create_dashboard_report_pdf_job(
     workshop_id: str | None = Query(default=None),
     _: str = Depends(get_current_admin),
 ):
-    job = report_job_store.create()
+    try:
+        job = report_job_store.create()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
     def builder():
         db = SessionLocal()
         try:

@@ -5,11 +5,11 @@ const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollment
 const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
 const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
 const APP_META = {
-  author: 'Matías Barreto',
+  author: 'MatÃ­as Barreto',
   website: 'https://matiasbarreto.com',
   repo: 'https://github.com/mattbarreto/central-talleres-analytics',
   version: 'v2026.02.20',
-  release: 'Producción inicial Supabase',
+  release: 'ProducciÃ³n inicial Supabase',
   stack: 'FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS',
 };
 
@@ -122,7 +122,7 @@ function openAboutSystem() {
           <div class="about-value"><a href="${escapeHTML(APP_META.repo)}" target="_blank" rel="noopener noreferrer">${escapeHTML(APP_META.repo.replace(/^https?:\/\//, ''))}</a></div>
         </div>
         <div class="about-row">
-          <div class="about-label">Versión</div>
+          <div class="about-label">VersiÃ³n</div>
           <div class="about-value">${escapeHTML(APP_META.version)}</div>
         </div>
         <div class="about-row">
@@ -272,7 +272,7 @@ document.getElementById('modal-overlay').addEventListener('click', (e) => {
 function confirmDialog(message) {
   return new Promise((resolve) => {
     openModal(
-      'Confirmar acción',
+      'Confirmar acciÃ³n',
       `<p class="confirm-text">${message}</p>`,
       `<button class="btn btn-secondary" id="confirm-cancel">Cancelar</button><button class="btn btn-danger" id="confirm-ok">Eliminar</button>`
     );
@@ -392,11 +392,11 @@ function tablePaginationHTML(key, pageData, label = 'resultados') {
   const prevDisabled = pageData.page <= 1 ? 'disabled' : '';
   const nextDisabled = pageData.page >= pageData.totalPages ? 'disabled' : '';
   return `
-    <div class="table-pagination" role="navigation" aria-label="Paginación">
+    <div class="table-pagination" role="navigation" aria-label="PaginaciÃ³n">
       <span class="table-pagination-meta">Mostrando ${pageData.start}-${pageData.end} de ${pageData.total} ${label}</span>
       <div class="table-pagination-controls">
         <button class="btn btn-ghost btn-sm" ${prevDisabled} onclick="setListPage('${key}', ${pageData.page - 1})">Anterior</button>
-        <span class="table-pagination-page">Página ${pageData.page} de ${pageData.totalPages}</span>
+        <span class="table-pagination-page">PÃ¡gina ${pageData.page} de ${pageData.totalPages}</span>
         <button class="btn btn-ghost btn-sm" ${nextDisabled} onclick="setListPage('${key}', ${pageData.page + 1})">Siguiente</button>
       </div>
     </div>
@@ -443,8 +443,8 @@ window.setListPage = async function (key, page) {
 
 const statusLabels = { planned: 'Planificado', active: 'Activo', finished: 'Finalizado', enrolled: 'Inscripto', dropped: 'Dado de baja', sent: 'Enviado', failed: 'Fallido' };
 const badge = (s) => `<span class="badge badge-${s}">${statusLabels[s] || s}</span>`;
-const formatDate = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(d)) : '—';
-const formatDateTime = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d)) : '—';
+const formatDate = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(d)) : 'â€”';
+const formatDateTime = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d)) : 'â€”';
 function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
   const body = document.querySelector(`#view-${viewKey} .page-body`);
   if (!body) return;
@@ -506,11 +506,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     showApp(email);
     toast('Bienvenido de nuevo', 'success');
   } catch {
-    error.textContent = 'Correo o contraseña incorrectos. Intentá de nuevo.';
+    error.textContent = 'Correo o contraseÃ±a incorrectos. IntentÃ¡ de nuevo.';
     error.classList.add('show');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Iniciar sesión';
+    btn.textContent = 'Iniciar sesiÃ³n';
   }
 });
 
@@ -839,20 +839,20 @@ async function loadDashboard() {
     });
     const topWorkshopId = [...byWorkshop.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
     const topWorkshop = filtered.find((w) => w.id === topWorkshopId);
-    document.getElementById('dashboard-context').textContent = `Mostrando ${filtered.length} talleres, ${participantIds.size} participantes únicos y ${enrollmentRows.length} inscripciones para los filtros actuales.`;
+    document.getElementById('dashboard-context').textContent = `Mostrando ${filtered.length} talleres, ${participantIds.size} participantes Ãºnicos y ${enrollmentRows.length} inscripciones para los filtros actuales.`;
     document.getElementById('workshop-metrics-grid').innerHTML = `<div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${enrollmentRows.length}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Bajas</div><div class="metric-value">${dropped}</div></div><div class="card"><div class="metric-label">Avance</div><div class="metric-value">${progress}%</div></div>`;
     const dashboardStories = [
       {
         title: 'Lectura institucional',
-        body: `En el filtro actual hay ${filtered.length} talleres y ${participantIds.size} personas únicas participando.`,
+        body: `En el filtro actual hay ${filtered.length} talleres y ${participantIds.size} personas Ãºnicas participando.`,
       },
       {
         title: 'Foco de convocatoria',
-        body: topWorkshop ? `${topWorkshop.name} concentra más actividad con ${byWorkshop.get(topWorkshop.id) || 0} inscripciones.` : 'No hay todavía un taller dominante en convocatoria.',
+        body: topWorkshop ? `${topWorkshop.name} concentra mÃ¡s actividad con ${byWorkshop.get(topWorkshop.id) || 0} inscripciones.` : 'No hay todavÃ­a un taller dominante en convocatoria.',
       },
       {
         title: 'Estado de proceso',
-        body: `El ${progress}% de las inscripciones finalizó. Activos: ${active}. Bajas: ${dropped}.`,
+        body: `El ${progress}% de las inscripciones finalizÃ³. Activos: ${active}. Bajas: ${dropped}.`,
       },
     ];
     const funnelRows = [
@@ -871,7 +871,7 @@ async function loadDashboard() {
       recent.innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin talleres</h3><p>No hay datos para los filtros seleccionados.</p></div>`;
       return;
     }
-    recent.innerHTML = `<table><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Creado</th></tr></thead><tbody>${filtered.slice(0, 5).map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.name)}</td><td>${w.cohort_year}</td><td>${badge(w.status)}</td><td>${formatDate(w.created_at)}</td></tr>`).join('')}</tbody></table>`;
+    recent.innerHTML = `<table><thead><tr><th>Nombre</th><th>AÃ±o</th><th>Estado</th><th>Creado</th></tr></thead><tbody>${filtered.slice(0, 5).map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.name)}</td><td>${w.cohort_year}</td><td>${badge(w.status)}</td><td>${formatDate(w.created_at)}</td></tr>`).join('')}</tbody></table>`;
   } catch {
     toast('Error al cargar el panel', 'error');
   }
@@ -945,9 +945,9 @@ const insightsAgeLabels = {
   unknown: 'Sin dato',
 };
 const insightsSeverityLabels = {
-  info: 'Información',
+  info: 'InformaciÃ³n',
   warning: 'Advertencia',
-  critical: 'Crítica',
+  critical: 'CrÃ­tica',
 };
 
 function formatPct(part, total) {
@@ -991,7 +991,7 @@ function inlineBarsSVG(rows, {
     `;
   }).join('');
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfico de barras" class="report-svg-chart">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="GrÃ¡fico de barras" class="report-svg-chart">
       <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
       ${grid}
       ${bars}
@@ -1035,7 +1035,7 @@ function inlineLineSVG(rows, {
     <text x="${p.x.toFixed(1)}" y="${(pad.top + chartH + 16).toFixed(1)}" fill="#8b8b9e" font-size="10" text-anchor="middle">${p.label}</text>
   `).join('');
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Gráfico de línea" class="report-svg-chart">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="GrÃ¡fico de lÃ­nea" class="report-svg-chart">
       <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
       ${grid}
       <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -1052,19 +1052,19 @@ function buildInsightsStory(data) {
   const topParticipant = (data.top_participants_by_activity || [])[0];
   return [
     {
-      title: 'Institución',
-      body: `Se registran ${k.enrollments_total || 0} inscripciones y ${k.communications_total || 0} comunicaciones en el período.`,
+      title: 'InstituciÃ³n',
+      body: `Se registran ${k.enrollments_total || 0} inscripciones y ${k.communications_total || 0} comunicaciones en el perÃ­odo.`,
     },
     {
       title: 'Taller destacado',
       body: topWorkshop
         ? `${topWorkshop.workshop_name} lidera con ${topWorkshop.enrollments_total} inscripciones y ${topWorkshop.attendees_estimated} asistentes estimados.`
-        : 'No hay talleres destacados para este período.',
+        : 'No hay talleres destacados para este perÃ­odo.',
     },
     {
       title: 'Equipo destacado',
       body: topStaff
-        ? `${topStaff.name} (${teamRoleLabels[topStaff.role] || topStaff.role}) alcanzó ${topStaff.participants_reached} personas en ${topStaff.workshops_count} talleres.`
+        ? `${topStaff.name} (${teamRoleLabels[topStaff.role] || topStaff.role}) alcanzÃ³ ${topStaff.participants_reached} personas en ${topStaff.workshops_count} talleres.`
         : 'No hay actividad de equipo suficiente para destacar perfiles.',
     },
     {
@@ -1110,11 +1110,11 @@ function renderInsights(data) {
     <div class="card metric-card accent"><div class="metric-label">Comunicaciones</div><div class="metric-value">${k.communications_total}</div></div>
     <div class="card metric-card info"><div class="metric-label">Equipo activo</div><div class="metric-value">${k.active_team_members}</div></div>
   `;
-  const trendMap = { up: '?', down: '?', flat: '•' };
+  const trendMap = { up: '?', down: '?', flat: 'â€¢' };
   document.getElementById('insights-comparisons').innerHTML = (data.comparisons || []).map((c) => {
     const cls = c.trend === 'up' ? 'status-active' : c.trend === 'down' ? 'status-failed' : 'status-enrolled';
     const sign = c.delta > 0 ? '+' : '';
-    return `<div class="card"><div class="metric-label">${escapeHTML(c.label)} vs período anterior</div><div class="metric-value">${c.current}</div><div class="participants-signal-list">${signalChip('Anterior', c.previous, 'status-enrolled')}${signalChip('Variación', `${sign}${c.delta_pct}% ${trendMap[c.trend] || ''}`, cls)}</div></div>`;
+    return `<div class="card"><div class="metric-label">${escapeHTML(c.label)} vs perÃ­odo anterior</div><div class="metric-value">${c.current}</div><div class="participants-signal-list">${signalChip('Anterior', c.previous, 'status-enrolled')}${signalChip('VariaciÃ³n', `${sign}${c.delta_pct}% ${trendMap[c.trend] || ''}`, cls)}</div></div>`;
   }).join('');
   const story = buildInsightsStory(data);
   document.getElementById('insights-story').innerHTML = narrativeCardsHTML(story);
@@ -1133,34 +1133,34 @@ function renderInsights(data) {
   `;
   const series = data.series || [];
   document.getElementById('insights-series').innerHTML = `
-    ${simpleBarList('Inscripciones por período', series, 'enrollments')}
-    ${simpleBarList('Comunicaciones por período', series, 'communications')}
+    ${simpleBarList('Inscripciones por perÃ­odo', series, 'enrollments')}
+    ${simpleBarList('Comunicaciones por perÃ­odo', series, 'communications')}
     ${simpleBarList('Talleres iniciados', series, 'workshops_started')}
   `;
   document.getElementById('insights-alerts').innerHTML = (data.alerts || []).map((a) => {
     const cls = a.severity === 'critical' ? 'status-failed' : a.severity === 'warning' ? 'status-enrolled' : 'status-active';
-    return `<article class="trend-card"><h4>${signalChip(insightsSeverityLabels[a.severity] || 'Información', a.title, cls)}</h4><p class="muted">${escapeHTML(a.message)}</p></article>`;
+    return `<article class="trend-card"><h4>${signalChip(insightsSeverityLabels[a.severity] || 'InformaciÃ³n', a.title, cls)}</h4><p class="muted">${escapeHTML(a.message)}</p></article>`;
   }).join('');
   const ageRows = Object.entries(data.age_distribution || {}).map(([k2, v]) => ({ period_label: insightsAgeLabels[k2] || k2, value: v }));
   const genderRows = Object.entries(data.gender_distribution || {}).map(([k2, v]) => ({ period_label: insightsGenderLabels[k2] || k2, value: v }));
   document.getElementById('insights-distributions').innerHTML = `
-    ${simpleBarList('Distribución por edad', ageRows, 'value')}
-    ${simpleBarList('Distribución por género', genderRows, 'value')}
+    ${simpleBarList('DistribuciÃ³n por edad', ageRows, 'value')}
+    ${simpleBarList('DistribuciÃ³n por gÃ©nero', genderRows, 'value')}
   `;
   document.getElementById('insights-retention').innerHTML = (data.retention || []).length
-    ? `<table><thead><tr><th>Cohorte</th><th>Tamaño</th><th>Retención +1</th><th>Retención +3</th></tr></thead><tbody>${data.retention.map((r) => `<tr><td>${escapeHTML(r.cohort_period)}</td><td>${r.cohort_size}</td><td>${r.retained_next} (${r.retained_next_pct}%)</td><td>${r.retained_3} (${r.retained_3_pct}%)</td></tr>`).join('')}</tbody></table>`
-    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-search')}</div><h3>Sin cohortes</h3><p>No hay datos suficientes para retención.</p></div>`;
+    ? `<table><thead><tr><th>Cohorte</th><th>TamaÃ±o</th><th>RetenciÃ³n +1</th><th>RetenciÃ³n +3</th></tr></thead><tbody>${data.retention.map((r) => `<tr><td>${escapeHTML(r.cohort_period)}</td><td>${r.cohort_size}</td><td>${r.retained_next} (${r.retained_next_pct}%)</td><td>${r.retained_3} (${r.retained_3_pct}%)</td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-search')}</div><h3>Sin cohortes</h3><p>No hay datos suficientes para retenciÃ³n.</p></div>`;
   document.getElementById('insights-workshops-ranking').innerHTML = data.top_workshops_by_enrollments.length
-    ? `<table><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Inscripciones</th><th>Asistentes</th><th>Finalizados</th></tr></thead><tbody>${data.top_workshops_by_enrollments.map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${badge(w.workshop_status)}</td><td>${w.enrollments_total}</td><td>${w.attendees_estimated}</td><td>${w.finished_total}</td></tr>`).join('')}</tbody></table>`
-    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin rankings de talleres</h3><p>No hay datos en el período seleccionado.</p></div>`;
+    ? `<table><thead><tr><th>Taller</th><th>AÃ±o</th><th>Estado</th><th>Inscripciones</th><th>Asistentes</th><th>Finalizados</th></tr></thead><tbody>${data.top_workshops_by_enrollments.map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${badge(w.workshop_status)}</td><td>${w.enrollments_total}</td><td>${w.attendees_estimated}</td><td>${w.finished_total}</td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin rankings de talleres</h3><p>No hay datos en el perÃ­odo seleccionado.</p></div>`;
   document.getElementById('insights-staff-ranking').innerHTML = data.top_staff_by_activity.length
     ? `<table><thead><tr><th>Perfil</th><th>Rol</th><th>Talleres</th><th>Activos</th><th>Alcance</th><th>Asistentes</th></tr></thead><tbody>${data.top_staff_by_activity.map((s) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(s.name)}</td><td>${signalChip('Rol', teamRoleLabels[s.role] || s.role, 'status-active')}</td><td>${s.workshops_count}</td><td>${s.active_workshops_count}</td><td>${s.participants_reached}</td><td>${s.attendees_reached}</td></tr>`).join('')}</tbody></table>`
-    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-team')}</div><h3>Sin ranking de equipo</h3><p>No hay actividad registrada en ese período.</p></div>`;
+    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-team')}</div><h3>Sin ranking de equipo</h3><p>No hay actividad registrada en ese perÃ­odo.</p></div>`;
   document.getElementById('insights-participants-ranking').innerHTML = data.top_participants_by_activity.length
-    ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Talleres</th><th>Activos</th><th>Finalizados</th><th>Inscripto</th><th class="text-right">Perfil analítico</th></tr></thead><tbody>${data.top_participants_by_activity.map((p) => `<tr><td><button class="btn btn-ghost btn-sm" style="padding:2px 8px" onclick="openInsightsJourneyByParticipant('${p.participant_id}')">${escapeHTML(p.name)}</button></td><td>${escapeHTML(p.email || '—')}</td><td>${p.workshops_total}</td><td>${p.active_workshops}</td><td>${p.finished_workshops}</td><td>${p.enrolled_workshops}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="openInsightsJourneyByParticipant('${p.participant_id}')">Ver perfil</button></td></tr>`).join('')}</tbody></table>`
-    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin ranking de participantes</h3><p>No hay recorridos suficientes para el período.</p></div>`;
+    ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Talleres</th><th>Activos</th><th>Finalizados</th><th>Inscripto</th><th class="text-right">Perfil analÃ­tico</th></tr></thead><tbody>${data.top_participants_by_activity.map((p) => `<tr><td><button class="btn btn-ghost btn-sm" style="padding:2px 8px" onclick="openInsightsJourneyByParticipant('${p.participant_id}')">${escapeHTML(p.name)}</button></td><td>${escapeHTML(p.email || 'â€”')}</td><td>${p.workshops_total}</td><td>${p.active_workshops}</td><td>${p.finished_workshops}</td><td>${p.enrolled_workshops}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="openInsightsJourneyByParticipant('${p.participant_id}')">Ver perfil</button></td></tr>`).join('')}</tbody></table>`
+    : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin ranking de participantes</h3><p>No hay recorridos suficientes para el perÃ­odo.</p></div>`;
   document.getElementById('insights-definitions').innerHTML = (data.metric_definitions || []).length
-    ? `<table><thead><tr><th>Métrica</th><th>Descripción</th><th>Fórmula</th></tr></thead><tbody>${data.metric_definitions.map((m) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(m.label)}</td><td>${escapeHTML(m.description)}</td><td><span class="muted">${escapeHTML(m.formula)}</span></td></tr>`).join('')}</tbody></table>`
+    ? `<table><thead><tr><th>MÃ©trica</th><th>DescripciÃ³n</th><th>FÃ³rmula</th></tr></thead><tbody>${data.metric_definitions.map((m) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(m.label)}</td><td>${escapeHTML(m.description)}</td><td><span class="muted">${escapeHTML(m.formula)}</span></td></tr>`).join('')}</tbody></table>`
     : '';
   const journeySelect = document.getElementById('insights-journey-participant');
   if (journeySelect) {
@@ -1229,7 +1229,7 @@ async function loadInsights() {
     state.insightsData = data;
     renderInsights(data);
   } catch (err) {
-    toast(err.message || 'Error al cargar analítica', 'error');
+    toast(err.message || 'Error al cargar analÃ­tica', 'error');
   }
 }
 
@@ -1250,7 +1250,7 @@ async function exportInsightsReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.csv`;
+    a.download = `analÃ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1273,7 +1273,7 @@ async function exportInsightsReportJSON() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.json`;
+    a.download = `analÃ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1315,7 +1315,7 @@ async function exportInsightsReportExcel() {
 
     const periodLabel = insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado';
     const kpiRows = [
-      ['Métrica', 'Valor'],
+      ['MÃ©trica', 'Valor'],
       ['Periodo', periodLabel],
       ['Talleres', data.kpis?.workshops_total || 0],
       ['Inscripciones', data.kpis?.enrollments_total || 0],
@@ -1326,7 +1326,7 @@ async function exportInsightsReportExcel() {
       ['Participantes activos', data.kpis?.active_participants_total || 0],
     ];
     const comparisonsRows = [
-      ['Métrica', 'Actual', 'Anterior', 'Delta', 'Delta %', 'Tendencia'],
+      ['MÃ©trica', 'Actual', 'Anterior', 'Delta', 'Delta %', 'Tendencia'],
       ...((data.comparisons || []).map((c) => [c.label, c.current, c.previous, c.delta, c.delta_pct, c.trend])),
     ];
     const seriesRows = [
@@ -1334,7 +1334,7 @@ async function exportInsightsReportExcel() {
       ...((data.series || []).map((s) => [s.period_label || s.period_key, s.enrollments, s.active_enrollments, s.finished_enrollments, s.dropped_enrollments, s.communications, s.workshops_started])),
     ];
     const workshopsRows = [
-      ['Taller', 'Año', 'Estado', 'Inscripciones', 'Asistentes', 'Finalizados'],
+      ['Taller', 'AÃ±o', 'Estado', 'Inscripciones', 'Asistentes', 'Finalizados'],
       ...((data.top_workshops_by_enrollments || []).map((w) => [w.workshop_name, w.cohort_year, w.workshop_status, w.enrollments_total, w.attendees_estimated, w.finished_total])),
     ];
     const staffRows = [
@@ -1346,7 +1346,7 @@ async function exportInsightsReportExcel() {
       ...((data.top_participants_by_activity || []).map((p) => [p.name, p.email || '', p.workshops_total, p.active_workshops, p.finished_workshops, p.enrolled_workshops, p.dropped_workshops])),
     ];
     const definitionsRows = [
-      ['Métrica', 'Descripción', 'Fórmula'],
+      ['MÃ©trica', 'DescripciÃ³n', 'FÃ³rmula'],
       ...((data.metric_definitions || []).map((m) => [m.label, m.description, m.formula])),
     ];
 
@@ -1371,7 +1371,7 @@ async function exportInsightsReportExcel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.xls`;
+    a.download = `analÃ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.xls`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1385,7 +1385,7 @@ async function exportInsightsReportExcel() {
 async function printInsightsReportPDF() {
   const data = state.insightsData;
   if (!data) {
-    toast('Primero cargá la analítica', 'error');
+    toast('Primero cargÃ¡ la analÃ­tica', 'error');
     return;
   }
   const query = toQuery({
@@ -1399,16 +1399,16 @@ async function printInsightsReportPDF() {
     await window.ReportJobs.createAndDownload({
       createUrl: `${API_BASE}/insights/report-jobs/pdf${query ? `?${query}` : ''}`,
       headers: api.headers(false),
-      filename: `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.pdf`,
+      filename: `analÃ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.pdf`,
     });
     toast('Reporte PDF descargado', 'success');
     return;
   } catch {
-    // Fallback al flujo de impresión HTML si falla la generación PDF en backend.
+    // Fallback al flujo de impresiÃ³n HTML si falla la generaciÃ³n PDF en backend.
   }
   const w = window.open('', '_blank', 'noopener,noreferrer,width=1000,height=720');
   if (!w) {
-    toast('No se pudo abrir la ventana de impresión', 'error');
+    toast('No se pudo abrir la ventana de impresiÃ³n', 'error');
     return;
   }
   const rows = (data.comparisons || []).map((c) => `<tr><td>${escapeHTML(c.label)}</td><td>${c.current}</td><td>${c.previous}</td><td>${c.delta_pct}%</td></tr>`).join('');
@@ -1422,7 +1422,7 @@ async function printInsightsReportPDF() {
     .slice(0, 5)
     .map((p) => `<tr><td>${escapeHTML(p.name)}</td><td>${p.workshops_total}</td><td>${p.active_workshops}</td><td>${p.finished_workshops}</td></tr>`)
     .join('');
-  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de Analítica</title><style>
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de AnalÃ­tica</title><style>
     body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff}
     h1{margin:0 0 4px;font-size:26px} h2{margin:22px 0 10px;font-size:18px} h3{margin:12px 0 8px;font-size:14px}
     p{margin:6px 0;line-height:1.45}
@@ -1440,7 +1440,7 @@ async function printInsightsReportPDF() {
     @media print { .chart-block{break-inside:avoid} .story-card{break-inside:avoid} }
   </style></head><body>
     <h1>Reporte ejecutivo con narrativa</h1>
-    <p>Período: ${escapeHTML(insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado')}</p>
+    <p>PerÃ­odo: ${escapeHTML(insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado')}</p>
     <h2>Indicadores clave</h2>
     <section class="kpi-grid">
       <article class="kpi"><div class="k">Inscripciones</div><div class="v">${data.kpis.enrollments_total}</div></article>
@@ -1454,12 +1454,12 @@ async function printInsightsReportPDF() {
     <section class="story-grid">
       ${story.map((s) => `<article class="story-card"><h3>${escapeHTML(s.title)}</h3><p>${escapeHTML(s.body)}</p></article>`).join('')}
     </section>
-    <h2>Evolución y composición</h2>
-    <section class="chart-block"><h3>Inscripciones por período</h3>${inlineBarsSVG(seriesRows, { labelKey: 'label', valueKey: 'value', color: '#60a5fa' })}</section>
+    <h2>EvoluciÃ³n y composiciÃ³n</h2>
+    <section class="chart-block"><h3>Inscripciones por perÃ­odo</h3>${inlineBarsSVG(seriesRows, { labelKey: 'label', valueKey: 'value', color: '#60a5fa' })}</section>
     <section class="chart-block"><h3>Camino de las personas (Embudo)</h3>${inlineBarsSVG(funnelRows, { labelKey: 'label', valueKey: 'value', color: '#8b5cf6' })}</section>
-    <section class="chart-block"><h3>Distribución por género</h3>${inlineBarsSVG(genderRows, { labelKey: 'label', valueKey: 'value', color: '#34d399' })}</section>
-    <h2>Comparación con período anterior</h2>
-    <table><thead><tr><th>Métrica</th><th>Actual</th><th>Anterior</th><th>Variación %</th></tr></thead><tbody>${rows}</tbody></table>
+    <section class="chart-block"><h3>DistribuciÃ³n por gÃ©nero</h3>${inlineBarsSVG(genderRows, { labelKey: 'label', valueKey: 'value', color: '#34d399' })}</section>
+    <h2>ComparaciÃ³n con perÃ­odo anterior</h2>
+    <table><thead><tr><th>MÃ©trica</th><th>Actual</th><th>Anterior</th><th>VariaciÃ³n %</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Trayectorias destacadas de personas</h2>
     <table><thead><tr><th>Participante</th><th>Talleres</th><th>Activos</th><th>Finalizados</th></tr></thead><tbody>${topParticipantsRows || '<tr><td colspan="4">Sin datos</td></tr>'}</tbody></table>
   </body></html>`);
@@ -1491,7 +1491,7 @@ function renderJourneyPickerBody(candidates, query = '') {
       <div class="form-group">
         <label class="form-label" for="journey-picker-query">Buscar persona (DNI, apellido o nombre)</label>
         <div class="form-row">
-          <input id="journey-picker-query" class="form-input" value="${escapeHTML(query)}" placeholder="Ej: 30111222, García, Ana">
+          <input id="journey-picker-query" class="form-input" value="${escapeHTML(query)}" placeholder="Ej: 30111222, GarcÃ­a, Ana">
           <button type="button" class="btn btn-secondary" id="journey-picker-search">Buscar</button>
         </div>
       </div>
@@ -1499,13 +1499,13 @@ function renderJourneyPickerBody(candidates, query = '') {
         <label class="form-label" for="journey-picker-select">Resultados</label>
         <select id="journey-picker-select" class="form-select" size="10">
           ${shortQuery
-            ? '<option value="">Escribí al menos 2 caracteres para buscar</option>'
+            ? '<option value="">EscribÃ­ al menos 2 caracteres para buscar</option>'
             : candidates.length
-            ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` · DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` · ${escapeHTML(p.email)}` : ''}</option>`).join('')
+            ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` Â· DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` Â· ${escapeHTML(p.email)}` : ''}</option>`).join('')
             : '<option value="">Sin resultados</option>'}
         </select>
       </div>
-      <p class="muted">${shortQuery ? 'Usá apellido, nombre o DNI.' : `Mostrando hasta ${candidates.length} resultados.`}</p>
+      <p class="muted">${shortQuery ? 'UsÃ¡ apellido, nombre o DNI.' : `Mostrando hasta ${candidates.length} resultados.`}</p>
     </form>
   `;
 }
@@ -1580,28 +1580,28 @@ async function openInsightsJourney() {
     ];
     const journeyVizHTML = `
       <section class="mt-md">
-        <h4>Visualización de trayectoria</h4>
+        <h4>VisualizaciÃ³n de trayectoria</h4>
         <div class="trends-grid">
           <article class="trend-card">
             <h5>Actividad por mes</h5>
             ${journeyTrendRows.length ? inlineLineSVG(journeyTrendRows, { color: '#60a5fa' }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
           </article>
           <article class="trend-card">
-            <h5>Composición de estado</h5>
+            <h5>ComposiciÃ³n de estado</h5>
             ${inlineBarsSVG(journeyCompositionRows, { color: '#f59e0b' })}
           </article>
         </div>
       </section>
     `;
     const eventsRows = journey.events.length
-      ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}</td><td>${escapeHTML(ev.workshop_name || '—')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail)}</td></tr>`).join('')
+      ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'InscripciÃ³n' : 'ComunicaciÃ³n'}</td><td>${escapeHTML(ev.workshop_name || 'â€”')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail)}</td></tr>`).join('')
       : '<tr><td colspan="5" class="muted">Sin eventos registrados</td></tr>';
     const certRows = certificateIssues.length
-      ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '—')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="downloadCertificateIssue('${c.id}')">Descargar PDF</button></td></tr>`).join('')
+      ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || 'â€”')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="downloadCertificateIssue('${c.id}')">Descargar PDF</button></td></tr>`).join('')
       : '<tr><td colspan="4" class="muted">Sin certificados emitidos para esta persona</td></tr>';
     setModalContent(
-      `Perfil analítico de ${journey.participant_name}`,
-      `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${journey.totals.enrolled + journey.totals.active + journey.totals.finished + journey.totals.dropped}</div></div><div class="card"><div class="metric-label">Activos/Finalizados</div><div class="metric-value">${journey.totals.active + journey.totals.finished}</div></div><div class="card"><div class="metric-label">Comunicaciones enviadas</div><div class="metric-value">${journey.totals.communications_sent}</div></div><div class="card"><div class="metric-label">Comunicaciones fallidas</div><div class="metric-value">${journey.totals.communications_failed}</div></div></div>${journeyVizHTML}<div class="table-container mt-md"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table></div><section class="mt-md"><h4>Certificados emitidos</h4><div class="table-container"><table><thead><tr><th>Taller/Curso</th><th>Fecha de emisión</th><th>Código</th><th class="text-right">Acciones</th></tr></thead><tbody>${certRows}</tbody></table></div></section>`,
+      `Perfil analÃ­tico de ${journey.participant_name}`,
+      `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${journey.totals.enrolled + journey.totals.active + journey.totals.finished + journey.totals.dropped}</div></div><div class="card"><div class="metric-label">Activos/Finalizados</div><div class="metric-value">${journey.totals.active + journey.totals.finished}</div></div><div class="card"><div class="metric-label">Comunicaciones enviadas</div><div class="metric-value">${journey.totals.communications_sent}</div></div><div class="card"><div class="metric-label">Comunicaciones fallidas</div><div class="metric-value">${journey.totals.communications_failed}</div></div></div>${journeyVizHTML}<div class="table-container mt-md"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table></div><section class="mt-md"><h4>Certificados emitidos</h4><div class="table-container"><table><thead><tr><th>Taller/Curso</th><th>Fecha de emisiÃ³n</th><th>CÃ³digo</th><th class="text-right">Acciones</th></tr></thead><tbody>${certRows}</tbody></table></div></section>`,
       `<button class="btn btn-secondary" id="journey-back-selector">Volver al selector</button><button class="btn btn-secondary" id="journey-print-exec">Reporte ejecutivo (PDF)</button><button class="btn btn-secondary" onclick="closeModal()">Cerrar</button>`,
       { variant: 'profile' }
     );
@@ -1652,20 +1652,20 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
     { label: 'Baja', value: journey.totals.dropped || 0 },
   ];
   const highlights = [
-    `La persona registró ${totalEnrollments} inscripciones en el período analizado.`,
+    `La persona registrÃ³ ${totalEnrollments} inscripciones en el perÃ­odo analizado.`,
     `${journey.totals.active} se mantienen activas y ${journey.totals.finished} finalizaron (${completionRate}% de cierre).`,
     `Se emitieron ${certCount} certificado${certCount === 1 ? '' : 's'} asociados a su trayectoria.`,
-    lastEvent ? `Último evento registrado: ${formatDate(lastEvent.at)} (${lastEvent.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}).` : 'No hay eventos recientes registrados.',
+    lastEvent ? `Ãšltimo evento registrado: ${formatDate(lastEvent.at)} (${lastEvent.type === 'enrollment' ? 'InscripciÃ³n' : 'ComunicaciÃ³n'}).` : 'No hay eventos recientes registrados.',
   ];
   const eventsRows = (journey.events || []).length
-    ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}</td><td>${escapeHTML(ev.workshop_name || '—')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail || '—')}</td></tr>`).join('')
+    ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'InscripciÃ³n' : 'ComunicaciÃ³n'}</td><td>${escapeHTML(ev.workshop_name || 'â€”')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail || 'â€”')}</td></tr>`).join('')
     : '<tr><td colspan="5">Sin eventos</td></tr>';
   const certRows = certificateIssues.length
-    ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '—')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td>${escapeHTML(c.center_name || '—')}</td></tr>`).join('')
+    ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || 'â€”')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td>${escapeHTML(c.center_name || 'â€”')}</td></tr>`).join('')
     : '<tr><td colspan="4">Sin certificados emitidos</td></tr>';
   const w = window.open('', '_blank', 'noopener,noreferrer');
   if (!w) {
-    toast('Permití ventanas emergentes para imprimir el reporte', 'info');
+    toast('PermitÃ­ ventanas emergentes para imprimir el reporte', 'info');
     return;
   }
   w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte ejecutivo - ${escapeHTML(journey.participant_name)}</title><style>
@@ -1687,7 +1687,7 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
     @media print {.card{break-inside:avoid} .chart-card{break-inside:avoid} table{break-inside:auto} tr{break-inside:avoid}}
   </style></head><body>
     <h1>Reporte ejecutivo con narrativa</h1>
-    <p class="muted">Perfil analítico de ${escapeHTML(journey.participant_name)}</p>
+    <p class="muted">Perfil analÃ­tico de ${escapeHTML(journey.participant_name)}</p>
     <section class="grid">
       <article class="card"><div class="k">Inscripciones</div><div class="v">${totalEnrollments}</div></article>
       <article class="card"><div class="k">Activas</div><div class="v">${journey.totals.active}</div></article>
@@ -1696,21 +1696,21 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
     </section>
     <h2>Narrativa ejecutiva</h2>
     <ul>${highlights.map((line) => `<li>${escapeHTML(line)}</li>`).join('')}</ul>
-    <h2>Visualización de trayectoria</h2>
+    <h2>VisualizaciÃ³n de trayectoria</h2>
     <section class="charts">
       <article class="chart-card">
         <h3>Actividad por mes</h3>
         ${eventsByMonthRows.length ? inlineLineSVG(eventsByMonthRows, { color: '#60a5fa' }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
       </article>
       <article class="chart-card">
-        <h3>Composición de estado</h3>
+        <h3>ComposiciÃ³n de estado</h3>
         ${inlineBarsSVG(journeyCompositionRows, { color: '#f59e0b' })}
       </article>
     </section>
-    <h2>Línea de eventos</h2>
+    <h2>LÃ­nea de eventos</h2>
     <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table>
     <h2>Certificados emitidos</h2>
-    <table><thead><tr><th>Taller/Curso</th><th>Fecha</th><th>Código</th><th>Centro</th></tr></thead><tbody>${certRows}</tbody></table>
+    <table><thead><tr><th>Taller/Curso</th><th>Fecha</th><th>CÃ³digo</th><th>Centro</th></tr></thead><tbody>${certRows}</tbody></table>
   </body></html>`);
   w.document.close();
   w.focus();
@@ -1748,7 +1748,7 @@ if (!window.InsightsPage?.render) {
 }
 
 function workshopFormHTML(w = null) {
-  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre del taller</label><input type="text" id="f-name" name="name" class="form-input" value="${escapeHTML(w?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-year" class="form-label">Año de cohorte</label><input type="number" id="f-year" name="cohort_year" class="form-input" min="2000" max="2100" value="${w?.cohort_year || new Date().getFullYear()}" required></div><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" name="status" class="form-select"><option value="planned" ${w?.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w?.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w?.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></div><div class="form-row"><div class="form-group"><label for="f-start" class="form-label">Inicio</label><input type="date" id="f-start" name="start_date" class="form-input" value="${w?.start_date || ''}"></div><div class="form-group"><label for="f-end" class="form-label">Fin</label><input type="date" id="f-end" name="end_date" class="form-input" value="${w?.end_date || ''}"></div></div></form>`;
+  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre del taller</label><input type="text" id="f-name" name="name" class="form-input" value="${escapeHTML(w?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-year" class="form-label">AÃ±o de cohorte</label><input type="number" id="f-year" name="cohort_year" class="form-input" min="2000" max="2100" value="${w?.cohort_year || new Date().getFullYear()}" required></div><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" name="status" class="form-select"><option value="planned" ${w?.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w?.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w?.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></div><div class="form-row"><div class="form-group"><label for="f-start" class="form-label">Inicio</label><input type="date" id="f-start" name="start_date" class="form-input" value="${w?.start_date || ''}"></div><div class="form-group"><label for="f-end" class="form-label">Fin</label><input type="date" id="f-end" name="end_date" class="form-input" value="${w?.end_date || ''}"></div></div></form>`;
 }
 
 window.openWorkshopForm = function (id = null) {
@@ -1760,7 +1760,7 @@ window.openWorkshopForm = function (id = null) {
   openModal(w ? 'Editar taller' : 'Nuevo taller', workshopFormHTML(w), actions);
   if (w) {
     document.getElementById('delete-entity-btn').onclick = async () => {
-      if (!(await confirmDialog('¿Eliminar este taller?'))) return;
+      if (!(await confirmDialog('Â¿Eliminar este taller?'))) return;
       try {
         await api.del(`/workshops/${w.id}`);
         toast('Taller eliminado', 'success');
@@ -1796,7 +1796,7 @@ window.quickUpdateWorkshopStatus = async function (id, status) {
 };
 
 window.deleteWorkshop = async function (id) {
-  if (!(await confirmDialog('¿Eliminar este taller?'))) return;
+  if (!(await confirmDialog('Â¿Eliminar este taller?'))) return;
   try { await api.del(`/workshops/${id}`); toast('Taller eliminado', 'success'); await loadWorkshops(); } catch (err) { toast(err.message, 'error'); }
 };
 
@@ -1809,7 +1809,7 @@ async function renderWorkshopDetail() {
   if (!w) { panel.classList.add('hidden'); return; }
   panel.classList.remove('hidden');
   document.getElementById('detail-title').textContent = w.name;
-  document.getElementById('detail-meta').innerHTML = `Año ${w.cohort_year} · ${badge(w.status)} · ${formatDate(w.start_date)} a ${formatDate(w.end_date)}`;
+  document.getElementById('detail-meta').innerHTML = `AÃ±o ${w.cohort_year} Â· ${badge(w.status)} Â· ${formatDate(w.start_date)} a ${formatDate(w.end_date)}`;
   document.querySelectorAll('#detail-tabs .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.detailTab));
 
   const [enrollments, comms, participants] = await Promise.all([
@@ -1829,18 +1829,18 @@ async function renderWorkshopDetail() {
     const workshopStories = [
       { title: 'Estado del taller', body: `${w.name} tiene ${enrollments.length} inscripciones y ${active} activas actualmente.` },
       { title: 'Resultado parcial', body: `${finished} recorridos finalizados (${progress}% de cierre) y ${dropped} bajas registradas.` },
-      { title: 'Comunicación', body: `Se registraron ${commRows.length} comunicaciones vinculadas a este taller.` },
+      { title: 'ComunicaciÃ³n', body: `Se registraron ${commRows.length} comunicaciones vinculadas a este taller.` },
     ];
     detailBody.innerHTML = `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${enrollments.length}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Bajas</div><div class="metric-value">${dropped}</div></div><div class="card"><div class="metric-label">Comunicaciones</div><div class="metric-value">${commRows.length}</div></div></div><div class="trends-grid" style="margin-top:var(--space-lg)">${narrativeCardsHTML(workshopStories)}</div>`;
   }
   if (state.detailTab === 'participants') {
-    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || 'Sin nombre')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || '—')}</td><td>${badge(e.status)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin participantes</h3><p>Este taller no tiene inscriptos.</p></div>`;
+    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || 'Sin nombre')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || 'â€”')}</td><td>${badge(e.status)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin participantes</h3><p>Este taller no tiene inscriptos.</p></div>`;
   }
   if (state.detailTab === 'enrollments') {
-    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Participante</th><th>Estado</th><th>Acción</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || pMap[e.participant_id]?.email || 'Participante')}</td><td>${badge(e.status)}</td><td><select class="form-select quick-select" onchange="updateEnrollmentStatusInline('${e.id}', this.value)"><option value="enrolled" ${e.status === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${e.status === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${e.status === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${e.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>No hay inscriptos para gestionar.</p></div>`;
+    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Participante</th><th>Estado</th><th>AcciÃ³n</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || pMap[e.participant_id]?.email || 'Participante')}</td><td>${badge(e.status)}</td><td><select class="form-select quick-select" onchange="updateEnrollmentStatusInline('${e.id}', this.value)"><option value="enrolled" ${e.status === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${e.status === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${e.status === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${e.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>No hay inscriptos para gestionar.</p></div>`;
   }
   if (state.detailTab === 'communications') {
-    detailBody.innerHTML = commRows.length ? `<table class="table-compact"><thead><tr><th>Asunto</th><th>Mensaje</th><th>Enviado</th></tr></thead><tbody>${commRows.map((c) => `<tr><td>${escapeHTML(c.subject)}</td><td>${escapeHTML(c.body.slice(0, 90))}${c.body.length > 90 ? '...' : ''}</td><td>${formatDateTime(c.sent_at)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-communications')}</div><h3>Sin comunicaciones</h3><p>Todavía no se enviaron correos para este taller.</p></div>`;
+    detailBody.innerHTML = commRows.length ? `<table class="table-compact"><thead><tr><th>Asunto</th><th>Mensaje</th><th>Enviado</th></tr></thead><tbody>${commRows.map((c) => `<tr><td>${escapeHTML(c.subject)}</td><td>${escapeHTML(c.body.slice(0, 90))}${c.body.length > 90 ? '...' : ''}</td><td>${formatDateTime(c.sent_at)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-communications')}</div><h3>Sin comunicaciones</h3><p>TodavÃ­a no se enviaron correos para este taller.</p></div>`;
   }
   if (state.detailTab === 'metrics') {
     const active = enrollments.filter((e) => e.status === 'active').length;
@@ -1884,7 +1884,7 @@ function renderWorkshopsOverview(rows) {
   const stories = [
     { title: 'Panorama', body: `${active} talleres activos sobre ${total} visibles en el filtro actual.` },
     { title: 'Ritmo de cierre', body: `${finished} talleres finalizaron (${completion}% del total filtrado).` },
-    { title: 'Planificación', body: `${planned} talleres están planificados y listos para activarse.` },
+    { title: 'PlanificaciÃ³n', body: `${planned} talleres estÃ¡n planificados y listos para activarse.` },
   ];
   storyTarget.innerHTML = narrativeCardsHTML(stories);
 }
@@ -1933,7 +1933,7 @@ async function loadWorkshops() {
     const pageData = paginateRows(rows, 'workshops', 20);
     const klass = state.workshopsDensity === 'compact' ? 'table-compact' : 'table-regular';
     document.getElementById('workshops-table-body').innerHTML = rows.length
-      ? `<table class="${klass}"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones rápidas</th><th class="text-right">Editar</th></tr></thead><tbody>${pageData.items.map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.name)}</td><td>${w.cohort_year}</td><td><select class="form-select quick-select" onchange="quickUpdateWorkshopStatus('${w.id}', this.value)"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${formatDate(w.start_date)}</td><td>${formatDate(w.end_date)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'metrics')">Métricas</button><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'participants')">Participantes</button><button class="btn btn-ghost btn-sm" onclick="openCommunicationWizard('${w.id}')">Comunicar</button></div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'overview')" aria-label="Ver">${icon('eye')}</button><button class="btn btn-ghost btn-sm" onclick="openWorkshopForm('${w.id}')" aria-label="Editar">${icon('edit')}</button><button class="btn btn-ghost btn-sm" onclick="deleteWorkshop('${w.id}')" aria-label="Eliminar">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('workshops', pageData, 'talleres')}`
+      ? `<table class="${klass}"><thead><tr><th>Nombre</th><th>AÃ±o</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones rÃ¡pidas</th><th class="text-right">Editar</th></tr></thead><tbody>${pageData.items.map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.name)}</td><td>${w.cohort_year}</td><td><select class="form-select quick-select" onchange="quickUpdateWorkshopStatus('${w.id}', this.value)"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${formatDate(w.start_date)}</td><td>${formatDate(w.end_date)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'metrics')">MÃ©tricas</button><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'participants')">Participantes</button><button class="btn btn-ghost btn-sm" onclick="openCommunicationWizard('${w.id}')">Comunicar</button></div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openWorkshopDetail('${w.id}', 'overview')" aria-label="Ver">${icon('eye')}</button><button class="btn btn-ghost btn-sm" onclick="openWorkshopForm('${w.id}')" aria-label="Editar">${icon('edit')}</button><button class="btn btn-ghost btn-sm" onclick="deleteWorkshop('${w.id}')" aria-label="Eliminar">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('workshops', pageData, 'talleres')}`
       : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin talleres</h3><p>No hay talleres para el filtro actual.</p><button class="btn btn-primary" onclick="openWorkshopForm()">+ Nuevo taller</button></div>`;
     await renderWorkshopDetail();
   } catch { toast('Error al cargar talleres', 'error'); }
@@ -1947,7 +1947,7 @@ if (!window.WorkshopsPage?.render) {
 }
 
 function participantFormHTML(p = null) {
-  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo números"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">Género</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;
+  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo nÃºmeros"></div><div class="form-group"><label for="f-phone" class="form-label">TelÃ©fono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">GÃ©nero</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrÃ³nico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;
 }
 window.openParticipantForm = function (id = null) {
   (async () => {
@@ -1971,7 +1971,7 @@ window.openParticipantForm = function (id = null) {
     openModal(p ? 'Editar participante' : 'Nuevo participante', participantFormHTML(p), actions);
     if (p) {
       document.getElementById('delete-entity-btn').onclick = async () => {
-        if (!(await confirmDialog('¿Eliminar este participante?'))) return;
+        if (!(await confirmDialog('Â¿Eliminar este participante?'))) return;
         try {
           await api.del(`/participants/${p.id}`);
           toast('Participante eliminado', 'success');
@@ -2006,11 +2006,11 @@ window.openParticipantForm = function (id = null) {
     };
   })();
 };
-window.deleteParticipant = async function (id) { if (!(await confirmDialog('¿Eliminar este participante?'))) return; try { await api.del(`/participants/${id}`); toast('Participante eliminado', 'success'); await loadParticipants(); } catch (err) { toast(err.message, 'error'); } };
+window.deleteParticipant = async function (id) { if (!(await confirmDialog('Â¿Eliminar este participante?'))) return; try { await api.del(`/participants/${id}`); toast('Participante eliminado', 'success'); await loadParticipants(); } catch (err) { toast(err.message, 'error'); } };
 
 const genderLabels = { female: 'Femenino', male: 'Masculino', non_binary: 'No binario', other: 'Otro', undisclosed: 'Sin declarar' };
 const ageBracketLabels = { '0_17': '0-17', '18_24': '18-24', '25_34': '25-34', '35_44': '35-44', '45_54': '45-54', '55_64': '55-64', '65_plus': '65+', unknown: 'Sin dato' };
-const populationLabels = { current: 'Actual', graduated: 'Pasó', inactive: 'Inactivo', no_history: 'Sin historial' };
+const populationLabels = { current: 'Actual', graduated: 'PasÃ³', inactive: 'Inactivo', no_history: 'Sin historial' };
 
 function demographicRowsHTML(map, labels) {
   const entries = Object.entries(map || {});
@@ -2083,7 +2083,7 @@ function setParticipantsMode(mode, sync = true) {
 function signalChip(label, value, kind = '') {
   const hasValue = typeof value === 'number'
     ? value > 0
-    : String(value || '').trim() !== '' && String(value) !== '—' && String(value) !== '0';
+    : String(value || '').trim() !== '' && String(value) !== 'â€”' && String(value) !== '0';
   const classes = `signal-chip ${hasValue ? 'has-value' : 'is-zero'} ${kind}`.trim();
   return `<span class="${classes}"><span>${label}</span><span class="signal-value">${value}</span></span>`;
 }
@@ -2096,17 +2096,17 @@ function participantEngagementChip(level) {
 
 function renderParticipantsOverview(overview) {
   document.getElementById('participants-overview').innerHTML = `<div class="card"><div class="metric-label">Personas registradas</div><div class="metric-value">${overview.total_participants}</div></div><div class="card"><div class="metric-label">Con inscripciones</div><div class="metric-value">${overview.with_workshops}</div></div><div class="card"><div class="metric-label">Actualmente activos</div><div class="metric-value">${overview.active_members}</div></div><div class="card"><div class="metric-label">Pasaron/finalizaron</div><div class="metric-value">${overview.certifiable_members}</div></div><div class="card"><div class="metric-label">Inactivos</div><div class="metric-value">${overview.inactive_members}</div></div><div class="card"><div class="metric-label">Sin historial</div><div class="metric-value">${overview.no_history_members}</div></div>`;
-  document.getElementById('participants-demographics').innerHTML = `<div class="trend-card"><h4>Distribución por género</h4>${demographicRowsHTML(overview.gender_distribution, genderLabels)}</div><div class="trend-card"><h4>Distribución por edad</h4>${demographicRowsHTML(overview.age_brackets, ageBracketLabels)}</div>`;
+  document.getElementById('participants-demographics').innerHTML = `<div class="trend-card"><h4>DistribuciÃ³n por gÃ©nero</h4>${demographicRowsHTML(overview.gender_distribution, genderLabels)}</div><div class="trend-card"><h4>DistribuciÃ³n por edad</h4>${demographicRowsHTML(overview.age_brackets, ageBracketLabels)}</div>`;
   const dominantGender = dominantEntry(overview.gender_distribution, genderLabels);
   const dominantAge = dominantEntry(overview.age_brackets, ageBracketLabels);
   const participantsStories = [
     {
-      title: 'Composición actual',
-      body: `${overview.active_members} personas activas y ${overview.certifiable_members} con trayecto finalizado para certificación.`,
+      title: 'ComposiciÃ³n actual',
+      body: `${overview.active_members} personas activas y ${overview.certifiable_members} con trayecto finalizado para certificaciÃ³n.`,
     },
     {
-      title: 'Perfil demográfico principal',
-      body: dominantGender ? `${dominantGender.label} representa el grupo más numeroso (${dominantGender.value}).` : 'Sin datos de género para destacar.',
+      title: 'Perfil demogrÃ¡fico principal',
+      body: dominantGender ? `${dominantGender.label} representa el grupo mÃ¡s numeroso (${dominantGender.value}).` : 'Sin datos de gÃ©nero para destacar.',
     },
     {
       title: 'Edad predominante',
@@ -2125,7 +2125,7 @@ function renderParticipantsTable(rows) {
   }
   const pageData = paginateRows(rows, 'participantsPerson', 18);
   const term = state.participantSearchMode === 'explore' ? state.participantSearch : '';
-  target.innerHTML = `<table><thead><tr><th>Participante</th><th>Demografía</th><th>Trayectoria</th><th>Comunicaciones</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((p) => `<tr><td style="color:var(--text-primary);font-weight:600">${highlightMatch(p.name, term)}<br><span class="muted">DNI ${highlightMatch(p.dni || '—', term)} · ${highlightMatch(p.email, term)}</span><br><span class="muted">${highlightMatch(p.phone || 'Sin teléfono', term)} · Última actividad: ${formatDate(p.last_activity)}</span></td><td><div class="participants-signal-list">${signalChip('Edad', p.age ?? '—', p.age ? 'status-active' : '')}${signalChip('Género', genderLabels[p.gender] || 'Sin declarar', p.gender && p.gender !== 'undisclosed' ? 'status-active' : '')}</div></td><td><div class="participants-signal-list">${signalChip('Población', populationLabels[p.population_segment] || '—', p.population_segment === 'current' ? 'status-active' : p.population_segment === 'graduated' ? 'status-finished' : '')}${signalChip('Activo', p.active_workshops, 'status-active')}${signalChip('Finalizado', p.finished_workshops, 'status-finished')}${signalChip('Inscripto', p.enrolled_workshops, 'status-enrolled')}</div></td><td><div class="participants-signal-list">${signalChip('Enviado', p.communications_sent, 'status-sent')}${signalChip('Fallido', p.communications_failed, 'status-failed')}${participantEngagementChip(p.engagement_level)}</div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openParticipantProfile('${p.id}')">Perfil</button><button class="btn btn-ghost btn-sm" onclick="openParticipantForm('${p.id}')">Editar</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('participantsPerson', pageData, 'participantes')}`;
+  target.innerHTML = `<table><thead><tr><th>Participante</th><th>DemografÃ­a</th><th>Trayectoria</th><th>Comunicaciones</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((p) => `<tr><td style="color:var(--text-primary);font-weight:600">${highlightMatch(p.name, term)}<br><span class="muted">DNI ${highlightMatch(p.dni || 'â€”', term)} Â· ${highlightMatch(p.email, term)}</span><br><span class="muted">${highlightMatch(p.phone || 'Sin telÃ©fono', term)} Â· Ãšltima actividad: ${formatDate(p.last_activity)}</span></td><td><div class="participants-signal-list">${signalChip('Edad', p.age ?? 'â€”', p.age ? 'status-active' : '')}${signalChip('GÃ©nero', genderLabels[p.gender] || 'Sin declarar', p.gender && p.gender !== 'undisclosed' ? 'status-active' : '')}</div></td><td><div class="participants-signal-list">${signalChip('PoblaciÃ³n', populationLabels[p.population_segment] || 'â€”', p.population_segment === 'current' ? 'status-active' : p.population_segment === 'graduated' ? 'status-finished' : '')}${signalChip('Activo', p.active_workshops, 'status-active')}${signalChip('Finalizado', p.finished_workshops, 'status-finished')}${signalChip('Inscripto', p.enrolled_workshops, 'status-enrolled')}</div></td><td><div class="participants-signal-list">${signalChip('Enviado', p.communications_sent, 'status-sent')}${signalChip('Fallido', p.communications_failed, 'status-failed')}${participantEngagementChip(p.engagement_level)}</div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openParticipantProfile('${p.id}')">Perfil</button><button class="btn btn-ghost btn-sm" onclick="openParticipantForm('${p.id}')">Editar</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('participantsPerson', pageData, 'participantes')}`;
 }
 
 function renderParticipantsResultsSummary(rows) {
@@ -2148,9 +2148,9 @@ function renderParticipantsResultsSummary(rows) {
       ageTotal += p.age;
     }
   });
-  const avgAge = withAge ? Math.round(ageTotal / withAge) : '—';
+  const avgAge = withAge ? Math.round(ageTotal / withAge) : 'â€”';
   const mainText = state.participantSearchMode === 'explore' && term
-    ? `<strong>${rows.length}</strong> en base · <strong>${matches}</strong> coincidencias`
+    ? `<strong>${rows.length}</strong> en base Â· <strong>${matches}</strong> coincidencias`
     : `<strong>${rows.length}</strong> resultados`;
   target.classList.remove('hidden');
   target.innerHTML = `<div class="participants-query-summary"><div class="participants-query-main">${mainText}</div><div class="participants-signal-list">${signalChip('Actuales', counts.current, 'status-active')}${signalChip('Pasaron', counts.graduated, 'status-finished')}${signalChip('Inactivos', counts.inactive, 'status-dropped')}${signalChip('Edad promedio', avgAge, withAge ? 'status-active' : '')}</div></div>`;
@@ -2165,7 +2165,7 @@ function renderParticipantsGrouped(groups) {
   }
   const pageData = paginateRows(groups, 'participantsWorkshop', 6);
   const term = state.participantSearchMode === 'explore' ? state.participantSearch : '';
-  target.innerHTML = `<div class="participants-groups">${pageData.items.map((g) => `<div class="group-card"><div class="group-card-header"><div><div class="group-card-title">${escapeHTML(g.workshop_name)}</div><div class="muted">Cohorte ${g.cohort_year} · ${statusLabels[g.workshop_status] || g.workshop_status}</div></div><div class="participants-signal-list">${signalChip('Participantes', g.participants_total, 'status-active')}</div></div><table class="participants-mini-table"><thead><tr><th>Participante</th><th>DNI</th><th>Edad</th><th>Género</th><th>Estado</th><th>Nivel de actividad</th><th class="text-right">Acciones</th></tr></thead><tbody>${g.participants.map((p) => `<tr><td>${highlightMatch(p.name, term)}<br><span class="muted">${highlightMatch(p.email, term)}</span></td><td>${highlightMatch(p.dni || '—', term)}</td><td>${p.age ?? '—'}</td><td>${escapeHTML(genderLabels[p.gender] || 'Sin declarar')}</td><td>${signalChip(statusLabels[p.enrollment_status] || p.enrollment_status, 1, `status-${p.enrollment_status}`)}</td><td>${participantEngagementChip(p.engagement_level)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openParticipantProfile('${p.participant_id}')">Ver</button><button class="btn btn-ghost btn-sm" onclick="openParticipantForm('${p.participant_id}')">Editar</button></div></td></tr>`).join('')}</tbody></table></div>`).join('')}</div>${tablePaginationHTML('participantsWorkshop', pageData, 'talleres')}`;
+  target.innerHTML = `<div class="participants-groups">${pageData.items.map((g) => `<div class="group-card"><div class="group-card-header"><div><div class="group-card-title">${escapeHTML(g.workshop_name)}</div><div class="muted">Cohorte ${g.cohort_year} Â· ${statusLabels[g.workshop_status] || g.workshop_status}</div></div><div class="participants-signal-list">${signalChip('Participantes', g.participants_total, 'status-active')}</div></div><table class="participants-mini-table"><thead><tr><th>Participante</th><th>DNI</th><th>Edad</th><th>GÃ©nero</th><th>Estado</th><th>Nivel de actividad</th><th class="text-right">Acciones</th></tr></thead><tbody>${g.participants.map((p) => `<tr><td>${highlightMatch(p.name, term)}<br><span class="muted">${highlightMatch(p.email, term)}</span></td><td>${highlightMatch(p.dni || 'â€”', term)}</td><td>${p.age ?? 'â€”'}</td><td>${escapeHTML(genderLabels[p.gender] || 'Sin declarar')}</td><td>${signalChip(statusLabels[p.enrollment_status] || p.enrollment_status, 1, `status-${p.enrollment_status}`)}</td><td>${participantEngagementChip(p.engagement_level)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openParticipantProfile('${p.participant_id}')">Ver</button><button class="btn btn-ghost btn-sm" onclick="openParticipantForm('${p.participant_id}')">Editar</button></div></td></tr>`).join('')}</tbody></table></div>`).join('')}</div>${tablePaginationHTML('participantsWorkshop', pageData, 'talleres')}`;
 }
 
 window.openParticipantProfile = async function (participantId) {
@@ -2175,19 +2175,27 @@ window.openParticipantProfile = async function (participantId) {
     const population = populationLabels[profile.population_segment] || 'Sin dato';
     const engagement = profile.engagement_level === 'high' ? 'Alto' : profile.engagement_level === 'medium' ? 'Medio' : 'Bajo';
     const completionRate = profile.workshops_total ? Math.round((profile.finished_workshops / profile.workshops_total) * 100) : 0;
-    const participantStory = `Participó en ${profile.workshops_total} talleres, con ${profile.active_workshops} activos y ${profile.finished_workshops} finalizados (${completionRate}% de cierre).`;
+    const participantStory = `ParticipÃ³ en ${profile.workshops_total} talleres, con ${profile.active_workshops} activos y ${profile.finished_workshops} finalizados (${completionRate}% de cierre).`;
     const workshopsHTML = profile.workshops.length
-      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${profile.workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" onclick="openCertificateIssueWizard('${profile.id}','${w.workshop_id}')">Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin talleres</h3><p>Este participante aún no tiene inscripciones.</p></div>`;
+      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>AÃ±o</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${profile.workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" onclick="openCertificateIssueWizard('${profile.id}','${w.workshop_id}')">Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin talleres</h3><p>Este participante aÃºn no tiene inscripciones.</p></div>`;
     state.activeParticipantProfile = profile;
     openModal(
       `Perfil de ${profile.name}`,
-      `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Población', population, profile.population_segment === 'current' ? 'status-active' : profile.population_segment === 'graduated' ? 'status-finished' : '')}${participantEngagementChip(profile.engagement_level)}</div></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_total}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Finalizados</span><strong class="profile-kpi-value">${profile.finished_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Nivel de actividad</span><strong class="profile-kpi-value">${engagement}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(participantStory)}</p></section><section class="profile-meta-grid"><div class="profile-meta-item"><span>DNI</span><strong>${escapeHTML(profile.dni || '—')}</strong></div><div class="profile-meta-item"><span>Edad</span><strong>${profile.age ?? '—'}</strong></div><div class="profile-meta-item"><span>Género</span><strong>${escapeHTML(genderLabels[profile.gender] || 'Sin declarar')}</strong></div><div class="profile-meta-item"><span>Correo electrónico</span><strong>${escapeHTML(profile.email)}</strong></div><div class="profile-meta-item"><span>Teléfono</span><strong>${escapeHTML(profile.phone || '—')}</strong></div><div class="profile-meta-item"><span>Última actividad</span><strong>${formatDate(profile.last_activity)}</strong></div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4>${workshopsHTML}</section></div>`,
-      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`
+      `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('PoblaciÃ³n', population, profile.population_segment === 'current' ? 'status-active' : profile.population_segment === 'graduated' ? 'status-finished' : '')}${participantEngagementChip(profile.engagement_level)}</div></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_total}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Finalizados</span><strong class="profile-kpi-value">${profile.finished_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Nivel de actividad</span><strong class="profile-kpi-value">${engagement}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(participantStory)}</p></section><section class="profile-meta-grid"><div class="profile-meta-item"><span>DNI</span><strong>${escapeHTML(profile.dni || 'â€”')}</strong></div><div class="profile-meta-item"><span>Edad</span><strong>${profile.age ?? 'â€”'}</strong></div><div class="profile-meta-item"><span>GÃ©nero</span><strong>${escapeHTML(genderLabels[profile.gender] || 'Sin declarar')}</strong></div><div class="profile-meta-item"><span>Correo electrÃ³nico</span><strong>${escapeHTML(profile.email)}</strong></div><div class="profile-meta-item"><span>TelÃ©fono</span><strong>${escapeHTML(profile.phone || 'â€”')}</strong></div><div class="profile-meta-item"><span>Ãšltima actividad</span><strong>${formatDate(profile.last_activity)}</strong></div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4>${workshopsHTML}</section></div>`,
+      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-secondary" id="profile-journey-btn" title="Abrir recorrido de inscripciones y comunicaciones">Ver camino</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`
     , { variant: 'profile' });
     document.getElementById('profile-edit-btn').onclick = () => {
       closeModal();
       openParticipantForm(profile.id);
+    };
+    document.getElementById('profile-journey-btn').onclick = async () => {
+      closeModal();
+      try {
+        await openInsightsJourneyByParticipant(profile.id);
+      } catch (journeyErr) {
+        toast(journeyErr?.message || 'No hay trayectoria disponible para este participante', 'error');
+      }
     };
     document.getElementById('profile-cert-btn').onclick = () => {
       if (!finished.length) return;
@@ -2227,7 +2235,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
     : await api.get(`/participants/profiles/${participantId}`);
   const workshop = (profile.workshops || []).find((w) => String(w.workshop_id) === String(workshopId));
   if (!workshop) {
-    toast('No se encontró el taller para certificar', 'error');
+    toast('No se encontrÃ³ el taller para certificar', 'error');
     return;
   }
   try {
@@ -2271,12 +2279,12 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
             <input id="cert-course-name" class="form-input" value="${escapeHTML(workshop.workshop_name)}" required>
           </div>
           <div class="form-group">
-            <label class="form-label" for="cert-issue-date">Fecha de emisión</label>
+            <label class="form-label" for="cert-issue-date">Fecha de emisiÃ³n</label>
             <input id="cert-issue-date" type="date" class="form-input" value="${new Date().toISOString().slice(0, 10)}" required>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label" for="cert-course-description">Descripción</label>
+          <label class="form-label" for="cert-course-description">DescripciÃ³n</label>
           <textarea id="cert-course-description" class="form-textarea" rows="3">${escapeHTML(selectedTemplate.default_description || '')}</textarea>
         </div>
         <details class="certificate-details" open>
@@ -2287,7 +2295,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
               <input id="cert-center-name" class="form-input" value="${escapeHTML(selectedCenter.name || '')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-center-legal-name">Razón social</label>
+              <label class="form-label" for="cert-center-legal-name">RazÃ³n social</label>
               <input id="cert-center-legal-name" class="form-input" value="${escapeHTML(selectedCenter.legal_name || '')}">
             </div>
           </div>
@@ -2307,7 +2315,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
               <input id="cert-watermark" class="form-input" value="${escapeHTML(selectedCenter.watermark_text || 'CERTIFICADO')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-footer">Pie de página</label>
+              <label class="form-label" for="cert-footer">Pie de pÃ¡gina</label>
               <input id="cert-footer" class="form-input" value="${escapeHTML(selectedCenter.footer_text || '')}">
             </div>
           </div>
@@ -2316,11 +2324,11 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           <summary>Texto y firmantes</summary>
           <div class="form-row mt-md">
             <div class="form-group">
-              <label class="form-label" for="cert-title-text">Título del certificado</label>
-              <input id="cert-title-text" class="form-input" value="${escapeHTML(selectedTemplate.title_text || 'Certificado de participación')}">
+              <label class="form-label" for="cert-title-text">TÃ­tulo del certificado</label>
+              <input id="cert-title-text" class="form-input" value="${escapeHTML(selectedTemplate.title_text || 'Certificado de participaciÃ³n')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-subtitle-text">Subtítulo</label>
+              <label class="form-label" for="cert-subtitle-text">SubtÃ­tulo</label>
               <input id="cert-subtitle-text" class="form-input" value="${escapeHTML(selectedTemplate.subtitle_text || '')}">
             </div>
           </div>
@@ -2370,7 +2378,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
         const issueDate = document.getElementById('cert-issue-date').value;
         const courseName = document.getElementById('cert-course-name').value.trim();
         if (!issueDate || !courseName) {
-          toast('Completá curso y fecha de emisión', 'info');
+          toast('CompletÃ¡ curso y fecha de emisiÃ³n', 'info');
           return;
         }
         const centerPayload = {
@@ -2399,7 +2407,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           signerPayload.push({ name, role_title: role, signature_data_url, sort_order: Number(idx) + 1 });
         }
         if (!signerPayload.length) {
-          toast('Agregá al menos un firmante', 'info');
+          toast('AgregÃ¡ al menos un firmante', 'info');
           return;
         }
 
@@ -2410,7 +2418,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           paper_size: selectedTemplate.paper_size || 'A4',
           title_text: document.getElementById('cert-title-text').value.trim() || selectedTemplate.title_text,
           subtitle_text: document.getElementById('cert-subtitle-text').value.trim() || null,
-          body_template: selectedTemplate.body_template || 'Se certifica que {participant_name} participó del curso/taller {course_name}.',
+          body_template: selectedTemplate.body_template || 'Se certifica que {participant_name} participÃ³ del curso/taller {course_name}.',
           default_description: document.getElementById('cert-course-description').value.trim() || null,
           signers: signerPayload,
         };
@@ -2428,14 +2436,14 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
         });
         await blobDownloadWithAuth(issued.download_url, `certificado_${profile.name.replace(/\s+/g, '_')}.pdf`);
         closeModal();
-        toast(`Certificado emitido. Código: ${issued.verification_code}`, 'success');
+        toast(`Certificado emitido. CÃ³digo: ${issued.verification_code}`, 'success');
       } catch (err) {
         toast(err.message || 'No se pudo emitir el certificado', 'error');
       }
     };
     bindDynamic();
   } catch (err) {
-    toast(err.message || 'No se pudo iniciar emisión de certificado', 'error');
+    toast(err.message || 'No se pudo iniciar emisiÃ³n de certificado', 'error');
   }
 };
 
@@ -2522,7 +2530,7 @@ async function loadParticipants() {
 
     document.getElementById('participants-results-gate').classList.add('hidden');
     if (state.participantAgeMin && state.participantAgeMax && Number(state.participantAgeMin) > Number(state.participantAgeMax)) {
-      toast('Edad mínima no puede ser mayor que edad máxima', 'info');
+      toast('Edad mÃ­nima no puede ser mayor que edad mÃ¡xima', 'info');
       return;
     }
     const qs = participantFiltersQuery();
@@ -2586,15 +2594,15 @@ async function importParticipantsCSV(file) {
   try {
     const content = await file.text();
     const result = await api.post('/participants/import.csv', { csv_content: content });
-    const summary = `Filas: ${result.total_rows} · Creados: ${result.created} · Actualizados: ${result.updated} · Omitidos: ${result.skipped}`;
+    const summary = `Filas: ${result.total_rows} Â· Creados: ${result.created} Â· Actualizados: ${result.updated} Â· Omitidos: ${result.skipped}`;
     if (result.errors?.length) {
       openModal(
-        'Importación CSV completada',
-        `<p class="muted mb-md">${escapeHTML(summary)}</p><div class="preview-card"><p class="muted mb-md">Errores detectados (máx 50):</p><ul>${result.errors.map((e) => `<li>${escapeHTML(e)}</li>`).join('')}</ul></div>`,
+        'ImportaciÃ³n CSV completada',
+        `<p class="muted mb-md">${escapeHTML(summary)}</p><div class="preview-card"><p class="muted mb-md">Errores detectados (mÃ¡x 50):</p><ul>${result.errors.map((e) => `<li>${escapeHTML(e)}</li>`).join('')}</ul></div>`,
         `<button class="btn btn-primary" onclick="closeModal()">Cerrar</button>`
       );
     } else {
-      toast(`Importación completada. ${summary}`, 'success');
+      toast(`ImportaciÃ³n completada. ${summary}`, 'success');
     }
     await loadParticipants();
   } catch (err) {
@@ -2695,7 +2703,7 @@ async function loadEnrollments(initialWorkshop = '') {
         rows = pageData.items.map((e) => ({
           ...e,
           participant_name: pMap[e.participant_id]?.name || 'Desconocido',
-          participant_email: pMap[e.participant_id]?.email || '—',
+          participant_email: pMap[e.participant_id]?.email || 'â€”',
           status_label: statusLabels[e.status] || e.status,
           created_at_label: formatDate(e.created_at),
         }));
@@ -2737,13 +2745,13 @@ async function loadEnrollments(initialWorkshop = '') {
     }
     document.querySelector('#view-enrollments .page-header')?.classList.remove('hidden');
     const sel = document.getElementById('enrollment-workshop-select');
-    sel.innerHTML = `<option value="">Seleccioná un taller...</option>${ws.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}`;
+    sel.innerHTML = `<option value="">SeleccionÃ¡ un taller...</option>${ws.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}`;
     if (selected) sel.value = selected;
     if (sel.value) await loadEnrollmentsForWorkshop(sel.value);
     else {
       document.getElementById('enrollments-summary').innerHTML = '';
       document.getElementById('enrollments-story').innerHTML = '';
-      document.getElementById('enrollments-table-body').innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Seleccioná un taller</h3><p>Elegí un taller para ver sus inscripciones.</p></div>`;
+      document.getElementById('enrollments-table-body').innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>SeleccionÃ¡ un taller</h3><p>ElegÃ­ un taller para ver sus inscripciones.</p></div>`;
     }
   } catch { toast('Error al cargar inscripciones', 'error'); }
 }
@@ -2771,19 +2779,19 @@ async function loadEnrollmentsForWorkshop(workshopId) {
   document.getElementById('enrollments-story').innerHTML = narrativeCardsHTML([
     { title: 'Cobertura', body: `${selectedWorkshop?.name || 'Taller'} tiene ${enrollmentsData.length} inscripciones registradas.` },
     { title: 'Estado actual', body: `${active} activas, ${finished} finalizadas y ${dropped} bajas.` },
-    { title: 'Avance', body: `La tasa de finalización es de ${completion}%.` },
+    { title: 'Avance', body: `La tasa de finalizaciÃ³n es de ${completion}%.` },
   ]);
   const pageData = paginateRows(enrollmentsData, 'enrollments', 20);
-  document.getElementById('enrollments-table-body').innerHTML = enrollmentsData.length ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Estado</th><th>Inscripto el</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((e) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(pMap[e.participant_id]?.name || 'Desconocido')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || '—')}</td><td>${badge(e.status)}</td><td>${formatDate(e.created_at)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openEnrollmentStatusForm('${e.id}','${e.status}')" aria-label="Editar estado">${icon('edit')}</button><button class="btn btn-ghost btn-sm" onclick="deleteEnrollment('${e.id}','${workshopId}')" aria-label="Eliminar inscripción">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('enrollments', pageData, 'inscripciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>Nadie está inscripto en este taller.</p></div>`;
+  document.getElementById('enrollments-table-body').innerHTML = enrollmentsData.length ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Estado</th><th>Inscripto el</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((e) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(pMap[e.participant_id]?.name || 'Desconocido')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || 'â€”')}</td><td>${badge(e.status)}</td><td>${formatDate(e.created_at)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" onclick="openEnrollmentStatusForm('${e.id}','${e.status}')" aria-label="Editar estado">${icon('edit')}</button><button class="btn btn-ghost btn-sm" onclick="deleteEnrollment('${e.id}','${workshopId}')" aria-label="Eliminar inscripciÃ³n">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('enrollments', pageData, 'inscripciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>Nadie estÃ¡ inscripto en este taller.</p></div>`;
 }
 window.openEnrollmentStatusForm = function (id, currentStatus) {
   openModal('Actualizar estado', `<form id="entity-form"><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" class="form-select"><option value="enrolled" ${currentStatus === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${currentStatus === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${currentStatus === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${currentStatus === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Actualizar', dangerLabel: 'Eliminar', dangerId: 'delete-enrollment-btn' }));
   document.getElementById('delete-enrollment-btn').onclick = async () => {
-    if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return;
+    if (!(await confirmDialog('Â¿Eliminar esta inscripciÃ³n?'))) return;
     try {
       await api.del(`/enrollments/${id}`);
       closeModal();
-      toast('Inscripción eliminada', 'success');
+      toast('InscripciÃ³n eliminada', 'success');
       resetTablePage('enrollments');
       const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
       if (wid) await loadEnrollments(wid);
@@ -2793,13 +2801,13 @@ window.openEnrollmentStatusForm = function (id, currentStatus) {
   };
   document.getElementById('save-entity-btn').onclick = async () => { try { await api.put(`/enrollments/${id}`, { status: document.getElementById('f-status').value }); closeModal(); toast('Estado actualizado', 'success'); const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value; if (wid) await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
 };
-window.deleteEnrollment = async function (id, workshopId) { if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return; try { await api.del(`/enrollments/${id}`); toast('Inscripción eliminada', 'success'); resetTablePage('enrollments'); await loadEnrollments(workshopId || state.enrollmentWorkshop); } catch (err) { toast(err.message, 'error'); } };
+window.deleteEnrollment = async function (id, workshopId) { if (!(await confirmDialog('Â¿Eliminar esta inscripciÃ³n?'))) return; try { await api.del(`/enrollments/${id}`); toast('InscripciÃ³n eliminada', 'success'); resetTablePage('enrollments'); await loadEnrollments(workshopId || state.enrollmentWorkshop); } catch (err) { toast(err.message, 'error'); } };
 window.openAddEnrollment = async function () {
   const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
-  if (!wid) { toast('Seleccioná un taller primero', 'info'); return; }
+  if (!wid) { toast('SeleccionÃ¡ un taller primero', 'info'); return; }
   const participants = await fetchParticipants();
-  if (!participants.length) { toast('No hay participantes. Creá uno primero.', 'info'); return; }
-  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">Seleccioná un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, modalFooterActions({ primaryLabel: 'Inscribir' }));
+  if (!participants.length) { toast('No hay participantes. CreÃ¡ uno primero.', 'info'); return; }
+  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">SeleccionÃ¡ un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, modalFooterActions({ primaryLabel: 'Inscribir' }));
   document.getElementById('save-entity-btn').onclick = async () => { const pid = document.getElementById('f-participant').value; if (!pid) return; try { await api.post(`/workshops/${wid}/enrollments`, { workshop_id: wid, participant_id: pid, status: 'enrolled' }); closeModal(); toast('Participante inscripto', 'success'); await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
 };
 if (!window.EnrollmentsPage?.render) {
@@ -2809,15 +2817,15 @@ if (!window.EnrollmentsPage?.render) {
 }
 
 function templateFor(type, workshopName) {
-  if (type === 'welcome') return { subject: `Bienvenida - ${workshopName}`, body: `Hola,\n\n¡Bienvenido/a a ${workshopName}!\n\nTe compartiremos novedades por este medio.\n\nSaludos.` };
-  if (type === 'reminder') return { subject: `Recordatorio - ${workshopName}`, body: `Hola,\n\nTe recordamos la próxima actividad de ${workshopName}.\n\nSaludos.` };
+  if (type === 'welcome') return { subject: `Bienvenida - ${workshopName}`, body: `Hola,\n\nÂ¡Bienvenido/a a ${workshopName}!\n\nTe compartiremos novedades por este medio.\n\nSaludos.` };
+  if (type === 'reminder') return { subject: `Recordatorio - ${workshopName}`, body: `Hola,\n\nTe recordamos la prÃ³xima actividad de ${workshopName}.\n\nSaludos.` };
   return { subject: `Cierre - ${workshopName}`, body: `Hola,\n\nGracias por participar de ${workshopName}.\n\nSaludos.` };
 }
 
 window.openCommunicationWizard = async function (initialWorkshopId = '') {
   try {
     const workshops = await fetchWorkshops();
-    if (!workshops.length) { toast('Creá un taller primero', 'info'); return; }
+    if (!workshops.length) { toast('CreÃ¡ un taller primero', 'info'); return; }
     const wizard = { step: 1, workshopId: initialWorkshopId || '', recipients: [], subject: '', body: '' };
 
     const loadRecipients = async () => {
@@ -2831,18 +2839,18 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
       let body = '';
       let footer = '';
       if (wizard.step === 1) {
-        body = `<div class="wizard-step"><h4>Paso 1: Seleccionar taller</h4><div class="form-group"><label for="wiz-workshop" class="form-label">Taller</label><select id="wiz-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}" ${wizard.workshopId === w.id ? 'selected' : ''}>${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="card"><div class="metric-label">Destinatarios detectados</div><div class="metric-value">${wizard.recipients.length}</div><p class="muted">${wizard.recipients.slice(0, 6).join(', ')}${wizard.recipients.length > 6 ? '...' : ''}</p></div></div>`;
+        body = `<div class="wizard-step"><h4>Paso 1: Seleccionar taller</h4><div class="form-group"><label for="wiz-workshop" class="form-label">Taller</label><select id="wiz-workshop" class="form-select"><option value="">SeleccionÃ¡ un taller...</option>${workshops.map((w) => `<option value="${w.id}" ${wizard.workshopId === w.id ? 'selected' : ''}>${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="card"><div class="metric-label">Destinatarios detectados</div><div class="metric-value">${wizard.recipients.length}</div><p class="muted">${wizard.recipients.slice(0, 6).join(', ')}${wizard.recipients.length > 6 ? '...' : ''}</p></div></div>`;
         footer = `<button class="btn btn-secondary" id="wiz-cancel">Cancelar</button><button class="btn btn-primary" id="wiz-next" ${wizard.recipients.length ? '' : 'disabled'}>Siguiente</button>`;
       }
       if (wizard.step === 2) {
         body = `<div class="wizard-step"><h4>Paso 2: Redactar</h4><div class="template-row"><button class="btn btn-secondary btn-sm" id="tpl-welcome" type="button">Plantilla bienvenida</button><button class="btn btn-secondary btn-sm" id="tpl-reminder" type="button">Plantilla recordatorio</button><button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button></div><div class="form-group"><label for="wiz-subject" class="form-label">Asunto</label><input id="wiz-subject" class="form-input" value="${escapeHTML(wizard.subject)}"></div><div class="form-group"><label for="wiz-body" class="form-label">Mensaje</label><textarea id="wiz-body" class="form-textarea">${escapeHTML(wizard.body)}</textarea></div><p class="muted">Destinatarios: ${wizard.recipients.length} del taller ${escapeHTML(workshopName)}.</p></div>`;
-        footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-next">Vista previa</button>`;
+        footer = `<button class="btn btn-secondary" id="wiz-back">AtrÃ¡s</button><button class="btn btn-primary" id="wiz-next">Vista previa</button>`;
       }
       if (wizard.step === 3) {
         body = `<div class="wizard-step"><h4>Paso 3: Vista previa</h4><div class="preview-card"><div><strong>Taller:</strong> ${escapeHTML(workshopName)}</div><div><strong>Destinatarios:</strong> ${wizard.recipients.length}</div><div><strong>Asunto:</strong> ${escapeHTML(wizard.subject)}</div><hr><p style="white-space:pre-wrap">${escapeHTML(wizard.body)}</p></div></div>`;
-        footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-send">Enviar</button>`;
+        footer = `<button class="btn btn-secondary" id="wiz-back">AtrÃ¡s</button><button class="btn btn-primary" id="wiz-send">Enviar</button>`;
       }
-      openModal('Nueva comunicación', body, footer);
+      openModal('Nueva comunicaciÃ³n', body, footer);
 
       document.getElementById('wiz-cancel')?.addEventListener('click', closeModal);
       document.getElementById('wiz-workshop')?.addEventListener('change', async (e) => { wizard.workshopId = e.target.value; await render(); });
@@ -2854,7 +2862,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         if (wizard.step === 1) { wizard.step = 2; await render(); return; }
         const s = document.getElementById('wiz-subject')?.value.trim() || '';
         const b = document.getElementById('wiz-body')?.value.trim() || '';
-        if (!s || !b) { toast('Completá asunto y mensaje', 'info'); return; }
+        if (!s || !b) { toast('CompletÃ¡ asunto y mensaje', 'info'); return; }
         wizard.subject = s; wizard.body = b; wizard.step = 3; await render();
       });
       document.getElementById('wiz-back')?.addEventListener('click', async () => { wizard.step -= 1; await render(); });
@@ -2862,7 +2870,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         try {
           await api.post(`/communications/workshops/${wizard.workshopId}/emails`, { workshop_id: wizard.workshopId, subject: wizard.subject, body: wizard.body });
           closeModal();
-          toast('Comunicación enviada', 'success');
+          toast('ComunicaciÃ³n enviada', 'success');
           await loadCommunications();
           if (state.detailWorkshopId === wizard.workshopId) await renderWorkshopDetail();
         } catch (err) { toast(err.message, 'error'); }
@@ -2875,7 +2883,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
 window.resendFailedCommunication = async function (id) {
   try {
     const result = await api.post(`/communications/${id}/resend-failed`, {});
-    toast(result.resent ? `Reenvío completado (${result.resent})` : 'No había fallidos para reenviar', result.resent ? 'success' : 'info');
+    toast(result.resent ? `ReenvÃ­o completado (${result.resent})` : 'No habÃ­a fallidos para reenviar', result.resent ? 'success' : 'info');
     await loadCommunications();
   } catch (err) { toast(err.message, 'error'); }
 };
@@ -2907,7 +2915,7 @@ async function loadCommunications() {
           const s = state.communicationSummary.get(c.id) || { sent: 0, failed: 0 };
           return {
             ...c,
-            preview: `${c.body.slice(0, 70)}${c.body.length > 70 ? '…' : ''}`,
+            preview: `${c.body.slice(0, 70)}${c.body.length > 70 ? 'â€¦' : ''}`,
             workshop_name: map[c.workshop_id]?.name || 'Taller',
             sent: s.sent || 0,
             failed: s.failed || 0,
@@ -2940,8 +2948,8 @@ async function loadCommunications() {
     document.getElementById('communications-overview').innerHTML = `<div class="card"><div class="metric-label">Comunicaciones</div><div class="metric-value">${rows.length}</div></div><div class="card"><div class="metric-label">Enviadas</div><div class="metric-value">${commTotals.sent}</div></div><div class="card"><div class="metric-label">Fallidas</div><div class="metric-value">${commTotals.failed}</div></div><div class="card"><div class="metric-label">Entrega estimada</div><div class="metric-value">${deliveryRate}%</div></div>`;
     document.getElementById('communications-story').innerHTML = narrativeCardsHTML([
       { title: 'Trazabilidad', body: `Se observan ${rows.length} comunicaciones para el filtro activo.` },
-      { title: 'Resultado de envíos', body: `${commTotals.sent} entregadas y ${commTotals.failed} fallidas.` },
-      { title: 'Acción sugerida', body: commTotals.failed > 0 ? 'Priorizar reenvío de fallidos para cerrar brechas de comunicación.' : 'Sin fallidos detectados. Mantener estrategia actual.' },
+      { title: 'Resultado de envÃ­os', body: `${commTotals.sent} entregadas y ${commTotals.failed} fallidas.` },
+      { title: 'AcciÃ³n sugerida', body: commTotals.failed > 0 ? 'Priorizar reenvÃ­o de fallidos para cerrar brechas de comunicaciÃ³n.' : 'Sin fallidos detectados. Mantener estrategia actual.' },
     ]);
     document.getElementById('communications-table-body').innerHTML = rows.length ? `<table><thead><tr><th>Asunto</th><th>Taller</th><th>Historial</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((c) => { const s = state.communicationSummary.get(c.id) || { sent: 0, failed: 0 }; return `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(c.subject)}<br><span class="muted">${escapeHTML(c.body.slice(0, 70))}${c.body.length > 70 ? '...' : ''}</span></td><td>${escapeHTML(map[c.workshop_id]?.name || 'Taller')}</td><td><div class="status-line">${badge('sent')} ${s.sent}</div><div class="status-line">${badge('failed')} ${s.failed}</div></td><td>${formatDateTime(c.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="resendFailedCommunication('${c.id}')" ${s.failed > 0 ? '' : 'disabled'}>Reenviar fallidos</button></td></tr>`; }).join('')}</tbody></table>${tablePaginationHTML('communications', pageData, 'comunicaciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-communications')}</div><h3>Sin comunicaciones</h3><p>No hay resultados para los filtros actuales.</p></div>`;
   } catch { toast('Error al cargar comunicaciones', 'error'); }
@@ -2953,7 +2961,7 @@ if (!window.CommunicationsPage?.render) {
   document.getElementById('btn-send-comm')?.addEventListener('click', () => openCommunicationWizard());
 }
 
-const teamRoleLabels = { teacher: 'Docente', coordinator: 'Coordinación' };
+const teamRoleLabels = { teacher: 'Docente', coordinator: 'CoordinaciÃ³n' };
 
 function teamFiltersQuery() {
   return toQuery({
@@ -2965,24 +2973,24 @@ function teamFiltersQuery() {
 }
 
 function renderTeamOverview(overview) {
-  document.getElementById('team-overview-metrics').innerHTML = `<div class="card team-metric-card"><div class="metric-label">Equipo total</div><div class="metric-value">${overview.team_total}</div></div><div class="card team-metric-card"><div class="metric-label">Docentes</div><div class="metric-value">${overview.teachers_total}</div></div><div class="card team-metric-card"><div class="metric-label">Coordinación</div><div class="metric-value">${overview.coordinators_total}</div></div><div class="card team-metric-card"><div class="metric-label">Perfiles activos</div><div class="metric-value">${overview.active_staff}</div></div><div class="card team-metric-card"><div class="metric-label">Talleres con equipo</div><div class="metric-value">${overview.workshops_with_staff}</div></div>`;
+  document.getElementById('team-overview-metrics').innerHTML = `<div class="card team-metric-card"><div class="metric-label">Equipo total</div><div class="metric-value">${overview.team_total}</div></div><div class="card team-metric-card"><div class="metric-label">Docentes</div><div class="metric-value">${overview.teachers_total}</div></div><div class="card team-metric-card"><div class="metric-label">CoordinaciÃ³n</div><div class="metric-value">${overview.coordinators_total}</div></div><div class="card team-metric-card"><div class="metric-label">Perfiles activos</div><div class="metric-value">${overview.active_staff}</div></div><div class="card team-metric-card"><div class="metric-label">Talleres con equipo</div><div class="metric-value">${overview.workshops_with_staff}</div></div>`;
   const staffRows = overview.top_active_staff.length
     ? overview.top_active_staff.map((s) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(s.name)}</strong><span class="muted">${teamRoleLabels[s.role] || s.role}</span></div><div class="team-rank-metrics">${signalChip('Talleres', s.workshops_count, 'status-enrolled')}${signalChip('Asistentes', s.attendees_reached, 'status-active')}</div></div>`).join('')
     : '<div class="muted">Sin datos</div>';
   const enrollRows = overview.top_workshops_by_enrollments.length
-    ? overview.top_workshops_by_enrollments.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">Año ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Inscripciones', w.total_enrollments, 'status-enrolled')}${signalChip('Asistentes', w.attendees_estimated, 'status-active')}</div></div>`).join('')
+    ? overview.top_workshops_by_enrollments.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">AÃ±o ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Inscripciones', w.total_enrollments, 'status-enrolled')}${signalChip('Asistentes', w.attendees_estimated, 'status-active')}</div></div>`).join('')
     : '<div class="muted">Sin datos</div>';
   const attendeeRows = overview.top_workshops_by_attendees.length
-    ? overview.top_workshops_by_attendees.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">Año ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Asistentes', w.attendees_estimated, 'status-active')}${signalChip('Equipo', w.staff_count, 'status-enrolled')}</div></div>`).join('')
+    ? overview.top_workshops_by_attendees.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">AÃ±o ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Asistentes', w.attendees_estimated, 'status-active')}${signalChip('Equipo', w.staff_count, 'status-enrolled')}</div></div>`).join('')
     : '<div class="muted">Sin datos</div>';
-  document.getElementById('team-overview-rankings').innerHTML = `<article class="trend-card team-rank-card"><h4>Profes más activos</h4><div class="team-rank-list">${staffRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con más convocatoria</h4><div class="team-rank-list">${enrollRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con más asistentes</h4><div class="team-rank-list">${attendeeRows}</div></article>`;
+  document.getElementById('team-overview-rankings').innerHTML = `<article class="trend-card team-rank-card"><h4>Profes mÃ¡s activos</h4><div class="team-rank-list">${staffRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con mÃ¡s convocatoria</h4><div class="team-rank-list">${enrollRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con mÃ¡s asistentes</h4><div class="team-rank-list">${attendeeRows}</div></article>`;
   const topStaff = overview.top_active_staff?.[0];
   const topEnrollWorkshop = overview.top_workshops_by_enrollments?.[0];
   const topAttendWorkshop = overview.top_workshops_by_attendees?.[0];
   const teamStories = [
     {
       title: 'Estado del equipo',
-      body: `${overview.active_staff} perfiles están activos sobre un total de ${overview.team_total}.`,
+      body: `${overview.active_staff} perfiles estÃ¡n activos sobre un total de ${overview.team_total}.`,
     },
     {
       title: 'Perfil con mayor actividad',
@@ -3006,7 +3014,7 @@ function renderTeamTable(rows) {
     return;
   }
   const pageData = paginateRows(rows, 'team', 16);
-  target.innerHTML = `<table class="team-table"><thead><tr><th>Perfil</th><th>Rol</th><th>Actividad</th><th>Talleres</th><th>Tendencia</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((r) => { const trend = Object.entries(r.trend_by_month || {}).slice(-3).map(([k, v]) => `${k}: ${v}`).join(' · ') || 'Sin datos'; return `<tr><td class="team-profile-cell">${escapeHTML(r.name)}<br><span class="muted">${escapeHTML(r.email || 'Sin correo')} · ${escapeHTML(r.phone || 'Sin teléfono')}</span></td><td>${signalChip('Rol', teamRoleLabels[r.role] || r.role, 'status-active')}</td><td><div class="participants-signal-list">${signalChip('Alcance', r.participants_reached, 'status-enrolled')}${signalChip('Asistentes', r.attendees_reached, 'status-active')}</div></td><td><div class="participants-signal-list">${signalChip('Total', r.workshops_count, 'status-enrolled')}${signalChip('Activos', r.active_workshops_count, 'status-active')}</div></td><td><span class="muted">${escapeHTML(trend)}</span></td><td class="text-right"><div class="actions-cell team-actions"><button class="btn btn-ghost btn-sm" onclick="openTeamProfile('${r.id}')">Perfil</button><button class="btn btn-ghost btn-sm" onclick="openTeamAssignmentForm('${r.id}')">Asignar</button><button class="btn btn-ghost btn-sm" onclick="openTeamMemberForm('${r.id}')">Editar</button><button class="btn btn-ghost btn-sm" onclick="deleteTeamMember('${r.id}')" aria-label="Eliminar perfil">${icon('trash')}</button></div></td></tr>`; }).join('')}</tbody></table>${tablePaginationHTML('team', pageData, 'perfiles')}`;
+  target.innerHTML = `<table class="team-table"><thead><tr><th>Perfil</th><th>Rol</th><th>Actividad</th><th>Talleres</th><th>Tendencia</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((r) => { const trend = Object.entries(r.trend_by_month || {}).slice(-3).map(([k, v]) => `${k}: ${v}`).join(' Â· ') || 'Sin datos'; return `<tr><td class="team-profile-cell">${escapeHTML(r.name)}<br><span class="muted">${escapeHTML(r.email || 'Sin correo')} Â· ${escapeHTML(r.phone || 'Sin telÃ©fono')}</span></td><td>${signalChip('Rol', teamRoleLabels[r.role] || r.role, 'status-active')}</td><td><div class="participants-signal-list">${signalChip('Alcance', r.participants_reached, 'status-enrolled')}${signalChip('Asistentes', r.attendees_reached, 'status-active')}</div></td><td><div class="participants-signal-list">${signalChip('Total', r.workshops_count, 'status-enrolled')}${signalChip('Activos', r.active_workshops_count, 'status-active')}</div></td><td><span class="muted">${escapeHTML(trend)}</span></td><td class="text-right"><div class="actions-cell team-actions"><button class="btn btn-ghost btn-sm" onclick="openTeamProfile('${r.id}')">Perfil</button><button class="btn btn-ghost btn-sm" onclick="openTeamAssignmentForm('${r.id}')">Asignar</button><button class="btn btn-ghost btn-sm" onclick="openTeamMemberForm('${r.id}')">Editar</button><button class="btn btn-ghost btn-sm" onclick="deleteTeamMember('${r.id}')" aria-label="Eliminar perfil">${icon('trash')}</button></div></td></tr>`; }).join('')}</tbody></table>${tablePaginationHTML('team', pageData, 'perfiles')}`;
 }
 
 window.openTeamMemberForm = async function (id = null) {
@@ -3015,10 +3023,10 @@ window.openTeamMemberForm = async function (id = null) {
     primaryLabel: 'Guardar',
     dangerLabel: existing ? 'Eliminar' : '',
   });
-  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>Coordinación</option></select></div></form>`, actions);
+  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrÃ³nico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">TelÃ©fono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>CoordinaciÃ³n</option></select></div></form>`, actions);
   if (existing) {
     document.getElementById('delete-entity-btn').onclick = async () => {
-      if (!(await confirmDialog('¿Eliminar este perfil del equipo?'))) return;
+      if (!(await confirmDialog('Â¿Eliminar este perfil del equipo?'))) return;
       try {
         await api.del(`/team-members/${existing.id}`);
         closeModal();
@@ -3047,7 +3055,7 @@ window.openTeamMemberForm = async function (id = null) {
 };
 
 window.deleteTeamMember = async function (id) {
-  if (!(await confirmDialog('¿Eliminar este perfil del equipo?'))) return;
+  if (!(await confirmDialog('Â¿Eliminar este perfil del equipo?'))) return;
   try {
     await api.del(`/team-members/${id}`);
     toast('Perfil eliminado', 'success');
@@ -3059,7 +3067,7 @@ window.deleteTeamMember = async function (id) {
 
 window.openTeamAssignmentForm = async function (memberId) {
   const [member, workshops] = await Promise.all([api.get(`/team-members/${memberId}`), fetchWorkshops()]);
-  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">Coordinación</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Asignar' }));
+  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">SeleccionÃ¡ un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">CoordinaciÃ³n</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Asignar' }));
   document.getElementById('save-entity-btn').onclick = async () => {
     const workshopId = document.getElementById('f-workshop').value;
     if (!workshopId) return;
@@ -3081,22 +3089,22 @@ window.openTeamProfile = async function (memberId) {
     const recentTrend = Object.entries(profile.trend_by_month || {}).slice(-6)
       .map(([k, v]) => `<span class="signal-chip has-value"><span>${k}</span><span class="signal-value">${v}</span></span>`).join('');
     const avgAttendees = profile.workshops_count ? Math.round(profile.attendees_reached / profile.workshops_count) : 0;
-    const teamStory = `En ${profile.workshops_count} talleres asignados, alcanzó ${profile.participants_reached} inscripciones y ${profile.attendees_reached} asistentes (${avgAttendees} asistentes promedio por taller).`;
+    const teamStory = `En ${profile.workshops_count} talleres asignados, alcanzÃ³ ${profile.participants_reached} inscripciones y ${profile.attendees_reached} asistentes (${avgAttendees} asistentes promedio por taller).`;
     const rows = profile.assignments.length
       ? profile.assignments.map((a) => `<tr><td>${escapeHTML(a.workshop_name)}</td><td>${a.cohort_year}</td><td>${statusLabels[a.workshop_status] || a.workshop_status}</td><td>${teamRoleLabels[a.assignment_role] || a.assignment_role}</td><td>${formatDate(a.start_date || a.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" onclick="deleteTeamAssignment('${a.id}')">Quitar</button></td></tr>`).join('')
       : '<tr><td colspan="6" class="muted">Sin asignaciones</td></tr>';
-    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('Último taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} · ${escapeHTML(profile.phone || 'Sin teléfono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">Acción</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-secondary" onclick="openTeamMemberForm('${profile.id}')">Editar perfil</button><button class="btn btn-primary" onclick="openTeamAssignmentForm('${profile.id}')">Asignar taller</button>`, { variant: 'profile' });
+    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('Ãšltimo taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} Â· ${escapeHTML(profile.phone || 'Sin telÃ©fono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>AÃ±o</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">AcciÃ³n</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" onclick="closeModal()">Cerrar</button><button class="btn btn-secondary" onclick="openTeamMemberForm('${profile.id}')">Editar perfil</button><button class="btn btn-primary" onclick="openTeamAssignmentForm('${profile.id}')">Asignar taller</button>`, { variant: 'profile' });
   } catch (err) {
     toast(err.message, 'error');
   }
 };
 
 window.deleteTeamAssignment = async function (assignmentId) {
-  if (!(await confirmDialog('¿Quitar esta asignación de taller?'))) return;
+  if (!(await confirmDialog('Â¿Quitar esta asignaciÃ³n de taller?'))) return;
   try {
     await api.del(`/team-members/assignments/${assignmentId}`);
     closeModal();
-    toast('Asignación removida', 'success');
+    toast('AsignaciÃ³n removida', 'success');
     await loadTeam();
   } catch (err) {
     toast(err.message, 'error');
@@ -3231,17 +3239,17 @@ async function loadAdmins() {
     document.getElementById('admins-story').innerHTML = narrativeCardsHTML([
       { title: 'Control de acceso', body: `Hay ${adminsData.length} cuentas con permisos administrativos activas.` },
       { title: 'Movimiento reciente', body: `${createdThisMonth} alta${createdThisMonth === 1 ? '' : 's'} durante el mes en curso.` },
-      { title: 'Recomendación', body: 'Revisar periódicamente cuentas sin uso y aplicar principio de mínimo privilegio.' },
+      { title: 'RecomendaciÃ³n', body: 'Revisar periÃ³dicamente cuentas sin uso y aplicar principio de mÃ­nimo privilegio.' },
     ]);
-    document.getElementById('admins-table-body').innerHTML = adminsData.length ? `<table><thead><tr><th>Correo</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((a) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(a.email)}${a.email === me ? ' <span class="badge badge-active">Vos</span>' : ''}</td><td>${formatDate(a.created_at)}</td><td class="text-right">${a.email === me ? '<span class="muted">Sesión actual</span>' : `<button class="btn btn-ghost btn-sm" onclick="deleteAdmin('${a.id}')" aria-label="Eliminar administrador">${icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table>${tablePaginationHTML('admins', pageData, 'administradores')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-admins')}</div><h3>Sin administradores</h3><p>Agregá un nuevo admin.</p></div>`;
+    document.getElementById('admins-table-body').innerHTML = adminsData.length ? `<table><thead><tr><th>Correo</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((a) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(a.email)}${a.email === me ? ' <span class="badge badge-active">Vos</span>' : ''}</td><td>${formatDate(a.created_at)}</td><td class="text-right">${a.email === me ? '<span class="muted">SesiÃ³n actual</span>' : `<button class="btn btn-ghost btn-sm" onclick="deleteAdmin('${a.id}')" aria-label="Eliminar administrador">${icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table>${tablePaginationHTML('admins', pageData, 'administradores')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-admins')}</div><h3>Sin administradores</h3><p>AgregÃ¡ un nuevo admin.</p></div>`;
   } catch { toast('Error al cargar administradores', 'error'); }
 }
 
 document.getElementById('btn-add-admin')?.addEventListener('click', () => {
-  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">Contraseña</label><input type="password" id="f-password" name="password" minlength="6" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
+  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrÃ³nico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">ContraseÃ±a</label><input type="password" id="f-password" name="password" minlength="6" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
   document.getElementById('save-entity-btn').onclick = async () => { const form = document.getElementById('entity-form'); if (!form.reportValidity()) return; const fd = new FormData(form); try { await api.post('/admins/', { email: fd.get('email'), password: fd.get('password') }); closeModal(); toast('Administrador creado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
 });
-window.deleteAdmin = async function (id) { if (!(await confirmDialog('¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
+window.deleteAdmin = async function (id) { if (!(await confirmDialog('Â¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
 
 const routeLoaders = {
   dashboard: () => loadDashboard(),

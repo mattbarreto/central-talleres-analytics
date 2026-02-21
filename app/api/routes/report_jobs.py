@@ -10,18 +10,27 @@ router = APIRouter(prefix="/report-jobs", tags=["report-jobs"])
 
 @router.get("/metrics")
 def report_jobs_metrics(_: str = Depends(get_current_admin)):
-    return report_job_store.metrics()
+    try:
+        return report_job_store.metrics()
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
 
 
 @router.delete("/cleanup")
 def report_jobs_cleanup(older_than_hours: int = 24, _: str = Depends(get_current_admin)):
-    deleted = report_job_store.cleanup(older_than_hours=older_than_hours)
+    try:
+        deleted = report_job_store.cleanup(older_than_hours=older_than_hours)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
     return {"deleted": deleted}
 
 
 @router.get("/{job_id}")
 def report_job_status(job_id: str, _: str = Depends(get_current_admin)):
-    job = report_job_store.get(job_id)
+    try:
+        job = report_job_store.get(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
     duration_ms = None
@@ -42,7 +51,10 @@ def report_job_status(job_id: str, _: str = Depends(get_current_admin)):
 
 @router.get("/{job_id}/download")
 def report_job_download(job_id: str, _: str = Depends(get_current_admin)):
-    job = report_job_store.get(job_id)
+    try:
+        job = report_job_store.get(job_id)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
     if not job:
         raise HTTPException(status_code=404, detail="Job no encontrado")
     if job.status != "completed" or not job.content or not job.filename or not job.media_type:

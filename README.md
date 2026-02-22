@@ -1,190 +1,186 @@
-# Central de Talleres | Training Workshops Hub
+<p align="center">
+  <h1 align="center">Central de Talleres</h1>
+  <p align="center">
+    Plataforma de gestión operativa y analítica de talleres educativos.<br/>
+    <em>Operational management & analytics platform for training workshops.</em>
+  </p>
+</p>
 
-Aplicación web para gestión operativa y analítica de talleres, participantes, equipo, comunicaciones y certificados.  
-Web app for operational management and analytics of workshops, participants, staff, communications, and certificates.
+<p align="center">
+  <img src="https://img.shields.io/badge/python-3.12+-3776AB?logo=python&logoColor=white" alt="Python 3.12+" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker" />
+  <a href="https://github.com/mattbarreto/central-talleres-analytics/actions"><img src="https://github.com/mattbarreto/central-talleres-analytics/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+</p>
 
 ---
 
-## 🇪🇸 Español
+## Qué es / What is it
 
-### Descripción
-**Central de Talleres** es una plataforma para organizaciones educativas/culturales que necesitan:
-- gestionar talleres y cohortes,
-- administrar participantes e inscripciones,
-- coordinar docentes/coordinación,
-- enviar comunicaciones,
-- emitir certificados PDF,
-- analizar métricas e insights en dashboard.
+**Central de Talleres** permite a organizaciones educativas y culturales gestionar de forma integral:
 
-### Funcionalidades principales
-- Autenticación de administradores con JWT.
-- Gestión CRUD de talleres, participantes, equipo y administradores.
-- Gestión de inscripciones por taller y estado.
-- Comunicaciones con historial de envíos.
-- Dashboard e Insights con vistas de resumen y avanzada.
-- Emisión de certificados y verificación por código.
-- Exportación de datos y reportes.
+| Módulo | Descripción |
+|---|---|
+| 🎓 **Talleres & Cohortes** | Crear, programar y dar seguimiento al ciclo de vida de cada taller. |
+| 👥 **Participantes** | Inscripciones, estados (activo / finalizado / baja) y perfiles. |
+| 📢 **Comunicaciones** | Envío y registro histórico de mensajes a participantes. |
+| 📊 **Dashboard & Insights** | Métricas en tiempo real, gráficos de tendencia y reportes PDF narrativos. |
+| 📜 **Certificados** | Emisión de certificados PDF con verificación por código único. |
+| 👤 **Equipo** | Gestión de docentes, coordinadores y administradores. |
 
-### Stack tecnológico
-- **Backend:** FastAPI, SQLAlchemy, Alembic, JWT
-- **Frontend:** HTML, CSS y JavaScript vanilla (hash routing)
-- **Base de datos:** PostgreSQL/Supabase (producción), SQLite (local legacy)
-- **PDF:** ReportLab
-- **DevOps:** Docker, GitHub Actions (CI)
+---
 
-### Requisitos
+## Stack tecnológico
+
+| Capa | Tecnologías |
+|---|---|
+| **Backend** | FastAPI · SQLAlchemy · Alembic · JWT (python-jose) |
+| **Frontend** | HTML · CSS · JavaScript vanilla · Hash routing SPA |
+| **Base de datos** | PostgreSQL / Supabase (prod) · SQLite (dev local) |
+| **Reportes PDF** | ReportLab (diseño editorial con data storytelling) |
+| **Infra** | Docker · Docker Compose · Traefik · GitHub Actions CI |
+
+---
+
+## Inicio rápido
+
+### Prerrequisitos
+
 - Python 3.12+
 - pip
+- Git
 
-### Configuración local (Windows PowerShell)
+### Instalación
+
 ```powershell
+# 1. Clonar el repositorio
+git clone https://github.com/mattbarreto/central-talleres-analytics.git
+cd central-talleres-analytics
+
+# 2. Crear entorno virtual e instalar dependencias
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# 3. Configurar variables de entorno
 Copy-Item .env.example .env
+# Editar .env con tus valores (DATABASE_URL, SECRET_KEY, etc.)
+
+# 4. Aplicar migraciones
 .\venv\Scripts\python.exe -m alembic upgrade head
-.\venv\Scripts\python.exe -m scripts.create_admin --email admin@example.com --password admin123
+
+# 5. Crear usuario administrador
+.\venv\Scripts\python.exe -m scripts.create_admin --email admin@example.com --password Admin123!
+
+# 6. Iniciar servidor de desarrollo
 .\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-### Accesos
-- App: `http://127.0.0.1:8000/`
-- Swagger: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
-- Healthcheck: `http://127.0.0.1:8000/health`
+### Con Docker
 
-### Variables de entorno
-Ver `.env.example`.
-
-Campos mínimos:
-- `DATABASE_URL`
-- `SECRET_KEY`
-- `ACCESS_TOKEN_EXPIRE_MINUTES`\r\n- `REPORT_JOBS_TTL_SECONDS`\r\n- `REPORT_JOBS_MAX_JOBS`
-
-### Base de datos y migraciones
-- Esquema gestionado por **Alembic**.
-- No usar `create_all` en runtime para producción.
-- Guía Supabase: `docs/SUPABASE_SETUP.md`
-
-### Docker
 ```bash
 docker compose up --build
 ```
 
-### Producción (VPS)
-- Base de datos: Supabase (PostgreSQL).
-- Proxy: Traefik global.
-- En VPS el ruteo del dashboard se mantiene por File Provider externo de Traefik.
-- Runbook: `docs/DEPLOY_PRODUCCION.md`.
+### Endpoints locales
 
-### Estructura del proyecto
-```text
-app/         Backend (API, modelos, schemas, CRUD)
-alembic/     Migraciones
-frontend/    UI (vanilla JS/CSS/HTML)
-docs/        Documentación operativa y deploy
-scripts/     Scripts auxiliares (ej. bootstrap de admin)
-```
-
-### Estado del proyecto
-En desarrollo activo, con foco en:
-- consistencia UI/UX del dashboard,
-- escalabilidad de datos,
-- hardening para producción.
+| Servicio | URL |
+|---|---|
+| Aplicación | [`http://localhost:8000`](http://localhost:8000) |
+| Swagger UI | [`http://localhost:8000/docs`](http://localhost:8000/docs) |
+| ReDoc | [`http://localhost:8000/redoc`](http://localhost:8000/redoc) |
+| Healthcheck | [`http://localhost:8000/health`](http://localhost:8000/health) |
 
 ---
 
-## 🇬🇧 English
+## Variables de entorno
 
-### Overview
-**Training Workshops Hub** is a web platform for educational/cultural organizations that need to:
-- manage workshops and cohorts,
-- handle participants and enrollments,
-- coordinate staff (teachers/coordinators),
-- send communications,
-- issue PDF certificates,
-- monitor metrics and insights through dashboards.
+Copiar `.env.example` y completar los valores requeridos:
 
-### Key features
-- Admin authentication using JWT.
-- Full CRUD for workshops, participants, team, and admins.
-- Enrollment management by workshop and status.
-- Communications with delivery history.
-- Dashboard and Insights with summary/advanced modes.
-- Certificate issuance and verification by code.
-- Data export and reporting workflows.
+| Variable | Descripción | Requerida |
+|---|---|---|
+| `DATABASE_URL` | Cadena de conexión (PostgreSQL o SQLite) | ✅ |
+| `SECRET_KEY` | Clave secreta para JWT | ✅ |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del token de acceso | ✅ |
+| `REPORT_JOBS_TTL_SECONDS` | Tiempo de vida de los jobs de reporte | ✅ |
+| `REPORT_JOBS_MAX_JOBS` | Máximo de jobs concurrentes | ✅ |
 
-### Tech stack
-- **Backend:** FastAPI, SQLAlchemy, Alembic, JWT
-- **Frontend:** Vanilla HTML/CSS/JavaScript (hash routes)
-- **Database:** PostgreSQL/Supabase (production), SQLite (legacy local)
-- **PDF:** ReportLab
-- **DevOps:** Docker, GitHub Actions (CI)
+> Ver [`.env.example`](.env.example) para la lista completa con valores por defecto.
 
-### Requirements
-- Python 3.12+
-- pip
+---
 
-### Local setup (Windows PowerShell)
+## Estructura del proyecto
+
+```text
+central-talleres-analytics/
+├── app/                  # Backend (API, modelos, schemas, servicios, CRUD)
+│   ├── api/routes/       # Endpoints REST agrupados por dominio
+│   ├── core/             # Configuración, seguridad, utilidades PDF
+│   ├── models/           # Modelos SQLAlchemy
+│   ├── schemas/          # Schemas Pydantic
+│   └── services/         # Lógica de negocio y generación de reportes
+├── alembic/              # Migraciones de base de datos
+├── frontend/             # SPA vanilla (HTML/CSS/JS)
+├── scripts/              # Scripts auxiliares (bootstrap admin, etc.)
+├── tests/                # Suite de tests con pytest
+├── docs/                 # Documentación operativa y de deploy
+├── .github/workflows/    # CI con GitHub Actions
+├── Dockerfile            # Imagen de producción
+└── docker-compose.yml    # Orquestación local
+```
+
+---
+
+## Base de datos y migraciones
+
+El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` en runtime.
+
 ```powershell
-python -m venv venv
-.\venv\Scripts\python.exe -m pip install -r requirements.txt
-Copy-Item .env.example .env
+# Aplicar todas las migraciones pendientes
 .\venv\Scripts\python.exe -m alembic upgrade head
-.\venv\Scripts\python.exe -m scripts.create_admin --email admin@example.com --password admin123
-.\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+
+# Crear una nueva migración
+.\venv\Scripts\python.exe -m alembic revision --autogenerate -m "descripción"
 ```
 
-### Local endpoints
-- App: `http://127.0.0.1:8000/`
-- Swagger: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
-- Healthcheck: `http://127.0.0.1:8000/health`
-
-### Environment variables
-See `.env.example`.
-
-Required keys:
-- `DATABASE_URL`
-- `SECRET_KEY`
-- `ACCESS_TOKEN_EXPIRE_MINUTES`\r\n- `REPORT_JOBS_TTL_SECONDS`\r\n- `REPORT_JOBS_MAX_JOBS`
-
-### Database and migrations
-- Schema is managed with **Alembic**.
-- Avoid runtime schema creation in production.
-- Supabase guide: `docs/SUPABASE_SETUP.md`
-
-### Docker
-```bash
-docker compose up --build
-```
-
-### Project structure
-```text
-app/         Backend (API, models, schemas, CRUD)
-alembic/     Migrations
-frontend/    UI (vanilla JS/CSS/HTML)
-docs/        Operational and deployment docs
-scripts/     Utility scripts (e.g. admin bootstrap)
-```
-
-### Project status
-Actively developed, currently focused on:
-- dashboard UI/UX consistency,
-- data scalability,
-- production hardening.
+> **Supabase**: ver la guía de configuración en [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md).
 
 ---
 
-## Documentación adicional | Additional docs
-- `docs/USO.md`
-- `docs/DESARROLLO.md`
-- `docs/DEPLOY_PRODUCCION.md`
-- `docs/SUPABASE_SETUP.md`
-- `docs/ESTADO_DESARROLLO_2026-02-21.md`
-- `docs/SESSION_HANDOFF_2026-02-21_PDF_GLOBAL_REBUILD.md`
+## Producción
 
-## Autor | Author
-**Matías Barreto**  
-Website: https://matiasbarreto.com  
-Repository: https://github.com/mattbarreto/central-talleres-analytics
+- **Base de datos**: PostgreSQL gestionado por Supabase.
+- **Proxy reverso**: Traefik con File Provider externo.
+- **Runbook completo**: [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md).
 
+---
+
+## Documentación
+
+| Documento | Contenido |
+|---|---|
+| [`docs/USO.md`](docs/USO.md) | Guía de uso de la aplicación |
+| [`docs/DESARROLLO.md`](docs/DESARROLLO.md) | Guía para desarrolladores |
+| [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) | Runbook de despliegue |
+| [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Configuración de Supabase |
+| [`docs/INFRASTRUCTURE.md`](docs/INFRASTRUCTURE.md) | Arquitectura de infraestructura |
+
+---
+
+## Estado del proyecto
+
+En **desarrollo activo**, con foco actual en:
+
+- ✅ Reportes PDF con diseño editorial y data storytelling
+- 🔄 Consistencia UI/UX del dashboard
+- 🔄 Escalabilidad de datos
+- 🔄 Hardening para producción
+
+---
+
+## Autor
+
+**Matías Barreto**
+
+[![Website](https://img.shields.io/badge/Web-matiasbarreto.com-4f46e5?style=flat&logo=google-chrome&logoColor=white)](https://matiasbarreto.com)
+[![GitHub](https://img.shields.io/badge/GitHub-mattbarreto-181717?style=flat&logo=github)](https://github.com/mattbarreto)

@@ -19,8 +19,22 @@
 
     const logout = () => {
       const wasAuthenticated = Boolean(api.token);
+      const token = api.token;
+      const refreshToken = api.refreshToken || localStorage.getItem('tc_refresh_token');
+      if (token) {
+        fetch('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ refresh_token: refreshToken || null }),
+        }).catch(() => {});
+      }
       api.token = null;
+      api.refreshToken = null;
       localStorage.removeItem('tc_token');
+      localStorage.removeItem('tc_refresh_token');
       localStorage.removeItem('tc_email');
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app-layout').classList.add('hidden');
@@ -52,7 +66,9 @@
           const password = document.getElementById('login-password').value;
           const data = await api.post('/auth/login', { email, password });
           api.token = data.access_token;
+          api.refreshToken = data.refresh_token || null;
           localStorage.setItem('tc_token', data.access_token);
+          if (data.refresh_token) localStorage.setItem('tc_refresh_token', data.refresh_token);
           localStorage.setItem('tc_email', email);
           showApp(email);
           toast('Bienvenido de nuevo', 'success');

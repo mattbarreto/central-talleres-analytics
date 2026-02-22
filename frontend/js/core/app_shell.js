@@ -1,13 +1,14 @@
 (function () {
   const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
   const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
+  const metaSource = document.documentElement?.dataset || {};
   const APP_META = {
-    author: 'Matías Barreto',
-    website: 'https://matiasbarreto.com',
-    repo: 'https://github.com/mattbarreto/central-talleres-analytics',
-    version: 'v2026.02.20',
-    release: 'Producción inicial Supabase',
-    stack: 'FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS',
+    author: metaSource.appAuthor || 'No definido',
+    website: metaSource.appWebsite || '',
+    repo: metaSource.appRepo || '',
+    version: metaSource.appVersion || 'v0.0.0',
+    release: metaSource.appRelease || 'Sin release',
+    stack: metaSource.appStack || 'N/A',
   };
 
   const hydrateAppMeta = () => {
@@ -47,7 +48,7 @@
           </div>
         </div>
       `,
-      `<button class="btn btn-secondary" type="button" onclick="closeModal()">Cerrar</button>`
+      `<button class="btn btn-secondary" type="button" data-inline-click="closeModal()">Cerrar</button>`
     );
   };
 

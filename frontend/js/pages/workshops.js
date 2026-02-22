@@ -1,22 +1,20 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-  };
+  const esc = UI.esc;
 
   async function render(opts) {
-    if (!UI.Button || !opts?.root) return false;
+    if (!UI.Button || !esc || !opts?.root) return false;
     const root = opts.root;
     const filters = opts.filters || { q: '', density: 'regular' };
     const rows = opts.rows || [];
     const statusCounts = opts.statusCounts || { total: 0, active: 0, planned: 0, finished: 0, cohorts: 0 };
+    const kpiDeltas = opts.kpiDeltas || {};
     const pagination = opts.pagination || '';
+    const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
       ? `<div class="dash-table-wrap"><table class="dash-table dash-table-workshops"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="dash-row-actions"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
-      : UI.EmptyState({ title: 'Sin talleres', message: 'No hay talleres para el filtro actual.', action: UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1" onclick="openWorkshopForm()"' }) });
+      : UI.EmptyState({ title: 'Sin talleres', message: 'No hay talleres para el filtro actual.', action: UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' }) });
 
     root.innerHTML = `
       <div class="dashboard-v2">
@@ -27,7 +25,7 @@
               <p class="dash-page-subtitle">Gestión operativa de oferta y estado de cohortes.</p>
             </div>
             <div class="dash-actions">
-              ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1" onclick="openWorkshopForm()"' })}
+              ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' })}
             </div>
           </header>
 
@@ -57,11 +55,11 @@
             description: 'Estado general de talleres visibles.',
             collapsible: false,
             content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'w-total', label: 'Talleres visibles', value: String(statusCounts.total || 0), delta: '0%', trend: 'Volumen' })}
-              ${UI.KpiCard({ id: 'w-active', label: 'Activos', value: String(statusCounts.active || 0), delta: '0%', trend: 'En curso' })}
-              ${UI.KpiCard({ id: 'w-planned', label: 'Planificados', value: String(statusCounts.planned || 0), delta: '0%', trend: 'Próximos' })}
-              ${UI.KpiCard({ id: 'w-finished', label: 'Finalizados', value: String(statusCounts.finished || 0), delta: '0%', trend: 'Cierres' })}
-              ${UI.KpiCard({ id: 'w-cohorts', label: 'Cohortes', value: String(statusCounts.cohorts || 0), delta: '0%', trend: 'Cobertura' })}
+              ${UI.KpiCard({ id: 'w-total', label: 'Talleres visibles', value: String(statusCounts.total || 0), delta: delta('total'), trend: 'Volumen' })}
+              ${UI.KpiCard({ id: 'w-active', label: 'Activos', value: String(statusCounts.active || 0), delta: delta('active'), trend: 'En curso' })}
+              ${UI.KpiCard({ id: 'w-planned', label: 'Planificados', value: String(statusCounts.planned || 0), delta: delta('planned'), trend: 'Próximos' })}
+              ${UI.KpiCard({ id: 'w-finished', label: 'Finalizados', value: String(statusCounts.finished || 0), delta: delta('finished'), trend: 'Cierres' })}
+              ${UI.KpiCard({ id: 'w-cohorts', label: 'Cohortes', value: String(statusCounts.cohorts || 0), delta: delta('cohorts'), trend: 'Cobertura' })}
             </div>`
           })}
 
@@ -76,7 +74,7 @@
       </div>
     `;
 
-    root.addEventListener('click', (e) => {
+    root.onclick = (e) => {
       const source = e.target instanceof Element ? e.target : null;
       if (!source) return;
       const target = source.closest('button,[data-w-enrollments],[data-w-comm],[data-w-edit],[data-w-delete]');
@@ -94,15 +92,17 @@
       if (target.matches('[data-w-comm]')) { opts.onCommunicate?.(target.getAttribute('data-w-comm')); return; }
       if (target.matches('[data-w-edit]')) { opts.onEdit?.(target.getAttribute('data-w-edit')); return; }
       if (target.matches('[data-w-delete]')) { opts.onDelete?.(target.getAttribute('data-w-delete')); }
-    });
-    root.addEventListener('change', (e) => {
-      const target = e.target.closest('[data-w-status]');
+    };
+    root.onchange = (e) => {
+      const source = e.target instanceof Element ? e.target : null;
+      const target = source?.closest('[data-w-status]');
       if (!target) return;
       opts.onQuickStatus?.(target.getAttribute('data-w-status'), target.value);
-    });
+    };
     return true;
   }
 
   window.WorkshopsPage = { render };
 })();
+
 

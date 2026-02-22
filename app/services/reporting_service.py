@@ -14,21 +14,17 @@ except Exception:  # pragma: no cover
     canvas = None
 
 from app.core.pdf_utils import (
-    draw_bar_list,
     draw_dual_line_chart,
     draw_editorial_header,
     draw_highlighted_bar_chart,
     draw_insight_panel,
-    draw_kpi_grid,
     draw_kpi_strip,
     draw_lollipop_rank_chart,
     draw_minimal_table,
+    draw_narrative_callout,
     draw_page_footer,
-    draw_pdf_header,
-    draw_section_heading,
+    draw_section_divider,
     draw_stacked_composition_bar,
-    draw_story_box,
-    draw_table,
 )
 
 
@@ -40,10 +36,6 @@ def _ensure_reportlab():
 def _month_label(dt: datetime) -> str:
     names = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"]
     return f"{names[dt.month - 1]} {str(dt.year)[2:]}"
-
-
-def _series_6m(rows: list[datetime]):
-    return _series_months(rows, months=6)
 
 
 def _series_months(rows: list[datetime], months: int = 12):
@@ -72,109 +64,367 @@ def _series_months(rows: list[datetime], months: int = 12):
     return out
 
 
+def _to_int(value: Any) -> int:
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _to_float(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _delta_pct(values: list[int | float]) -> float:
+    if not values:
+        return 0.0
+    cur = float(values[-1])
+    prev = float(values[-2]) if len(values) > 1 else 0.0
+    if prev == 0:
+        return 100.0 if cur > 0 else 0.0
+    return round(((cur - prev) / prev) * 100, 1)
+
+
+def _series_metric(rows: list[dict[str, Any]], key: str) -> list[int]:
+    return [_to_int(r.get(key, 0)) for r in rows]
+
+
+def _comparison_delta(comparisons: list[dict[str, Any]], keywords: list[str]) -> float:
+    for row in comparisons:
+        label = str(row.get("label", "")).lower()
+        if any(kw in label for kw in keywords):
+            return round(_to_float(row.get("delta_pct", 0)), 1)
+    return 0.0
+
+
+def _largest_delta_row(comparisons: list[dict[str, Any]]) -> dict[str, Any] | None:
+    best: dict[str, Any] | None = None
+    best_abs = -1.0
+    for row in comparisons:
+        delta = _to_float(row.get("delta_pct", 0))
+        if abs(delta) > best_abs:
+            best = row
+            best_abs = abs(delta)
+    return best
+
+
+def _build_insights_narrative(
+    kpis: dict[str, Any],
+    comparisons: list[dict[str, Any]],
+    enroll_series: list[dict[str, Any]],
+    top_workshops: list[dict[str, Any]],
+    alerts: list[dict[str, Any]],
+) -> tuple[str, str]:
+    enrollments_total = _to_int(kpis.get("enrollments_total", 0))
+    communications_total = _to_int(kpis.get("communications_total", 0))
+    enroll_values = _series_metric(enroll_series, "value")
+
+    peak_idx = max(range(len(enroll_values)), key=lambda i: enroll_values[i]) if enroll_values else 0
+    peak_label = str(enroll_series[peak_idx].get("label", "-")) if enroll_series else "-"
+    peak_value = enroll_values[peak_idx] if enroll_values else 0
+
+    biggest_delta = _largest_delta_row(comparisons)
+    headline = "No se registró actividad relevante en el período seleccionado."
+    if biggest_delta and abs(_to_float(biggest_delta.get("delta_pct", 0))) >= 8:
+        metric = str(biggest_delta.get("label", "La métrica"))
+        delta = round(_to_float(biggest_delta.get("delta_pct", 0)), 1)
+        direction = "creció" if delta > 0 else "cayó" if delta < 0 else "se mantuvo estable"
+        if direction == "se mantuvo estable":
+            headline = f"{metric} se mantuvo estable frente al período anterior."
+        else:
+            headline = f"{metric} {direction} {abs(delta):.1f}% frente al período anterior."
+    elif peak_value > 0:
+        headline = f"La demanda alcanzó su pico en {peak_label} con {peak_value} inscripciones."
+
+    support_parts = [
+        f"Se consolidaron {enrollments_total} inscripciones y {communications_total} comunicaciones en el período.",
+    ]
+    comm_gap = enrollments_total - communications_total
+    if comm_gap > 0:
+        support_parts.append(f"Existe una brecha operativa de {comm_gap} comunicaciones frente a la demanda registrada.")
+    elif enrollments_total > 0:
+        support_parts.append("La cobertura operativa acompaña el volumen de inscripciones sin brecha aparente.")
+    top_workshop = top_workshops[0] if top_workshops else None
+    if top_workshop:
+        support_parts.append(
+            f"Taller líder: {top_workshop.get('workshop_name', '-')} con {top_workshop.get('enrollments_total', 0)} inscripciones."
+        )
+    if alerts:
+        top_alert = alerts[0]
+        support_parts.append(f"Alerta destacada: {top_alert.get('title', 'Sin título')}.")
+    return headline, " ".join(support_parts)
+
+
+def _build_dashboard_narrative(
+    total_enrollments: int,
+    total_communications: int,
+    active: int,
+    progress: float,
+    drop_rate: float,
+    comm_per_enrollment: float,
+    peak_label: str,
+    peak_value: int,
+    enroll_values: list[int],
+) -> tuple[str, str]:
+    if total_enrollments == 0:
+        return (
+            "No hubo inscripciones en el período seleccionado.",
+            "El sistema no presenta actividad de demanda para construir una narrativa comparativa.",
+        )
+
+    comm_gap = max(total_enrollments - total_communications, 0)
+    enroll_delta = _delta_pct(enroll_values)
+    if drop_rate > 15:
+        headline = f"La tasa de bajas llegó a {drop_rate:.1f}% y requiere intervención prioritaria."
+    elif comm_gap > max(2, total_enrollments // 5):
+        headline = f"Quedaron {comm_gap} comunicaciones por debajo de la demanda del período."
+    elif enroll_delta > 0:
+        headline = f"La demanda creció {abs(enroll_delta):.1f}% en el tramo más reciente."
+    elif enroll_delta < 0:
+        headline = f"La demanda cayó {abs(enroll_delta):.1f}% en el tramo más reciente."
+    else:
+        headline = "La demanda se mantuvo estable en el cierre del período."
+
+    support = (
+        f"Pico de demanda en {peak_label} con {peak_value} inscripciones. "
+        f"La trayectoria acumula {progress:.1f}% de finalización, {drop_rate:.1f}% de bajas y {active} casos activos. "
+        f"La intensidad operativa fue de {comm_per_enrollment:.2f} comunicaciones por inscripción."
+    )
+    return headline, support
+
+
 def build_insights_pdf_bytes(payload: dict[str, Any], period_label: str) -> bytes:
     _ensure_reportlab()
     kpis = payload.get("kpis", {})
-    series = payload.get("series", [])
+    series = payload.get("series", []) or []
     top_workshops = payload.get("top_workshops_by_enrollments", [])
-    top_staff = payload.get("top_staff_by_activity", [])
     top_participants = payload.get("top_participants_by_activity", [])
     alerts = payload.get("alerts", [])
     funnel = payload.get("funnel", [])
+    comparisons = payload.get("comparisons", []) or []
 
-    top_workshop = top_workshops[0] if top_workshops else None
-    top_staff_row = top_staff[0] if top_staff else None
-    story = [
-        f"Se registran {kpis.get('enrollments_total', 0)} inscripciones y {kpis.get('communications_total', 0)} comunicaciones.",
-        (f"Taller destacado: {top_workshop.get('workshop_name')} con {top_workshop.get('enrollments_total', 0)} inscripciones." if top_workshop else "No hay taller destacado para el filtro actual."),
-        (f"Perfil mas activo: {top_staff_row.get('name')} ({top_staff_row.get('role')}) con {top_staff_row.get('workshops_count', 0)} talleres." if top_staff_row else "No hay actividad de equipo para el filtro actual."),
+    enroll_series = [
+        {"label": str(r.get("period_label") or r.get("period_key") or r.get("label") or "-"), "value": _to_int(r.get("enrollments", 0))}
+        for r in series
     ]
+    comm_series = [
+        {"label": str(r.get("period_label") or r.get("period_key") or r.get("label") or "-"), "value": _to_int(r.get("communications", 0))}
+        for r in series
+    ]
+    enroll_values = _series_metric(enroll_series, "value")
+    comm_values = _series_metric(comm_series, "value")
+    peak_idx = max(range(len(enroll_values)), key=lambda i: enroll_values[i]) if enroll_values else -1
+
+    narrative_headline, narrative_support = _build_insights_narrative(
+        kpis=kpis,
+        comparisons=comparisons,
+        enroll_series=enroll_series,
+        top_workshops=top_workshops,
+        alerts=alerts,
+    )
+
+    comparisons_rows = []
+    for row in comparisons[:8]:
+        delta = round(_to_float(row.get("delta_pct", 0)), 1)
+        sign = "+" if delta > 0 else ""
+        comparisons_rows.append(
+            [
+                str(row.get("label", "-")),
+                str(row.get("current", 0)),
+                str(row.get("previous", 0)),
+                f"{sign}{delta}%",
+            ]
+        )
+    if not comparisons_rows:
+        comparisons_rows.append(["Sin comparación", "0", "0", "0.0%"])
+
+    workshops_rows = [
+        {"label": str(w.get("workshop_name", "-")), "value": _to_int(w.get("enrollments_total", 0))}
+        for w in top_workshops[:8]
+    ]
+    if not workshops_rows:
+        workshops_rows = [{"label": "Sin talleres con datos", "value": 0}]
+
+    participants_rows = []
+    for p in top_participants[:8]:
+        participants_rows.append(
+            {
+                "label": str(p.get("name", "-")),
+                "value": _to_int(
+                    p.get("workshops_total", p.get("activities_total", p.get("communications_total", 0)))
+                ),
+            }
+        )
+    if not participants_rows:
+        participants_rows = [{"label": "Sin participantes con datos", "value": 0}]
+
+    funnel_rows = []
+    for item in funnel[:8]:
+        funnel_rows.append(
+            {
+                "label": str(item.get("label") or item.get("status") or item.get("stage") or item.get("period_label") or "-"),
+                "value": _to_int(item.get("total", item.get("value", 0))),
+            }
+        )
+    if not funnel_rows:
+        funnel_rows = [{"label": "Sin datos", "value": 0}]
+    funnel_highlight = max(range(len(funnel_rows)), key=lambda i: funnel_rows[i]["value"]) if funnel_rows else -1
 
     buffer = BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     page_w, page_h = A4
-    content_w = page_w - 52
+    margin_x = 34
+    content_w = page_w - (margin_x * 2)
+    x = margin_x
 
-    draw_pdf_header(c, page_w, page_h, "Reporte ejecutivo con narrativa - Insights", f"Periodo {period_label}")
-    y = page_h - 66
-    c.setFillColor(HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 11)
-    c.drawString(26, y, "Senales clave")
-    y -= 8
-    y = draw_kpi_grid(
+    y = draw_editorial_header(
         c,
-        26,
-        y,
-        content_w,
-        [
-            ("Inscripciones", int(kpis.get("enrollments_total", 0) or 0), "blue"),
-            ("Activos", int(kpis.get("active_enrollments_total", 0) or 0), "green"),
-            ("Finalizados", int(kpis.get("finished_enrollments_total", 0) or 0), "amber"),
-            ("Comunicaciones", int(kpis.get("communications_total", 0) or 0), "brand"),
-            ("Equipo activo", int(kpis.get("active_team_members", 0) or 0), "blue"),
-            ("Participantes activos", int(kpis.get("active_participants_total", 0) or 0), "green"),
-        ],
+        page_w,
+        page_h,
+        "Resumen ejecutivo de insights",
+        f"Período {period_label}",
+        accent_hex="#4f46e5",
+        margin_x=x,
     )
-    y = draw_story_box(c, 26, y, content_w, story, bullet="*")
-    y = draw_bar_list(c, series, 26, y, content_w, "Inscripciones por periodo", "enrollments", "#60a5fa")
-    y = draw_bar_list(c, series, 26, y, content_w, "Comunicaciones por periodo", "communications", "#34d399")
-    y = draw_bar_list(c, funnel, 26, y, content_w, "Embudo de trayectoria", "total", "#8b5cf6")
+    y = draw_narrative_callout(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        headline=narrative_headline,
+        supporting_text=narrative_support,
+        accent_hex="#4f46e5",
+    )
+
+    insights_kpis = [
+        {
+            "label": "Inscripciones",
+            "value": _to_int(kpis.get("enrollments_total", 0)),
+            "delta_pct": _comparison_delta(comparisons, ["inscrip", "enroll"]),
+            "sparkline": enroll_values,
+        },
+        {
+            "label": "Comunicaciones",
+            "value": _to_int(kpis.get("communications_total", 0)),
+            "delta_pct": _comparison_delta(comparisons, ["comunic", "commun"]),
+            "sparkline": comm_values,
+        },
+        {
+            "label": "Equipo activo",
+            "value": _to_int(kpis.get("active_team_members", 0)),
+            "delta_pct": _comparison_delta(comparisons, ["equipo", "staff", "team"]),
+            "sparkline": [_to_int(kpis.get("active_team_members", 0)) for _ in range(max(len(enroll_values), 6))],
+        },
+        {
+            "label": "Participantes activos",
+            "value": _to_int(kpis.get("active_participants_total", 0)),
+            "delta_pct": _comparison_delta(comparisons, ["particip", "active participants"]),
+            "sparkline": [_to_int(kpis.get("active_participants_total", 0)) for _ in range(max(len(enroll_values), 6))],
+        },
+    ]
+    y = draw_kpi_strip(c, x, y, content_w, insights_kpis, accent_hex="#4f46e5")
+    y = draw_section_divider(c, x, y, content_w)
+
+    enroll_title = "La demanda se sostuvo con un pico claro en el período."
+    if enroll_values:
+        enroll_delta = _delta_pct(enroll_values)
+        if enroll_delta > 0:
+            enroll_title = "Las inscripciones crecieron en el tramo más reciente."
+        elif enroll_delta < 0:
+            enroll_title = "Las inscripciones cayeron en el tramo más reciente."
+        else:
+            enroll_title = "Las inscripciones se mantuvieron estables al cierre del período."
+    y = draw_highlighted_bar_chart(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        title=enroll_title,
+        subtitle="Evolución mensual de inscripciones",
+        rows=enroll_series,
+        value_key="value",
+        label_key="label",
+        highlight_idx=peak_idx,
+        accent_hex="#4f46e5",
+        label_col_w=42,
+        value_col_w=28,
+    )
+    y = draw_highlighted_bar_chart(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        title="El embudo muestra dónde se concentra la trayectoria.",
+        subtitle="Distribución por etapa del recorrido",
+        rows=funnel_rows,
+        value_key="value",
+        label_key="label",
+        highlight_idx=funnel_highlight,
+        accent_hex="#4f46e5",
+        label_col_w=56,
+        value_col_w=30,
+    )
+    draw_page_footer(c, page_w, page_h, "Reporte Insights", 1, margin_x=x)
 
     c.showPage()
-    draw_pdf_header(c, page_w, page_h, "Detalle analitico", "Comparativas y rankings")
-    y = page_h - 72
-    c.setFillColor(HexColor("#0f172a"))
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(26, y, "Comparacion con periodo anterior")
-    y -= 14
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(26, y, "Metrica")
-    c.drawString(230, y, "Actual")
-    c.drawString(290, y, "Anterior")
-    c.drawString(360, y, "Delta %")
-    y -= 8
-    c.setStrokeColor(HexColor("#d6deea"))
-    c.line(26, y, page_w - 26, y)
-    y -= 10
-    c.setFont("Helvetica", 8.5)
-    for row in (payload.get("comparisons", []) or [])[:8]:
-        c.drawString(26, y, str(row.get("label", "-"))[:34])
-        c.drawString(230, y, str(row.get("current", 0)))
-        c.drawString(290, y, str(row.get("previous", 0)))
-        c.drawString(360, y, f"{row.get('delta_pct', 0)}%")
-        y -= 10
-
-    y -= 10
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(26, y, "Top talleres por convocatoria")
-    y -= 12
-    c.setFont("Helvetica", 8.5)
-    for w in top_workshops[:8]:
-        c.drawString(26, y, f"{w.get('workshop_name', '-')[:36]} ({w.get('cohort_year', '-')})")
-        c.drawRightString(page_w - 26, y, f"{w.get('enrollments_total', 0)} inscripciones")
-        y -= 10
-
+    y = draw_editorial_header(
+        c,
+        page_w,
+        page_h,
+        "Comparativas y rankings",
+        "Lectura de variaciones por período y actores más activos",
+        accent_hex="#4f46e5",
+        margin_x=x,
+    )
+    y = draw_section_divider(c, x, y, content_w)
+    y = draw_minimal_table(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        columns=["Métrica", "Actual", "Anterior", "Delta %"],
+        rows=comparisons_rows,
+        max_rows=8,
+        col_ratios=[0.43, 0.16, 0.16, 0.25],
+    )
     y -= 6
-    c.setFont("Helvetica-Bold", 10)
-    c.drawString(26, y, "Top personas por actividad")
-    y -= 12
-    c.setFont("Helvetica", 8.5)
-    for p in top_participants[:8]:
-        c.drawString(26, y, f"{p.get('name', '-')[:36]}")
-        c.drawRightString(page_w - 26, y, f"{p.get('workshops_total', 0)} talleres")
-        y -= 10
+    gap = 14
+    left_w = (content_w * 0.5) - (gap / 2)
+    right_w = content_w - left_w - gap
+    right_x = x + left_w + gap
+    left_y = draw_lollipop_rank_chart(
+        c,
+        x=x,
+        y=y,
+        width=left_w,
+        title="El ranking de talleres concentra la convocatoria.",
+        rows=workshops_rows,
+        label_key="label",
+        value_key="value",
+        accent_hex="#4f46e5",
+        max_rows=8,
+    )
+    right_y = draw_lollipop_rank_chart(
+        c,
+        x=right_x,
+        y=y,
+        width=right_w,
+        title="Participantes con mayor actividad registrada.",
+        rows=participants_rows,
+        label_key="label",
+        value_key="value",
+        accent_hex="#4f46e5",
+        max_rows=8,
+    )
 
+    y = min(left_y, right_y) - 2
     if alerts:
-        y -= 6
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(26, y, "Alertas")
-        y -= 12
-        c.setFont("Helvetica", 8.5)
-        for a in alerts[:4]:
-            c.drawString(26, y, f"- {str(a.get('title', 'Info'))}: {str(a.get('message', ''))[:92]}")
-            y -= 10
-
-    c.showPage()
+        alert_lines = [f"{str(a.get('title', 'Alerta'))}: {str(a.get('message', ''))}" for a in alerts[:3]]
+        y = draw_insight_panel(c, x, y, content_w, "Alertas del período", alert_lines, accent_hex="#b45309")
+    draw_page_footer(c, page_w, page_h, "Reporte Insights", 2, margin_x=x)
     c.save()
     pdf_bytes = buffer.getvalue()
     buffer.close()
@@ -226,15 +476,6 @@ def build_dashboard_pdf_bytes(
     enroll_values = [int(r.get("value", 0) or 0) for r in enroll_series]
     comm_values = [int(r.get("value", 0) or 0) for r in comm_series]
 
-    def _delta_pct(values: list[int]) -> float:
-        if not values:
-            return 0.0
-        cur = values[-1]
-        prev = values[-2] if len(values) > 1 else 0
-        if prev == 0:
-            return 100.0 if cur > 0 else 0.0
-        return round(((cur - prev) / prev) * 100, 1)
-
     kpis = [
         {"label": "Inscripciones", "value": total_enrollments, "delta_pct": _delta_pct(enroll_values), "sparkline": enroll_values},
         {"label": "Participantes", "value": len(participant_ids), "delta_pct": _delta_pct([len(participant_ids)] + enroll_values[-5:]), "sparkline": enroll_values},
@@ -247,18 +488,48 @@ def build_dashboard_pdf_bytes(
         peak_idx = max(range(len(enroll_values)), key=lambda i: enroll_values[i])
     peak_label = enroll_series[peak_idx]["label"] if enroll_series else "-"
     peak_value = enroll_values[peak_idx] if enroll_values else 0
-    comm_gap = max(total_enrollments - total_communications, 0)
-    insight_lines = [
-        f"Pico de demanda en {peak_label}: {peak_value} inscripciones.",
-        f"Trayectoria general: {progress}% finalizacion, {drop_rate}% bajas y {active} activos.",
-        f"Intensidad operativa: {total_communications} comunicaciones ({comm_per_enrollment} por inscripcion).",
-    ]
-    if comm_gap > max(2, total_enrollments // 4):
-        insight_lines[2] = f"Brecha operativa: faltan al menos {comm_gap} comunicaciones para cubrir la demanda reciente."
+    narrative_headline, narrative_support = _build_dashboard_narrative(
+        total_enrollments=total_enrollments,
+        total_communications=total_communications,
+        active=active,
+        progress=progress,
+        drop_rate=drop_rate,
+        comm_per_enrollment=comm_per_enrollment,
+        peak_label=peak_label,
+        peak_value=peak_value,
+        enroll_values=enroll_values,
+    )
 
     ranked_workshops = sorted(by_workshop.items(), key=lambda item: item[1], reverse=True)
     rank_rows = [{"label": workshop_names.get(wid, "Taller"), "value": total} for wid, total in ranked_workshops[:10]]
     year_rows = [{"label": yr, "value": total} for yr, total in sorted(workshops_by_year.items(), key=lambda item: item[0])]
+
+    # Dynamic Titles for Data Storytelling
+    top_workshop_name = rank_rows[0]["label"] if rank_rows else "Ningún taller"
+    title_rank = f"{top_workshop_name} lidera la demanda."
+
+    active_hex = "#e2e8f0"
+    finished_hex = "#e2e8f0"
+    dropped_hex = "#e2e8f0"
+
+    majority_status = "activa"
+    if finished >= active and finished >= dropped:
+        majority_status = "finalizada"
+        finished_hex = "#4f46e5"
+        active_hex = "#94a3b8"
+    elif dropped >= active and dropped >= finished:
+        majority_status = "dada de baja"
+        dropped_hex = "#4f46e5"
+        active_hex = "#94a3b8"
+    else:
+        majority_status = "activa"
+        active_hex = "#4f46e5"
+        finished_hex = "#94a3b8"
+        
+    title_composition = f"La trayectoria está mayormente {majority_status}."
+
+    top_year = max(workshops_by_year.items(), key=lambda x: x[1])[0] if workshops_by_year else "-"
+    title_cohort = f"La cohorte {top_year} concentra los talleres."
 
     rows_full: list[list[str]] = []
     for wid, total in ranked_workshops:
@@ -285,56 +556,34 @@ def build_dashboard_pdf_bytes(
         c,
         page_w,
         page_h,
-        "Reporte Global del Dashboard",
-        f"Rango {range_key} | Ano {year or 'Todos'} | Estado {status or 'Todos'}",
+        "Reporte de gestión",
+        f"Rango {range_key} | Año {year or 'Todos'} | Estado {status or 'Todos'}",
         accent_hex="#4f46e5",
         margin_x=x,
     )
-    y = draw_kpi_strip(c, x, y, content_w, kpis, accent_hex="#4f46e5")
-    y = draw_insight_panel(c, x, y, content_w, "Narrativa ejecutiva", insight_lines, accent_hex="#4f46e5")
-    y = draw_section_heading(c, x, y, content_w, "Pulso temporal", "Demanda vs traccion operativa en los ultimos 12 meses.")
-
-    gap = 14
-    left_w = (content_w * 0.64) - (gap / 2)
-    right_w = content_w - left_w - gap
-    right_x = x + left_w + gap
-
-    left_y_end = draw_dual_line_chart(
+    y = draw_narrative_callout(
         c,
         x=x,
         y=y,
-        width=left_w,
-        height=166,
+        width=content_w,
+        headline=narrative_headline,
+        supporting_text=narrative_support,
+        accent_hex="#4f46e5",
+    )
+    y = draw_kpi_strip(c, x, y, content_w, kpis, accent_hex="#4f46e5")
+    y = draw_section_divider(c, x, y, content_w)
+    y = draw_dual_line_chart(
+        c,
+        x=x,
+        y=y,
+        width=content_w,
+        height=180,
         labels=[str(r.get("label", "")) for r in enroll_series],
         primary=enroll_values,
         secondary=comm_values,
         primary_label="Inscripciones",
         secondary_label="Comunicaciones",
         accent_hex="#4f46e5",
-    )
-    right_y = draw_stacked_composition_bar(
-        c,
-        x=right_x,
-        y=y,
-        width=right_w,
-        title="Composicion de trayectoria",
-        segments=[
-            ("Activos", active, "#64748b"),
-            ("Finalizados", finished, "#4f46e5"),
-            ("Bajas", dropped, "#94a3b8"),
-        ],
-    )
-    right_y = draw_lollipop_rank_chart(
-        c,
-        x=right_x,
-        y=right_y + 2,
-        width=right_w,
-        title="Top talleres por demanda",
-        rows=rank_rows[:5],
-        label_key="label",
-        value_key="value",
-        accent_hex="#4f46e5",
-        max_rows=5,
     )
     draw_page_footer(c, page_w, page_h, "Reporte Global Dashboard", 1, margin_x=x)
 
@@ -343,35 +592,47 @@ def build_dashboard_pdf_bytes(
         c,
         page_w,
         page_h,
-        "Cobertura y capacidad operativa",
-        "Profundizacion por talleres, cohortes y estructura del sistema",
+        "Análisis por composición y ranking",
+        "Detalle de demanda por taller y distribución por cohorte",
         accent_hex="#4f46e5",
         margin_x=x,
     )
-    y = draw_section_heading(c, x, y, content_w, "Comparativas estructurales", "Ranking por demanda y distribucion por cohorte.")
-
-    left_w = (content_w * 0.58) - (gap / 2)
-    right_w = content_w - left_w - gap
+    y = draw_section_divider(c, x, y, content_w)
+    gap = 22
+    left_w = (content_w - gap) / 2
+    right_w = left_w
     right_x = x + left_w + gap
     left_y = draw_lollipop_rank_chart(
         c,
         x=x,
         y=y,
         width=left_w,
-        title="Ranking de talleres",
+        title=title_rank,
         rows=rank_rows,
         label_key="label",
         value_key="value",
         accent_hex="#4f46e5",
         max_rows=8,
     )
-    right_y = draw_highlighted_bar_chart(
+    right_y = draw_stacked_composition_bar(
         c,
         x=right_x,
         y=y,
         width=right_w,
-        title="Talleres por cohorte",
-        subtitle="Distribucion anual",
+        title=title_composition,
+        segments=[
+            ("Activos", active, active_hex),
+            ("Finalizados", finished, finished_hex),
+            ("Bajas", dropped, dropped_hex),
+        ],
+    )
+    right_y = draw_highlighted_bar_chart(
+        c,
+        x=right_x,
+        y=right_y - 8,
+        width=right_w,
+        title=title_cohort,
+        subtitle="Distribución anual",
         rows=year_rows,
         value_key="value",
         label_key="label",
@@ -380,30 +641,15 @@ def build_dashboard_pdf_bytes(
         label_col_w=42,
         value_col_w=24,
     )
-    right_y = draw_highlighted_bar_chart(
-        c,
-        x=right_x,
-        y=right_y + 4,
-        width=right_w,
-        title="Comunicaciones mensuales",
-        subtitle="Seguimiento operativo por mes",
-        rows=comm_series[-8:],
-        value_key="value",
-        label_key="label",
-        highlight_idx=7,
-        accent_hex="#4f46e5",
-        label_col_w=40,
-        value_col_w=24,
-    )
 
     y = min(left_y, right_y) - 2
-    y = draw_section_heading(c, x, y, content_w, "Detalle de talleres", "Inscripciones y participantes unicos por taller.")
+    y = draw_section_divider(c, x, y, content_w)
     y = draw_minimal_table(
         c,
         x=x,
         y=y,
         width=content_w,
-        columns=["Taller", "Ano", "Estado", "Insc/Part"],
+        columns=["Taller", "Año", "Estado", "Insc/Part"],
         rows=rows_full,
         max_rows=10,
         col_ratios=[0.45, 0.15, 0.20, 0.20],
@@ -415,7 +661,7 @@ def build_dashboard_pdf_bytes(
         c,
         page_w,
         page_h,
-        "Anexo global",
+        "Anexo",
         "Inventario completo de talleres ordenado por demanda",
         accent_hex="#4f46e5",
         margin_x=x,
@@ -425,11 +671,11 @@ def build_dashboard_pdf_bytes(
         x,
         y,
         content_w,
-        "Lectura metodologica",
+        "Nota metodológica",
         [
             "Consolida talleres, participantes, inscripciones y comunicaciones en una sola lectura.",
-            "Prioriza comparabilidad temporal, composicion y ranking para decisiones de gestion.",
-            "El anexo preserva el detalle operativo para auditoria y seguimiento.",
+            "Prioriza comparabilidad temporal, composición y ranking para decisiones de gestión.",
+            "El anexo preserva el detalle operativo para auditoría y seguimiento.",
         ],
         accent_hex="#4f46e5",
     )
@@ -438,7 +684,7 @@ def build_dashboard_pdf_bytes(
         x=x,
         y=y,
         width=content_w,
-        columns=["Taller", "Ano", "Estado", "Insc/Part"],
+        columns=["Taller", "Año", "Estado", "Insc/Part"],
         rows=rows_full,
         max_rows=34,
         col_ratios=[0.45, 0.15, 0.20, 0.20],

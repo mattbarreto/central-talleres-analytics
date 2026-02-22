@@ -1,21 +1,19 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
   const store = window.DashboardState;
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-  };
+  const esc = UI.esc;
 
   async function render(opts) {
-    if (!UI.Card || !store || !opts?.root) return false;
+    if (!UI.Card || !store || !esc || !opts?.root) return false;
     const root = opts.root;
     const overview = opts.overview || {};
     const profiles = opts.profiles || [];
+    const kpiDeltas = opts.kpiDeltas || {};
     const mode = opts.mode === 'advanced' ? 'advanced' : 'summary';
     const filters = opts.filters || { q: '', role: 'all', year: '', wstatus: 'all' };
     const years = opts.years || [];
     const rows = mode === 'advanced' ? profiles.slice(0, 40) : profiles.slice(0, 12);
+    const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const topStaff = (overview.top_active_staff || []).slice(0, 6).map((r) => ({ label: r.name, value: r.workshops_count || 0 }));
     const topWorkshops = (overview.top_workshops_by_enrollments || []).slice(0, 6).map((r) => ({ label: r.workshop_name, value: r.total_enrollments || 0 }));
@@ -82,10 +80,10 @@
             collapsible: true,
             collapsed: Boolean(store.state.collapsed.team_summary),
             content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'ttotal', label: 'Equipo total', value: String(overview.team_total || 0), delta: '0%', trend: 'Dotación' })}
-              ${UI.KpiCard({ id: 'tactive', label: 'Perfiles activos', value: String(overview.active_staff || 0), delta: '0%', trend: 'En actividad' })}
-              ${UI.KpiCard({ id: 'tteachers', label: 'Docentes', value: String(overview.teachers_total || 0), delta: '0%', trend: 'Capacitación' })}
-              ${UI.KpiCard({ id: 'tcoord', label: 'Coordinación', value: String(overview.coordinators_total || 0), delta: '0%', trend: 'Gestión' })}
+              ${UI.KpiCard({ id: 'ttotal', label: 'Equipo total', value: String(overview.team_total || 0), delta: delta('team_total'), trend: 'Dotación' })}
+              ${UI.KpiCard({ id: 'tactive', label: 'Perfiles activos', value: String(overview.active_staff || 0), delta: delta('active_staff'), trend: 'En actividad' })}
+              ${UI.KpiCard({ id: 'tteachers', label: 'Docentes', value: String(overview.teachers_total || 0), delta: delta('teachers_total'), trend: 'Capacitación' })}
+              ${UI.KpiCard({ id: 'tcoord', label: 'Coordinación', value: String(overview.coordinators_total || 0), delta: delta('coordinators_total'), trend: 'Gestión' })}
             </div>`
           })}
 
@@ -149,5 +147,6 @@
 
   window.TeamPage = { render };
 })();
+
 
 

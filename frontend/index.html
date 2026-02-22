@@ -1,9 +1,18 @@
 <!doctype html>
-<html lang="es">
+<html
+  lang="es"
+  data-app-author="Matias Barreto"
+  data-app-website="https://matiasbarreto.com"
+  data-app-repo="https://github.com/mattbarreto/central-talleres-analytics"
+  data-app-version="v2026.02.22"
+  data-app-release="Hardening seguridad + auditoria global"
+  data-app-stack="FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS"
+>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Central de Talleres</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2316364f'/%3E%3Cpath d='M12 23 32 13l20 10-20 10zM22 34v8c0 4 4 7 10 7s10-3 10-7v-8l-10 5z' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/css/tokens.css">
   <link rel="stylesheet" href="/static/styles.css">
   <link rel="stylesheet" href="/static/css/dashboard.css">
@@ -136,148 +145,11 @@
       <button id="mobile-toggle" class="mobile-toggle" type="button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#i-menu"></use></svg></button>
 
       <section id="view-dashboard" class="view-section">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Panel</h2>
-            <p class="page-subtitle">Seguimiento general de talleres y actividad</p>
-          </div>
-          <div class="page-header-actions">
-            <div class="dashboard-view-switch">
-              <button class="switch-btn" type="button" data-dashboard-mode="summary">Resumen</button>
-              <button class="switch-btn" type="button" data-dashboard-mode="advanced">Avanzada</button>
-            </div>
-            <button id="btn-open-advanced" class="btn btn-secondary" type="button">Ir a vista avanzada</button>
-          </div>
-        </header>
-        <div class="page-body dashboard-body">
-          <article class="card dashboard-context-card">
-            <div class="dashboard-context-row">
-              <p id="dashboard-context" class="muted">Seleccioná filtros para contextualizar las métricas.</p>
-            </div>
-          </article>
-
-          <section class="card">
-            <h3 class="section-title">Filtros</h3>
-            <div class="dashboard-filters-grid">
-              <div class="filter-group">
-                <label class="form-label" for="filter-year">Año</label>
-                <select id="filter-year" name="dashboard_year" class="form-select"></select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-status">Estado</label>
-                <select id="filter-status" name="dashboard_status" class="form-select">
-                  <option value="">Todos</option>
-                  <option value="planned">Planificado</option>
-                  <option value="active">Activo</option>
-                  <option value="finished">Finalizado</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-workshop">Taller</label>
-                <select id="filter-workshop" name="dashboard_workshop" class="form-select"></select>
-              </div>
-            </div>
-          </section>
-
-          <section class="metrics-grid">
-            <article class="card metric-card accent"><span class="metric-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-workshops"></use></svg></span><div class="metric-label">Total de Talleres</div><div id="metric-workshops" class="metric-value">0</div></article>
-            <article class="card metric-card success"><span class="metric-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-participants"></use></svg></span><div class="metric-label">Total de Participantes</div><div id="metric-participants" class="metric-value">0</div></article>
-            <article class="card metric-card info"><span class="metric-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-enrollments"></use></svg></span><div class="metric-label">Total de Inscripciones</div><div id="metric-enrollments" class="metric-value">0</div></article>
-            <article class="card metric-card warning"><span class="metric-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-communications"></use></svg></span><div class="metric-label">Comunicaciones Enviadas</div><div id="metric-communications" class="metric-value">0</div></article>
-          </section>
-
-          <section id="workshop-metrics-grid" class="summary-grid"></section>
-          <section id="dashboard-story" class="cards-grid"></section>
-
-          <section id="dashboard-advanced" class="dashboard-advanced hidden">
-            <div class="advanced-tabs">
-              <button class="advanced-tab" type="button" data-advanced-tab="status">Estado</button>
-              <button class="advanced-tab" type="button" data-advanced-tab="trends">Tendencias</button>
-              <button class="advanced-tab" type="button" data-advanced-tab="recent">Recientes</button>
-            </div>
-            <article id="advanced-status-section" class="card"></article>
-            <article id="trends-card" class="card"><div id="trends-body"></div></article>
-            <article id="recent-workshops-card" class="card"><div id="recent-workshops-body"></div></article>
-          </section>
-        </div>
+        <div class="page-body dashboard-body"></div>
       </section>
 
       <section id="view-insights" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Insights</h2>
-            <p class="page-subtitle">Analítica y narrativa de datos institucional</p>
-          </div>
-          <div class="page-header-actions insights-header-actions">
-            <div class="dashboard-view-switch">
-              <button class="switch-btn" type="button" data-insights-mode="summary">Resumen</button>
-              <button class="switch-btn" type="button" data-insights-mode="advanced">Avanzada</button>
-            </div>
-            <div class="insights-export-actions">
-              <button id="btn-insights-export" class="btn btn-secondary" type="button">Exportar</button>
-              <button id="btn-insights-export-json" class="btn btn-secondary" type="button">JSON</button>
-              <button id="btn-insights-print" class="btn btn-secondary" type="button">Imprimir</button>
-            </div>
-          </div>
-        </header>
-        <div class="page-body" id="view-insights-body">
-          <section class="card">
-            <div class="insights-filters-grid">
-              <div class="filter-group">
-                <label class="form-label" for="insights-period">Periodo</label>
-                <select id="insights-period" name="insights_period" class="form-select">
-                  <option value="monthly">Mensual</option>
-                  <option value="quarterly">Trimestral</option>
-                  <option value="semesterly">Semestral</option>
-                  <option value="yearly">Anual</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="insights-workshop">Taller</label>
-                <select id="insights-workshop" name="insights_workshop" class="form-select"></select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="insights-start-date">Desde</label>
-                <input id="insights-start-date" name="insights_start_date" class="form-input" type="date">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="insights-end-date">Hasta</label>
-                <input id="insights-end-date" name="insights_end_date" class="form-input" type="date">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="insights-report-period">Reporte</label>
-                <select id="insights-report-period" name="insights_report_period" class="form-select">
-                  <option value="monthly">Mensual</option>
-                  <option value="quarterly">Trimestral</option>
-                  <option value="semesterly">Semestral</option>
-                  <option value="yearly">Anual</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="insights-journey-participant">Camino de persona</label>
-                <select id="insights-journey-participant" name="insights_journey_participant" class="form-select"></select>
-              </div>
-              <button id="btn-insights-apply" class="btn btn-primary insights-apply-btn" type="button">Aplicar filtros</button>
-              <button id="btn-insights-open-journey" class="btn btn-secondary" type="button">Abrir camino</button>
-            </div>
-          </section>
-
-          <section id="insights-kpis" class="summary-grid"></section>
-          <section id="insights-comparisons" class="cards-grid"></section>
-          <section id="insights-story" class="cards-grid"></section>
-
-          <section id="insights-advanced" class="hidden">
-            <article id="insights-funnel-card" class="card"></article>
-            <article id="insights-series" class="card"></article>
-            <article id="insights-alerts" class="card"></article>
-            <article id="insights-distributions" class="cards-grid"></article>
-            <article id="insights-retention" class="card"></article>
-            <article id="insights-workshops-ranking" class="card"></article>
-            <article id="insights-staff-ranking" class="card"></article>
-            <article id="insights-participants-ranking" class="card"></article>
-            <article id="insights-definitions" class="card"></article>
-          </section>
-        </div>
+        <div class="page-body"></div>
       </section>
 
       <section id="view-workshops" class="view-section hidden">
@@ -297,7 +169,7 @@
             <div class="table-toolbar">
               <div class="search-input">
                 <label class="sr-only" for="search-workshops">Buscar taller</label>
-                <input id="search-workshops" name="workshops_search" class="form-input" type="search" placeholder="Buscar taller…">
+                <input id="search-workshops" name="workshops_search" class="form-input" type="search" placeholder="Buscar taller...">
               </div>
               <div class="filter-group">
                 <label class="form-label" for="workshops-density">Densidad</label>
@@ -357,7 +229,7 @@
             <div class="table-toolbar">
               <div class="search-input">
                 <label class="sr-only" for="search-participants">Buscar participantes</label>
-                <input id="search-participants" name="participants_search" class="form-input" type="search" placeholder="Buscar por DNI, email o apellido…">
+                <input id="search-participants" name="participants_search" class="form-input" type="search" placeholder="Buscar por DNI, email o apellido...">
               </div>
               <div class="filter-group">
                 <label class="form-label" for="participants-search-mode">Modo</label>
@@ -478,7 +350,7 @@
             <div class="table-toolbar">
               <div class="search-input">
                 <label class="sr-only" for="search-comms">Buscar comunicaciones</label>
-                <input id="search-comms" name="communications_search" class="form-input" type="search" placeholder="Buscar por asunto o contenido…">
+                <input id="search-comms" name="communications_search" class="form-input" type="search" placeholder="Buscar por asunto o contenido...">
               </div>
               <div class="filter-group">
                 <label class="form-label" for="filter-comms-workshop">Taller</label>
@@ -507,7 +379,7 @@
             <div class="table-toolbar">
               <div class="search-input">
                 <label class="sr-only" for="search-team">Buscar equipo</label>
-                <input id="search-team" name="team_search" class="form-input" type="search" placeholder="Buscar por nombre, email o teléfono…">
+                <input id="search-team" name="team_search" class="form-input" type="search" placeholder="Buscar por nombre, email o teléfono...">
               </div>
               <div class="filter-group">
                 <label class="form-label" for="filter-team-role">Rol</label>
@@ -572,30 +444,31 @@
 
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="/static/js/ui/state.js"></script>
-  <script src="/static/js/ui/components.js"></script>
-  <script src="/static/js/ui/dialogs.js"></script>
-  <script src="/static/js/ui/report_jobs.js"></script>
-  <script src="/static/js/core/hash_router.js"></script>
-  <script src="/static/js/core/app_shell.js"></script>
-  <script src="/static/js/core/table_utils.js"></script>
-  <script src="/static/js/core/session_shell.js"></script>
-  <script src="/static/js/core/view_utils.js"></script>
-  <script src="/static/js/core/route_state.js"></script>
-  <script src="/static/js/core/view_shell.js"></script>
-  <script src="/static/js/core/view_loader.js"></script>
-  <script src="/static/js/pages/dashboard.js"></script>
-  <script src="/static/js/pages/participants.js"></script>
-  <script src="/static/js/pages/team.js"></script>
-  <script src="/static/js/pages/insights.js"></script>
-  <script src="/static/js/pages/workshops.js"></script>
-  <script src="/static/js/pages/enrollments.js"></script>
-  <script src="/static/js/pages/communications.js"></script>
-  <script src="/static/js/pages/admins.js"></script>
-  <script src="/static/js/core/app_runtime.js"></script>
-  <script src="/static/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0" integrity="sha384-cVMg8E3QFwTvGCDuK+ET4PD341jF3W8nO1auiXfuZNQkzbUUiBGLsIQUE+b1mxws" crossorigin="anonymous"></script>
+  <script defer src="/static/js/ui/state.js"></script>
+  <script defer src="/static/js/ui/components.js"></script>
+  <script defer src="/static/js/ui/charts.js"></script>
+  <script defer src="/static/js/ui/report_jobs.js"></script>
+  <script defer src="/static/js/core/hash_router.js"></script>
+  <script defer src="/static/js/core/table_utils.js"></script>
+  <script defer src="/static/js/core/view_utils.js"></script>
+  <script defer src="/static/js/core/route_state.js"></script>
+  <script defer src="/static/js/core/view_shell.js"></script>
+  <script defer src="/static/js/core/view_loader.js"></script>
+  <script defer src="/static/js/pages/dashboard.js"></script>
+  <script defer src="/static/js/pages/participants.js"></script>
+  <script defer src="/static/js/pages/team.js"></script>
+  <script defer src="/static/js/pages/insights.js"></script>
+  <script defer src="/static/js/pages/workshops.js"></script>
+  <script defer src="/static/js/pages/enrollments.js"></script>
+  <script defer src="/static/js/pages/communications.js"></script>
+  <script defer src="/static/js/pages/admins.js"></script>
+  <script defer src="/static/js/core/app_bootstrap.js"></script>
+  <script defer src="/static/js/core/app_runtime.js"></script>
 </body>
 </html>
+
 
 
 

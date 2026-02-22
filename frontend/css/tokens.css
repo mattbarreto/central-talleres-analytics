@@ -31,5 +31,13 @@
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
+
+  /* Paleta categorica (colorblind-friendly) para charts */
+  --chart-1: #4c72b0;
+  --chart-2: #dd8452;
+  --chart-3: #55a868;
+  --chart-4: #c44e52;
+  --chart-5: #8172b3;
+  --chart-6: #937860;
 }
 

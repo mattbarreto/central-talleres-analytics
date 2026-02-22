@@ -1,11 +1,16 @@
-﻿(function () {
-  const { Card, KpiCard, Section, TableCard, ChartCard, EmptyState, Skeleton, Button, icon } = window.DashboardUI || {};
+(function () {
+  const UI = window.DashboardUI || {};
+  const {
+    Card, KpiCard, Section, TableCard, ChartCard, ChartCanvasCard, EmptyState, Skeleton, Button, icon,
+  } = UI;
   const store = window.DashboardState;
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
+  const charts = window.DashboardCharts;
+  const viewState = {
+    recentPage: 1,
+    recentPageSize: 8,
   };
+
+  const esc = UI.esc;
 
   function toDate(value) {
     if (!value) return null;
@@ -18,15 +23,28 @@
     return d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(d) : '-';
   }
 
-  function inRange(dateValue, rangeKey) {
-    if (!rangeKey || rangeKey === 'all') return true;
+  function rangeDays(rangeKey) {
+    if (rangeKey === '7d') return 7;
+    if (rangeKey === '30d') return 30;
+    if (rangeKey === '90d') return 90;
+    return 0;
+  }
+
+  function periodWindow(rangeKey, offset = 0) {
+    const days = rangeDays(rangeKey);
+    if (!days) return null;
+    const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    const to = new Date(endOfToday.getTime() - (offset * days * 24 * 60 * 60 * 1000));
+    const from = new Date(to.getTime() - (days * 24 * 60 * 60 * 1000));
+    return { from, to };
+  }
+
+  function inWindow(dateValue, windowDef) {
+    if (!windowDef) return true;
     const d = toDate(dateValue);
     if (!d) return false;
-    const now = new Date();
-    const days = rangeKey === '7d' ? 7 : rangeKey === '30d' ? 30 : rangeKey === '90d' ? 90 : 0;
-    if (!days) return true;
-    const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
-    return d >= from;
+    return d >= windowDef.from && d < windowDef.to;
   }
 
   function monthlyBars(rows, dateKey = 'created_at') {
@@ -53,10 +71,15 @@
     return new Set(items).size;
   }
 
-  function delta(current, previous) {
-    if (!previous) return '0%';
-    const pct = Math.round(((current - previous) / previous) * 100);
-    return `${pct > 0 ? '+' : ''}${pct}%`;
+  function delta(current, previous, comparable = true) {
+    if (!comparable) return '0%';
+    const cur = Number(current) || 0;
+    const prev = Number(previous) || 0;
+    if (prev === 0) return cur > 0 ? '+100%' : '0%';
+    const pct = ((cur - prev) / prev) * 100;
+    if (charts?.formatDelta) return charts.formatDelta(pct);
+    const rounded = Math.round(pct * 10) / 10;
+    return `${rounded > 0 ? '+' : ''}${rounded}%`;
   }
 
   function mockData() {
@@ -69,29 +92,63 @@
     };
   }
 
-  function filterData(allData, dashboardFilters) {
+  function filterData(allData, dashboardFilters, rangeKey) {
     const { workshops, communications, enrollments } = allData;
-    const range = store?.state?.filters?.range || '30d';
-    const filteredWorkshops = workshops.filter((w) => {
+    const currentWindow = periodWindow(rangeKey, 0);
+    const previousWindow = periodWindow(rangeKey, 1);
+
+    const baseWorkshops = workshops.filter((w) => {
       if (dashboardFilters.year && String(w.cohort_year) !== String(dashboardFilters.year)) return false;
       if (dashboardFilters.status && w.status !== dashboardFilters.status) return false;
       if (dashboardFilters.workshop && String(w.id) !== String(dashboardFilters.workshop)) return false;
-      return inRange(w.created_at, range);
+      return true;
     });
-    const workshopIds = new Set(filteredWorkshops.map((w) => w.id));
-    const filteredEnrollments = enrollments.filter((e) => workshopIds.has(e.workshop_id) && inRange(e.created_at, range));
-    const filteredCommunications = communications.filter((c) => workshopIds.has(c.workshop_id) && inRange(c.created_at, range));
-    return { filteredWorkshops, filteredEnrollments, filteredCommunications };
+
+    const baseWorkshopIds = new Set(baseWorkshops.map((w) => w.id));
+    const currentWorkshops = baseWorkshops.filter((w) => inWindow(w.created_at, currentWindow));
+    const previousWorkshops = baseWorkshops.filter((w) => inWindow(w.created_at, previousWindow));
+
+    const currentEnrollments = enrollments.filter((e) => baseWorkshopIds.has(e.workshop_id) && inWindow(e.created_at, currentWindow));
+    const previousEnrollments = enrollments.filter((e) => baseWorkshopIds.has(e.workshop_id) && inWindow(e.created_at, previousWindow));
+
+    const currentCommunications = communications.filter((c) => baseWorkshopIds.has(c.workshop_id) && inWindow(c.created_at, currentWindow));
+    const previousCommunications = communications.filter((c) => baseWorkshopIds.has(c.workshop_id) && inWindow(c.created_at, previousWindow));
+
+    return {
+      baseWorkshops,
+      currentWorkshops,
+      previousWorkshops,
+      currentEnrollments,
+      previousEnrollments,
+      currentCommunications,
+      previousCommunications,
+    };
+  }
+
+  function topWorkshopBars(workshops, enrollments, limit = 8) {
+    const names = new Map(workshops.map((w) => [String(w.id), w.name]));
+    const totals = new Map();
+    enrollments.forEach((e) => {
+      const key = String(e.workshop_id || '');
+      totals.set(key, (totals.get(key) || 0) + 1);
+    });
+    return Array.from(totals.entries())
+      .map(([workshopId, total]) => ({
+        label: names.get(workshopId) || 'Taller',
+        value: total,
+      }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, limit);
   }
 
   function explainKpi(kpiId) {
     const dict = {
-      workshops: 'Cantidad de talleres según los filtros globales. Ayuda a ver volumen de oferta.',
-      participants: 'Personas únicas con al menos una inscripción en el período filtrado.',
-      enrollments: 'Total de inscripciones registradas. Mide tracción operativa.',
-      active: 'Inscripciones activas actualmente. Mide actividad vigente.',
-      finished: 'Inscripciones finalizadas. Mide resultados cerrados y potencial certificación.',
-      communications: 'Mensajes enviados relacionados a los talleres filtrados.',
+      workshops: 'Cantidad de talleres en el rango activo comparada contra el período inmediato anterior.',
+      participants: 'Personas únicas con al menos una inscripción durante el rango activo.',
+      enrollments: 'Total de inscripciones registradas en el período filtrado.',
+      active: 'Inscripciones activas registradas en el período filtrado.',
+      finished: 'Inscripciones finalizadas registradas en el período filtrado.',
+      communications: 'Comunicaciones registradas en el período filtrado.',
     };
     return dict[kpiId] || 'Indicador del panel.';
   }
@@ -119,9 +176,15 @@
 
   async function render(opts) {
     const root = opts.root;
-    if (!root || !window.DashboardUI || !store) return false;
+    if (!root || !store || !esc || !window.DashboardUI) return false;
+    let renderHost = root.querySelector('[data-dashboard-render-host="1"]');
+    if (!renderHost) {
+      root.innerHTML = '<div data-dashboard-render-host="1"></div>';
+      renderHost = root.querySelector('[data-dashboard-render-host="1"]');
+    }
 
-    root.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${Skeleton({ lines: 6 })}</div></div>`;
+    charts?.destroyRootCharts?.(renderHost);
+    renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${Skeleton({ lines: 6 })}</div></div>`;
 
     let data = {
       workshops: opts.workshops || [],
@@ -135,37 +198,82 @@
     const isAdvanced = opts.dashboardMode === 'advanced';
     const filters = opts.dashboardFilters || { year: '', status: '', workshop: '' };
     const activeRange = store.state.filters.range || '30d';
-    const computed = filterData(data, filters);
-    const active = computed.filteredEnrollments.filter((e) => e.status === 'active').length;
-    const finished = computed.filteredEnrollments.filter((e) => e.status === 'finished').length;
-    const prevEnrollments = Math.max(computed.filteredEnrollments.length - 2, 0);
-    const prevComms = Math.max(computed.filteredCommunications.length - 1, 0);
-    const participantIds = computed.filteredEnrollments.map((e) => e.participant_id);
+    const comparablePeriod = rangeDays(activeRange) > 0;
+    const computed = filterData(data, filters, activeRange);
+
+    const active = computed.currentEnrollments.filter((e) => e.status === 'active').length;
+    const finished = computed.currentEnrollments.filter((e) => e.status === 'finished').length;
+    const dropped = computed.currentEnrollments.filter((e) => e.status === 'dropped').length;
+    const prevActive = computed.previousEnrollments.filter((e) => e.status === 'active').length;
+    const prevFinished = computed.previousEnrollments.filter((e) => e.status === 'finished').length;
+    const prevDropped = computed.previousEnrollments.filter((e) => e.status === 'dropped').length;
+
+    const participantIds = computed.currentEnrollments.map((e) => e.participant_id);
+    const prevParticipantIds = computed.previousEnrollments.map((e) => e.participant_id);
 
     const kpis = [
-      { id: 'workshops', label: 'Talleres', value: computed.filteredWorkshops.length, delta: delta(computed.filteredWorkshops.length, Math.max(computed.filteredWorkshops.length - 1, 0)), trend: 'Oferta activa' },
-      { id: 'participants', label: 'Participantes únicos', value: uniqCount(participantIds), delta: delta(uniqCount(participantIds), Math.max(uniqCount(participantIds) - 1, 0)), trend: 'Base activa' },
-      { id: 'enrollments', label: 'Inscripciones', value: computed.filteredEnrollments.length, delta: delta(computed.filteredEnrollments.length, prevEnrollments), trend: 'Flujo operativo' },
-      { id: 'active', label: 'Activos', value: active, delta: delta(active, Math.max(active - 1, 0)), trend: 'En curso' },
-      { id: 'finished', label: 'Finalizados', value: finished, delta: delta(finished, Math.max(finished - 1, 0)), trend: 'Cierre' },
-      { id: 'communications', label: 'Comunicaciones', value: computed.filteredCommunications.length, delta: delta(computed.filteredCommunications.length, prevComms), trend: 'Seguimiento' },
-    ];
+      {
+        id: 'workshops',
+        label: 'Talleres',
+        value: computed.currentWorkshops.length,
+        previous: computed.previousWorkshops.length,
+        trend: 'Oferta activa',
+      },
+      {
+        id: 'participants',
+        label: 'Participantes unicos',
+        value: uniqCount(participantIds),
+        previous: uniqCount(prevParticipantIds),
+        trend: 'Base activa',
+      },
+      {
+        id: 'enrollments',
+        label: 'Inscripciones',
+        value: computed.currentEnrollments.length,
+        previous: computed.previousEnrollments.length,
+        trend: 'Flujo operativo',
+      },
+      {
+        id: 'active',
+        label: 'Activos',
+        value: active,
+        previous: prevActive,
+        trend: 'En curso',
+      },
+      {
+        id: 'finished',
+        label: 'Finalizados',
+        value: finished,
+        previous: prevFinished,
+        trend: 'Cierre',
+      },
+      {
+        id: 'communications',
+        label: 'Comunicaciones',
+        value: computed.currentCommunications.length,
+        previous: computed.previousCommunications.length,
+        trend: 'Seguimiento',
+      },
+    ].map((kpi) => ({
+      ...kpi,
+      delta: delta(kpi.value, kpi.previous, comparablePeriod),
+    }));
 
     const chips = [
-      activeRange !== 'all' ? `<span class="dash-chip">Rango: ${esc(activeRange)}</span>` : '',
+      activeRange !== 'all' ? `<span class="dash-chip">Rango: ${esc(activeRange)}</span>` : '<span class="dash-chip">Rango completo</span>',
       filters.year ? `<span class="dash-chip">Año: ${esc(filters.year)}</span>` : '',
       filters.status ? `<span class="dash-chip">Estado: ${esc(filters.status)}</span>` : '',
       filters.workshop ? '<span class="dash-chip">Taller específico</span>' : '',
     ].filter(Boolean).join('');
 
-    const movements = [...computed.filteredWorkshops.map((w) => ({
+    const movements = [...computed.currentWorkshops.map((w) => ({
       label: `Taller: ${esc(w.name)}`,
       date: w.created_at,
       meta: `${w.cohort_year} - ${w.status}`,
-    })), ...computed.filteredCommunications.map((c) => ({
+    })), ...computed.currentCommunications.map((c) => ({
       label: `Comunicación: ${esc(c.subject)}`,
       date: c.created_at,
-      meta: 'Envío registrado',
+      meta: 'Envio registrado',
     }))].sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0));
 
     const movementsToShow = movements.slice(0, store.state.rowsToShow);
@@ -174,17 +282,17 @@
       : EmptyState({ title: 'Sin actividad reciente', message: 'No hubo movimientos en el rango actual.' });
 
     const alerts = [];
-    if (computed.filteredWorkshops.some((w) => w.status === 'planned')) alerts.push('Hay talleres planificados pendientes de inicio.');
-    if (!computed.filteredCommunications.length) alerts.push('No hay comunicaciones enviadas en el período.');
+    if (computed.currentWorkshops.some((w) => w.status === 'planned')) alerts.push('Hay talleres planificados pendientes de inicio.');
+    if (!computed.currentCommunications.length) alerts.push('No hay comunicaciones enviadas en el período.');
     if (finished < active) alerts.push('Hay más activos que finalizados: revisar cierres.');
+    if (dropped > prevDropped && comparablePeriod) alerts.push('Las bajas subieron respecto al período anterior.');
 
     const alertsHtml = alerts.length
       ? `<div class="dash-helper-note">${alerts.map((a) => `<div>${icon('insights')} ${esc(a)}</div>`).join('')}</div>`
       : '<div class="dash-helper-note">Sin alertas críticas para este período.</div>';
 
-    const recentRows = computed.filteredWorkshops
+    const recentRows = computed.currentWorkshops
       .sort((a, b) => (toDate(b.created_at)?.getTime() || 0) - (toDate(a.created_at)?.getTime() || 0))
-      .slice(0, 12)
       .map((w) => ({
         id: w.id,
         name: esc(w.name),
@@ -192,11 +300,35 @@
         status: esc(w.status),
         created: dateLabel(w.created_at),
       }));
+    const recentTotalPages = Math.max(1, Math.ceil(recentRows.length / viewState.recentPageSize));
+    if (viewState.recentPage > recentTotalPages) viewState.recentPage = recentTotalPages;
+    const recentStart = (viewState.recentPage - 1) * viewState.recentPageSize;
+    const recentPageRows = recentRows.slice(recentStart, recentStart + viewState.recentPageSize);
+    const recentPagination = recentRows.length > viewState.recentPageSize
+      ? `
+        <div class="dash-table-pager">
+          <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-recent-page="prev" ${viewState.recentPage <= 1 ? 'disabled' : ''}>Anterior</button>
+          <span>Página ${viewState.recentPage} de ${recentTotalPages}</span>
+          <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-recent-page="next" ${viewState.recentPage >= recentTotalPages ? 'disabled' : ''}>Siguiente</button>
+        </div>
+      `
+      : '';
+
+    const enrollmentTrendRows = monthlyBars(computed.currentEnrollments, 'created_at');
+    const communicationTrendRows = monthlyBars(computed.currentCommunications, 'created_at');
+    const statusRows = [
+      { label: 'Activos', value: active },
+      { label: 'Finalizados', value: finished },
+      { label: 'Bajas', value: dropped },
+    ];
+    const rankingRows = topWorkshopBars(computed.baseWorkshops, computed.currentEnrollments, 8);
+
+    const chartCard = ChartCanvasCard || ChartCard;
 
     const summarySection = Section({
       key: 'summary',
       title: 'Resumen',
-      description: 'Señales clave para decidir rápido.',
+      description: 'KPIs comparados contra el período inmediato anterior.',
       collapsible: true,
       collapsed: store.state.collapsed.summary,
       content: `<div class="dash-kpis">${kpis.map((k) => KpiCard({ id: k.id, label: k.label, value: String(k.value), delta: k.delta, trend: k.trend })).join('')}</div>`,
@@ -205,13 +337,43 @@
     const operationsSection = Section({
       key: 'operations',
       title: 'Actividad y Operación',
-      description: isAdvanced ? 'Tendencias, actividad reciente y pendientes.' : 'Vista ejecutiva con foco en tendencia y alertas.',
+      description: isAdvanced ? 'Tendencias, composición y ranking operativo.' : 'Vista ejecutiva con foco en tendencias y estado.',
       collapsible: true,
       collapsed: store.state.collapsed.operations,
       content: `
         <div class="dash-grid">
-          <div class="dash-col-6">${ChartCard({ title: 'Tendencia de inscripciones', subtitle: 'Últimos 6 meses', rows: monthlyBars(computed.filteredEnrollments, 'created_at') })}</div>
-          ${isAdvanced ? `<div class="dash-col-6">${ChartCard({ title: 'Tendencia de comunicaciones', subtitle: 'Últimos 6 meses', rows: monthlyBars(computed.filteredCommunications, 'created_at') })}</div>` : ''}
+          <div class="dash-col-6">${chartCard({
+            title: 'Tendencia de inscripciones',
+            subtitle: 'Últimos 6 meses',
+            chartId: 'dash-chart-enrollments',
+            ariaLabel: 'Serie temporal de inscripciones de los últimos 6 meses',
+            rows: enrollmentTrendRows,
+            valueLabel: 'Inscripciones',
+          })}</div>
+          <div class="dash-col-6">${chartCard({
+            title: 'Estado de inscripciones',
+            subtitle: 'Distribución del período activo',
+            chartId: 'dash-chart-status',
+            ariaLabel: 'Distribución de estados de inscripciones',
+            rows: statusRows,
+            valueLabel: 'Total',
+          })}</div>
+          ${isAdvanced ? `<div class="dash-col-6">${chartCard({
+    title: 'Tendencia de comunicaciones',
+    subtitle: 'Últimos 6 meses',
+    chartId: 'dash-chart-communications',
+    ariaLabel: 'Serie temporal de comunicaciones de los últimos 6 meses',
+    rows: communicationTrendRows,
+    valueLabel: 'Comunicaciones',
+  })}</div>` : ''}
+          ${isAdvanced ? `<div class="dash-col-6">${chartCard({
+    title: 'Top talleres por inscripciones',
+    subtitle: 'Ranking del período activo',
+    chartId: 'dash-chart-top-workshops',
+    ariaLabel: 'Ranking de talleres por cantidad de inscripciones',
+    rows: rankingRows,
+    valueLabel: 'Inscripciones',
+  })}</div>` : ''}
           ${isAdvanced ? `<div class="dash-col-6">${Card({ title: 'Últimos movimientos', body: movementList, footer: movements.length > store.state.rowsToShow ? Button({ variant: 'ghost', size: 'sm', label: 'Ver más', attrs: 'type="button" data-show-more="1"' }) : '' })}</div>` : ''}
           <div class="dash-col-6">${Card({ title: 'Alertas y pendientes', body: alertsHtml })}</div>
         </div>
@@ -225,7 +387,7 @@
       collapsible: true,
       collapsed: store.state.collapsed.recent,
       content: recentRows.length
-        ? TableCard({
+        ? `${TableCard({
           title: 'Talleres recientes',
           columns: [
             { key: 'name', label: 'Nombre' },
@@ -233,13 +395,13 @@
             { key: 'status', label: 'Estado' },
             { key: 'created', label: 'Creado' },
           ],
-          rows: recentRows,
+          rows: recentPageRows,
           rowActions: (row) => Button({ variant: 'ghost', size: 'sm', label: 'Ver detalle', attrs: `type="button" data-workshop-detail="${esc(row.id)}"` }),
-        })
+        })}${recentPagination}`
         : EmptyState({ title: 'Sin talleres en el período', message: 'Ajusta filtros para ver detalle.' }),
     });
 
-    root.innerHTML = `
+    renderHost.innerHTML = `
       <div class="dashboard-v2">
         <div class="dash-container">
           <header class="dash-page-header">
@@ -301,22 +463,59 @@
       </div>
     `;
 
-    root.querySelectorAll('[data-section-toggle]').forEach((btn) => {
+    const chartSpecs = [
+      charts?.makeLineSpec?.({
+        key: 'dash-enroll-line',
+        selector: '#dash-chart-enrollments',
+        rows: enrollmentTrendRows,
+        datasetLabel: 'Inscripciones',
+        yLabel: 'Cantidad',
+      }),
+      charts?.makeDoughnutSpec?.({
+        key: 'dash-status-doughnut',
+        selector: '#dash-chart-status',
+        rows: statusRows,
+      }),
+    ];
+
+    if (isAdvanced) {
+      chartSpecs.push(
+        charts?.makeLineSpec?.({
+          key: 'dash-communications-line',
+          selector: '#dash-chart-communications',
+          rows: communicationTrendRows,
+          datasetLabel: 'Comunicaciones',
+          yLabel: 'Cantidad',
+        }),
+        charts?.makeBarSpec?.({
+          key: 'dash-top-workshops',
+          selector: '#dash-chart-top-workshops',
+          rows: rankingRows,
+          datasetLabel: 'Inscripciones',
+          horizontal: true,
+        }),
+      );
+    }
+
+    charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
+
+    renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.getAttribute('data-section-toggle');
         const collapsed = store.toggleCollapsed(key);
-        const content = root.querySelector(`[data-section-content="${key}"]`);
+        const content = renderHost.querySelector(`[data-section-content="${key}"]`);
         if (content) content.classList.toggle('is-collapsed', collapsed);
         btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
         btn.textContent = collapsed ? 'Expandir' : 'Colapsar';
       });
     });
 
-    root.querySelector('[data-show-more="1"]')?.addEventListener('click', () => {
+    renderHost.querySelector('[data-show-more="1"]')?.addEventListener('click', () => {
       store.setRowsToShow(store.state.rowsToShow + 8);
       render(opts);
     });
-    root.querySelectorAll('[data-workshop-detail]').forEach((btn) => {
+
+    renderHost.querySelectorAll('[data-workshop-detail]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const workshopId = btn.getAttribute('data-workshop-detail');
         if (!workshopId) return;
@@ -324,37 +523,49 @@
       });
     });
 
-    root.querySelector('[data-filter-apply="1"]')?.addEventListener('click', () => {
+    renderHost.querySelector('[data-filter-apply="1"]')?.addEventListener('click', () => {
       const next = {
-        year: root.querySelector('#dash-year')?.value || '',
-        status: root.querySelector('#dash-status')?.value || '',
-        workshop: root.querySelector('#dash-workshop')?.value || '',
+        year: renderHost.querySelector('#dash-year')?.value || '',
+        status: renderHost.querySelector('#dash-status')?.value || '',
+        workshop: renderHost.querySelector('#dash-workshop')?.value || '',
       };
-      store.setFilter('range', root.querySelector('#dash-range')?.value || '30d');
+      store.setFilter('range', renderHost.querySelector('#dash-range')?.value || '30d');
+      viewState.recentPage = 1;
       opts.onFilterChange?.(next);
     });
 
-    root.querySelector('[data-filter-reset="1"]')?.addEventListener('click', () => {
+    renderHost.querySelector('[data-filter-reset="1"]')?.addEventListener('click', () => {
       store.resetFilters();
+      viewState.recentPage = 1;
       opts.onFilterChange?.({ year: '', status: '', workshop: '' });
     });
 
-    root.querySelector('[data-dashboard-export="1"]')?.addEventListener('click', () => opts.onExport?.());
-    root.querySelector('[data-dashboard-report="1"]')?.addEventListener('click', () => opts.onReport?.());
-    root.querySelector('[data-dashboard-new="1"]')?.addEventListener('click', () => opts.onNewActivity?.());
+    renderHost.querySelectorAll('[data-recent-page]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const action = btn.getAttribute('data-recent-page');
+        if (action === 'prev') viewState.recentPage = Math.max(1, viewState.recentPage - 1);
+        if (action === 'next') viewState.recentPage += 1;
+        render(opts);
+      });
+    });
 
-    root.querySelectorAll('[data-kpi-id]').forEach((node) => {
+    renderHost.querySelector('[data-dashboard-export="1"]')?.addEventListener('click', () => opts.onExport?.());
+    renderHost.querySelector('[data-dashboard-report="1"]')?.addEventListener('click', () => opts.onReport?.());
+    renderHost.querySelector('[data-dashboard-new="1"]')?.addEventListener('click', () => opts.onNewActivity?.());
+
+    renderHost.querySelectorAll('[data-kpi-id]').forEach((node) => {
       node.addEventListener('click', () => {
         const kpiId = node.getAttribute('data-kpi-id');
         store.setSelectedKpi(kpiId);
         const detailRows = kpiId === 'communications'
-          ? computed.filteredCommunications.slice(0, 8).map((c) => `<tr><td>${esc(c.subject)}</td><td>${dateLabel(c.created_at)}</td></tr>`).join('')
-          : computed.filteredEnrollments.slice(0, 8).map((e) => `<tr><td>${esc(e.status)}</td><td>${dateLabel(e.created_at)}</td></tr>`).join('');
+          ? computed.currentCommunications.slice(0, 8).map((c) => `<tr><td>${esc(c.subject)}</td><td>${dateLabel(c.created_at)}</td></tr>`).join('')
+          : computed.currentEnrollments.slice(0, 8).map((e) => `<tr><td>${esc(e.status)}</td><td>${dateLabel(e.created_at)}</td></tr>`).join('');
         const table = `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Detalle</th><th>Fecha</th></tr></thead><tbody>${detailRows || '<tr><td colspan="2">Sin registros</td></tr>'}</tbody></table></div>`;
-        const drawerRoot = root.querySelector('#dash-drawer-root');
+        const drawerRoot = renderHost.querySelector('#dash-drawer-root');
+        const currentKpi = kpis.find((k) => k.id === kpiId);
         drawerRoot.innerHTML = buildDrawer({
-          title: `Detalle KPI: ${kpis.find((k) => k.id === kpiId)?.label || 'Métrica'}`,
-          subtitle: 'Desglose filtrado para lectura operativa',
+          title: `Detalle KPI: ${currentKpi?.label || 'Métrica'}`,
+          subtitle: `Actual: ${currentKpi?.value || 0} | Anterior: ${currentKpi?.previous || 0}`,
           explanation: explainKpi(kpiId),
           table,
         });
@@ -372,5 +583,6 @@
 
   window.DashboardPage = { render };
 })();
+
 
 

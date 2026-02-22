@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-import time
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Literal
 from uuid import UUID
 
@@ -15,11 +14,11 @@ from app.models.participant import Participant
 from app.models.team_member import TeamMember
 from app.models.workshop import Workshop
 from app.models.workshop_staff_assignment import WorkshopStaffAssignment
+from app.services.insights_cache_store import get_cached_payload, set_cached_payload
 
 
 PERIOD = Literal["monthly", "quarterly", "semesterly", "yearly"]
 CACHE_TTL_SECONDS = 60
-INSIGHTS_CACHE: dict[tuple, tuple[float, dict]] = {}
 PERIOD_FILENAME = {
     "monthly": "mensual",
     "quarterly": "trimestral",
@@ -118,7 +117,7 @@ def in_range(value: date | None, start: date | None, end: date | None) -> bool:
 def calculate_age(birth_date: date | None) -> int | None:
     if not birth_date:
         return None
-    today = datetime.utcnow().date()
+    today = datetime.now(UTC).date()
     years = today.year - birth_date.year
     if (today.month, today.day) < (birth_date.month, birth_date.day):
         years -= 1
@@ -174,11 +173,18 @@ def build_insights_payload(
     end_date: date | None,
     workshop_id: UUID | None,
 ):
-    cache_key = (period, start_date, end_date, workshop_id)
-    cached = INSIGHTS_CACHE.get(cache_key)
-    now_ts = time.time()
-    if cached and now_ts - cached[0] < CACHE_TTL_SECONDS:
-        return cached[1]
+    bind_url = str(getattr(getattr(db, "bind", None), "url", "") or "")
+    cache_enabled = ":memory:" not in bind_url
+    if cache_enabled:
+        cached = get_cached_payload(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            workshop_id=workshop_id,
+            ttl_seconds=CACHE_TTL_SECONDS,
+        )
+        if cached:
+            return cached
 
     workshops_q = db.query(
         Workshop.id,
@@ -418,10 +424,14 @@ def build_insights_payload(
         }
         for m in team_members
     }
+    team_members_by_period: defaultdict[str, set[UUID]] = defaultdict(set)
     for a in assignments:
         when = to_date(a.created_at)
         if not in_range(when, start_date, end_date):
             continue
+        period_k, period_label = period_key_and_label(when, period)
+        ensure(period_k, period_label)
+        team_members_by_period[period_k].add(a.team_member_id)
         s = staff_metrics.get(a.team_member_id)
         w = workshops_map.get(a.workshop_id)
         wm = workshop_metrics.get(a.workshop_id)
@@ -434,13 +444,13 @@ def build_insights_payload(
         s["participants_reached"] += wm["enrollments_total"]
         s["attendees_reached"] += wm["attendees_estimated"]
 
-    top_workshops_by_enrollments = sorted(workshop_metrics.values(), key=lambda x: (x["enrollments_total"], x["attendees_estimated"]), reverse=True)[:8]
-    top_workshops_by_attendees = sorted(workshop_metrics.values(), key=lambda x: (x["attendees_estimated"], x["finished_total"]), reverse=True)[:8]
+    top_workshops_by_enrollments = sorted(workshop_metrics.values(), key=lambda x: (x["enrollments_total"], x["attendees_estimated"]), reverse=True)[:200]
+    top_workshops_by_attendees = sorted(workshop_metrics.values(), key=lambda x: (x["attendees_estimated"], x["finished_total"]), reverse=True)[:200]
     top_staff_by_activity = sorted(
         [v for v in staff_metrics.values() if v["workshops_count"] > 0],
         key=lambda x: (x["workshops_count"], x["attendees_reached"], x["participants_reached"]),
         reverse=True,
-    )[:8]
+    )[:100]
     for row in top_staff_by_activity:
         row.pop("_seen", None)
     active_team_members = sum(1 for v in staff_metrics.values() if v["workshops_count"] > 0)
@@ -449,7 +459,7 @@ def build_insights_payload(
         [v for v in participant_metrics.values() if v["workshops_total"] > 0],
         key=lambda x: (x["workshops_total"], x["active_workshops"], x["finished_workshops"]),
         reverse=True,
-    )[:12]
+    )[:200]
 
     series_rows = sorted(series.values(), key=lambda r: r["period_key"] if r["period_key"] != "sin_fecha" else "0000")
     current = series_rows[-1] if series_rows else {}
@@ -477,6 +487,22 @@ def build_insights_payload(
                 "trend": trend,
             }
         )
+    current_period_key = str(current.get("period_key", "") or "")
+    previous_period_key = str(previous.get("period_key", "") or "")
+    current_active_team = len(team_members_by_period.get(current_period_key, set()))
+    previous_active_team = len(team_members_by_period.get(previous_period_key, set()))
+    d, pct, trend = delta(current_active_team, previous_active_team)
+    comparisons.append(
+        {
+            "metric_id": "active_team_members",
+            "label": "Equipo activo",
+            "current": current_active_team,
+            "previous": previous_active_team,
+            "delta": d,
+            "delta_pct": pct,
+            "trend": trend,
+        }
+    )
 
     enrolled_ids = {e.participant_id for e in enrollments if in_range(to_date(e.created_at), start_date, end_date)}
     active_ids = {e.participant_id for e in enrollments if e.status in {"active", "finished"} and in_range(to_date(e.created_at), start_date, end_date)}
@@ -591,5 +617,13 @@ def build_insights_payload(
         "alerts": alerts,
         "metric_definitions": METRIC_DEFINITIONS,
     }
-    INSIGHTS_CACHE[cache_key] = (now_ts, payload)
+    if cache_enabled:
+        set_cached_payload(
+            period=period,
+            start_date=start_date,
+            end_date=end_date,
+            workshop_id=workshop_id,
+            payload=payload,
+            ttl_seconds=CACHE_TTL_SECONDS,
+        )
     return payload

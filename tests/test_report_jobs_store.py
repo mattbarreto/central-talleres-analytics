@@ -47,7 +47,7 @@ class ReportJobStoreTests(unittest.TestCase):
         self.assertIsNotNone(final)
         assert final is not None
         self.assertEqual(final.status, "failed")
-        self.assertIn("boom", final.error or "")
+        self.assertEqual(final.error, "No se pudo generar el reporte")
         self.assertIsNotNone(final.finished_at)
 
     def test_cleanup_old_finished_jobs(self):

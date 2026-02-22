@@ -1,17 +1,15 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-  };
+  const esc = UI.esc;
 
   async function render(opts) {
-    if (!UI.Button || !opts?.root) return false;
+    if (!UI.Button || !esc || !opts?.root) return false;
     const root = opts.root;
     const rows = opts.rows || [];
     const pagination = opts.pagination || '';
     const summary = opts.summary || { total: 0, createdThisMonth: 0, me: 0 };
+    const kpiDeltas = opts.kpiDeltas || {};
+    const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
       ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Correo</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((a) => `<tr><td><strong>${esc(a.email)}</strong>${a.isMe ? ' <span class="dash-chip">Vos</span>' : ''}</td><td>${esc(a.created_at_label || '—')}</td><td class="text-right">${a.isMe ? '<span class="dash-page-subtitle">Sesión actual</span>' : `<button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-delete="${esc(a.id)}" aria-label="Eliminar administrador">${UI.icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table></div>${pagination}`
@@ -36,9 +34,9 @@
             description: 'Estado de cuentas administrativas.',
             collapsible: false,
             content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'a-total', label: 'Administradores', value: String(summary.total || 0), delta: '0%', trend: 'Usuarios' })}
-              ${UI.KpiCard({ id: 'a-month', label: 'Altas del mes', value: String(summary.createdThisMonth || 0), delta: '0%', trend: 'Nuevas cuentas' })}
-              ${UI.KpiCard({ id: 'a-me', label: 'Cuenta actual', value: String(summary.me || 0), delta: '0%', trend: 'Sesión' })}
+              ${UI.KpiCard({ id: 'a-total', label: 'Administradores', value: String(summary.total || 0), delta: delta('total'), trend: 'Usuarios' })}
+              ${UI.KpiCard({ id: 'a-month', label: 'Altas del mes', value: String(summary.createdThisMonth || 0), delta: delta('createdThisMonth'), trend: 'Nuevas cuentas' })}
+              ${UI.KpiCard({ id: 'a-me', label: 'Cuenta actual', value: String(summary.me || 0), delta: delta('me'), trend: 'Sesión' })}
             </div>`
           })}
 
@@ -60,4 +58,5 @@
 
   window.AdminsPage = { render };
 })();
+
 

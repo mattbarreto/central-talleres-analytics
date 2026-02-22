@@ -1,4 +1,4 @@
-import uuid
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ router = APIRouter(tags=["enrollments"])
 
 
 @router.get("/workshops/{workshop_id}/enrollments", response_model=list[EnrollmentOut])
-def list_enrollments(workshop_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
+def list_enrollments(workshop_id: UUID, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
     return crud_enrollment.get_by_workshop(db, workshop_id)
 
 
@@ -24,13 +24,13 @@ def list_enrollments_by_workshops(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_admin),
 ):
-    ids: list[uuid.UUID] = []
+    ids: list[UUID] = []
     for raw_id in (workshop_ids or "").split(","):
         cleaned = raw_id.strip()
         if not cleaned:
             continue
         try:
-            ids.append(uuid.UUID(cleaned))
+            ids.append(UUID(cleaned))
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Workshop ID inválido: {cleaned}")
     if not ids:
@@ -45,9 +45,9 @@ def list_enrollments_by_workshops(
 
 @router.post("/workshops/{workshop_id}/enrollments", response_model=EnrollmentOut)
 def create_enrollment(
-    workshop_id: str, payload: EnrollmentCreate, db: Session = Depends(get_db), _: str = Depends(get_current_admin)
+    workshop_id: UUID, payload: EnrollmentCreate, db: Session = Depends(get_db), _: str = Depends(get_current_admin)
 ):
-    if str(payload.workshop_id) != workshop_id:
+    if payload.workshop_id != workshop_id:
         raise HTTPException(status_code=400, detail="Workshop ID mismatch")
     try:
         return crud_enrollment.create(db, payload)
@@ -58,7 +58,7 @@ def create_enrollment(
 
 @router.put("/enrollments/{enrollment_id}", response_model=EnrollmentOut)
 def update_enrollment(
-    enrollment_id: str, payload: EnrollmentUpdate, db: Session = Depends(get_db), _: str = Depends(get_current_admin)
+    enrollment_id: UUID, payload: EnrollmentUpdate, db: Session = Depends(get_db), _: str = Depends(get_current_admin)
 ):
     obj = crud_enrollment.get(db, enrollment_id)
     if not obj:
@@ -67,7 +67,7 @@ def update_enrollment(
 
 
 @router.delete("/enrollments/{enrollment_id}", response_model=EnrollmentOut)
-def delete_enrollment(enrollment_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
+def delete_enrollment(enrollment_id: UUID, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
     obj = crud_enrollment.remove(db, enrollment_id)
     if not obj:
         raise HTTPException(status_code=404, detail="Enrollment not found")

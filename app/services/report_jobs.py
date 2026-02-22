@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
@@ -12,6 +13,8 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.report_job import ReportJobRecord
+
+logger = logging.getLogger("app.services.report_jobs")
 
 
 @dataclass
@@ -151,15 +154,16 @@ class ReportJobStore:
                 self._prune_expired_locked(db)
                 self._enforce_max_locked(db)
                 db.commit()
-        except Exception as exc:  # pragma: no cover - defensive path
+        except Exception:  # pragma: no cover - defensive path
             finish = self._now()
+            logger.exception("report_job_builder_failed", extra={"job_id": job_id})
             with self._session_factory() as db:
                 self._ensure_schema(db)
                 row = db.query(ReportJobRecord).filter(ReportJobRecord.id == job_id).first()
                 if not row:
                     return
                 row.status = "failed"
-                row.error = str(exc)
+                row.error = "No se pudo generar el reporte"
                 row.finished_at = finish
                 row.updated_at = finish
                 row.expires_at = self._expires_at(finish)

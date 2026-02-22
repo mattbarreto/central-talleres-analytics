@@ -1,7 +1,7 @@
-import uuid
 from datetime import datetime, timezone
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
@@ -11,6 +11,7 @@ from app.models.communication_recipient import CommunicationRecipient
 from app.models.admin import Admin
 from app.models.enrollment import Enrollment
 from app.models.participant import Participant
+from app.services.email_service import send_email
 from app.schemas.communication import CommunicationCreate, CommunicationOut
 from app.schemas.communication_recipient import CommunicationRecipientsSummaryOut, ResendFailedResultOut
 
@@ -19,8 +20,13 @@ router = APIRouter(prefix="/communications", tags=["communications"])
 
 
 @router.get("/", response_model=list[CommunicationOut])
-def list_communications(db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
-    return db.query(Communication).order_by(Communication.created_at.desc()).all()
+def list_communications(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=500, ge=1, le=1000),
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_admin),
+):
+    return db.query(Communication).order_by(Communication.created_at.desc()).offset(skip).limit(limit).all()
 
 
 @router.get("/summary", response_model=list[CommunicationRecipientsSummaryOut])
@@ -47,12 +53,11 @@ def list_communications_summary(db: Session = Depends(get_db), _: str = Depends(
 
 
 @router.get("/workshops/{workshop_id}/emails", response_model=list[str])
-def list_emails(workshop_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
-    wid = uuid.UUID(workshop_id)
+def list_emails(workshop_id: UUID, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
     rows = (
         db.query(Participant.email)
         .join(Enrollment, Enrollment.participant_id == Participant.id)
-        .filter(Enrollment.workshop_id == wid)
+        .filter(Enrollment.workshop_id == workshop_id)
         .all()
     )
     return [r[0] for r in rows]
@@ -60,16 +65,15 @@ def list_emails(workshop_id: str, db: Session = Depends(get_db), _: str = Depend
 
 @router.post("/workshops/{workshop_id}/emails", response_model=CommunicationOut)
 def send_email_to_workshop(
-    workshop_id: str, payload: CommunicationCreate, db: Session = Depends(get_db), admin_email: str = Depends(get_current_admin)
+    workshop_id: UUID, payload: CommunicationCreate, db: Session = Depends(get_db), admin_email: str = Depends(get_current_admin)
 ):
-    if str(payload.workshop_id) != workshop_id:
+    if payload.workshop_id != workshop_id:
         raise HTTPException(status_code=400, detail="Workshop ID mismatch")
 
-    wid = uuid.UUID(workshop_id)
     participants = (
         db.query(Participant)
         .join(Enrollment, Enrollment.participant_id == Participant.id)
-        .filter(Enrollment.workshop_id == wid)
+        .filter(Enrollment.workshop_id == workshop_id)
         .all()
     )
     if not participants:
@@ -90,12 +94,14 @@ def send_email_to_workshop(
     db.flush()
 
     for participant in participants:
+        success, error_message = send_email(payload.subject, payload.body, participant.email)
         db.add(
             CommunicationRecipient(
                 communication_id=communication.id,
                 participant_id=participant.id,
                 email_snapshot=participant.email,
-                status="sent",
+                status="sent" if success else "failed",
+                error_message=error_message,
             )
         )
 
@@ -105,33 +111,37 @@ def send_email_to_workshop(
 
 
 @router.post("/{communication_id}/resend-failed", response_model=ResendFailedResultOut)
-def resend_failed(communication_id: str, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
-    cid = uuid.UUID(communication_id)
-    communication = db.query(Communication).filter(Communication.id == cid).first()
+def resend_failed(communication_id: UUID, db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
+    communication = db.query(Communication).filter(Communication.id == communication_id).first()
     if not communication:
         raise HTTPException(status_code=404, detail="Communication not found")
 
     failed_recipients = (
         db.query(CommunicationRecipient)
-        .filter(CommunicationRecipient.communication_id == cid, CommunicationRecipient.status == "failed")
+        .filter(CommunicationRecipient.communication_id == communication_id, CommunicationRecipient.status == "failed")
         .all()
     )
 
     resent = 0
     for recipient in failed_recipients:
-        recipient.status = "sent"
-        recipient.error_message = None
-        resent += 1
+        success, error_message = send_email(communication.subject, communication.body, recipient.email_snapshot)
+        if success:
+            recipient.status = "sent"
+            recipient.error_message = None
+            resent += 1
+        else:
+            recipient.status = "failed"
+            recipient.error_message = error_message
 
     if resent > 0:
         communication.sent_at = datetime.now(timezone.utc)
 
     remaining_failed = (
         db.query(func.count(CommunicationRecipient.id))
-        .filter(CommunicationRecipient.communication_id == cid, CommunicationRecipient.status == "failed")
+        .filter(CommunicationRecipient.communication_id == communication_id, CommunicationRecipient.status == "failed")
         .scalar()
         or 0
     )
 
     db.commit()
-    return ResendFailedResultOut(communication_id=cid, resent=resent, remaining_failed=remaining_failed)
+    return ResendFailedResultOut(communication_id=communication_id, resent=resent, remaining_failed=remaining_failed)

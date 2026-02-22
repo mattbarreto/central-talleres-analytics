@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 from datetime import date
 from uuid import UUID
 
@@ -22,6 +23,16 @@ from app.services.reporting_service import build_insights_pdf_bytes
 
 
 router = APIRouter(prefix="/insights", tags=["insights"])
+logger = logging.getLogger("app.api.insights")
+
+
+def _sanitize_csv_value(value):
+    if isinstance(value, (int, float)):
+        return value
+    text = str(value or "")
+    if text and text[0] in {"=", "+", "-", "@"}:
+        return f"'{text}"
+    return text
 
 
 @router.get("/overview", response_model=InsightsOverviewOut)
@@ -63,15 +74,27 @@ def insights_report_csv(
     writer = csv.writer(buffer)
     writer.writerow(["seccion", "metrica", "valor"])
     for key, value in payload["kpis"].items():
-        writer.writerow(["indicador_clave", kpi_labels.get(key, key), value])
+        writer.writerow(["indicador_clave", _sanitize_csv_value(kpi_labels.get(key, key)), _sanitize_csv_value(value)])
     for row in payload["series"]:
-        writer.writerow(["serie", row["period_label"], f"inscripciones={row['enrollments']};comunicaciones={row['communications']}"])
+        writer.writerow(
+            [
+                "serie",
+                _sanitize_csv_value(row["period_label"]),
+                _sanitize_csv_value(f"inscripciones={row['enrollments']};comunicaciones={row['communications']}"),
+            ]
+        )
     for row in payload["comparisons"]:
-        writer.writerow(["comparacion", row["label"], f"actual={row['current']};anterior={row['previous']};variacion={row['delta_pct']}%"])
+        writer.writerow(
+            [
+                "comparacion",
+                _sanitize_csv_value(row["label"]),
+                _sanitize_csv_value(f"actual={row['current']};anterior={row['previous']};variacion={row['delta_pct']}%"),
+            ]
+        )
     for step in payload["funnel"]:
-        writer.writerow(["embudo", step["label"], step["total"]])
+        writer.writerow(["embudo", _sanitize_csv_value(step["label"]), _sanitize_csv_value(step["total"])])
     for alert in payload["alerts"]:
-        writer.writerow(["alerta", alert["title"], alert["message"]])
+        writer.writerow(["alerta", _sanitize_csv_value(alert["title"]), _sanitize_csv_value(alert["message"])])
     return Response(
         content=buffer.getvalue(),
         media_type="text/csv; charset=utf-8",
@@ -104,7 +127,8 @@ def insights_report_pdf(
         payload = build_insights_payload(db, period, start_date, end_date, workshop_id)
         pdf_bytes = build_insights_pdf_bytes(payload, period_label=insights_period_label(period))
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("insights_pdf_build_failed", extra={"period": period})
+        raise HTTPException(status_code=500, detail="No se pudo generar el PDF de insights") from exc
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -125,7 +149,8 @@ def create_insights_report_pdf_job(
     try:
         job = report_job_store.create()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
+        logger.exception("insights_report_job_unavailable")
+        raise HTTPException(status_code=503, detail="Sistema de reportes temporalmente no disponible") from exc
     def builder():
         db = SessionLocal()
         try:

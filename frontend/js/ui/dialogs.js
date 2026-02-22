@@ -98,7 +98,7 @@
     const dangerGroup = dangerLabel
       ? `<div class="modal-footer-group modal-footer-group--left"><button type="button" class="btn btn-danger" id="${dangerId}">${dangerLabel}</button></div>`
       : '';
-    return `${dangerGroup}<div class="modal-footer-group"><button type="button" class="btn btn-secondary" onclick="${secondaryAction}">${secondaryLabel}</button><button type="button" class="btn btn-primary" id="${primaryId}">${primaryLabel}</button></div>`;
+    return `${dangerGroup}<div class="modal-footer-group"><button type="button" class="btn btn-secondary" data-inline-click="${secondaryAction}">${secondaryLabel}</button><button type="button" class="btn btn-primary" id="${primaryId}">${primaryLabel}</button></div>`;
   };
 
   const confirmDialog = (message) => new Promise((resolve) => {

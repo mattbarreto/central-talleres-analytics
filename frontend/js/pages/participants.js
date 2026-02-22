@@ -1,11 +1,7 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
   const store = window.DashboardState;
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-  };
+  const esc = UI.esc;
 
   function demoRows(map, labels) {
     const entries = Object.entries(map || {});
@@ -48,12 +44,14 @@
   }
 
   async function render(opts) {
-    if (!UI.Card || !store || !opts?.root) return false;
+    if (!UI.Card || !store || !esc || !opts?.root) return false;
     const root = opts.root;
     const overview = opts.overview || {};
     const profiles = opts.profiles || [];
+    const kpiDeltas = opts.kpiDeltas || {};
     const mode = opts.mode === 'advanced' ? 'advanced' : 'summary';
     const slice = mode === 'advanced' ? profiles.slice(0, 40) : profiles.slice(0, 12);
+    const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const genderLabels = { female: 'Femenino', male: 'Masculino', non_binary: 'No binario', other: 'Otro', undisclosed: 'Sin declarar' };
     const ageLabels = { '0_17': '0-17', '18_24': '18-24', '25_34': '25-34', '35_44': '35-44', '45_54': '45-54', '55_64': '55-64', '65_plus': '65+', unknown: 'Sin dato' };
@@ -114,10 +112,10 @@
             collapsible: true,
             collapsed: Boolean(store.state.collapsed.participants_summary),
             content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'ptotal', label: 'Registradas', value: String(overview.total_participants || 0), delta: '0%', trend: 'Base total' })}
-              ${UI.KpiCard({ id: 'pactive', label: 'Activas', value: String(overview.active_members || 0), delta: '0%', trend: 'En curso' })}
-              ${UI.KpiCard({ id: 'pcert', label: 'Finalizadas', value: String(overview.certifiable_members || 0), delta: '0%', trend: 'Certificables' })}
-              ${UI.KpiCard({ id: 'pinactive', label: 'Inactivas', value: String(overview.inactive_members || 0), delta: '0%', trend: 'Seguimiento' })}
+              ${UI.KpiCard({ id: 'ptotal', label: 'Registradas', value: String(overview.total_participants || 0), delta: delta('total_participants'), trend: 'Base total' })}
+              ${UI.KpiCard({ id: 'pactive', label: 'Activas', value: String(overview.active_members || 0), delta: delta('active_members'), trend: 'En curso' })}
+              ${UI.KpiCard({ id: 'pcert', label: 'Finalizadas', value: String(overview.certifiable_members || 0), delta: delta('certifiable_members'), trend: 'Certificables' })}
+              ${UI.KpiCard({ id: 'pinactive', label: 'Inactivas', value: String(overview.inactive_members || 0), delta: delta('inactive_members'), trend: 'Seguimiento' })}
             </div>`
           })}
 
@@ -187,3 +185,4 @@
 
   window.ParticipantsPage = { render };
 })();
+

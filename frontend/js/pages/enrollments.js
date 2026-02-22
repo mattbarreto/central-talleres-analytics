@@ -1,19 +1,17 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
-  const esc = (value) => {
-    const div = document.createElement('div');
-    div.textContent = String(value ?? '');
-    return div.innerHTML;
-  };
+  const esc = UI.esc;
 
   async function render(opts) {
-    if (!UI.Button || !opts?.root) return false;
+    if (!UI.Button || !esc || !opts?.root) return false;
     const root = opts.root;
     const workshops = opts.workshops || [];
     const selectedWorkshop = opts.selectedWorkshop || '';
     const rows = opts.rows || [];
     const pagination = opts.pagination || '';
     const summary = opts.summary || { total: 0, active: 0, finished: 0, dropped: 0 };
+    const kpiDeltas = opts.kpiDeltas || {};
+    const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
       ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Participante</th><th>Correo</th><th>Estado</th><th>Inscripto</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((e) => `<tr><td><strong>${esc(e.participant_name || 'Desconocido')}</strong></td><td>${esc(e.participant_email || '—')}</td><td>${esc(e.status_label || e.status)}</td><td>${esc(e.created_at_label || '—')}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-e-edit="${esc(e.id)}" data-e-status="${esc(e.status)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-e-delete="${esc(e.id)}">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
@@ -53,10 +51,10 @@
             description: 'Estado de las inscripciones del taller seleccionado.',
             collapsible: false,
             content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'e-total', label: 'Total', value: String(summary.total || 0), delta: '0%', trend: 'Inscripciones' })}
-              ${UI.KpiCard({ id: 'e-active', label: 'Activos', value: String(summary.active || 0), delta: '0%', trend: 'En curso' })}
-              ${UI.KpiCard({ id: 'e-finished', label: 'Finalizados', value: String(summary.finished || 0), delta: '0%', trend: 'Cierres' })}
-              ${UI.KpiCard({ id: 'e-dropped', label: 'Bajas', value: String(summary.dropped || 0), delta: '0%', trend: 'Desvinculación' })}
+              ${UI.KpiCard({ id: 'e-total', label: 'Total', value: String(summary.total || 0), delta: delta('total'), trend: 'Inscripciones' })}
+              ${UI.KpiCard({ id: 'e-active', label: 'Activos', value: String(summary.active || 0), delta: delta('active'), trend: 'En curso' })}
+              ${UI.KpiCard({ id: 'e-finished', label: 'Finalizados', value: String(summary.finished || 0), delta: delta('finished'), trend: 'Cierres' })}
+              ${UI.KpiCard({ id: 'e-dropped', label: 'Bajas', value: String(summary.dropped || 0), delta: delta('dropped'), trend: 'Desvinculación' })}
             </div>`
           }) : UI.EmptyState({ title: 'Seleccioná un taller', message: 'Elegí un taller para ver sus inscripciones.' })}
 
@@ -80,4 +78,5 @@
 
   window.EnrollmentsPage = { render };
 })();
+
 

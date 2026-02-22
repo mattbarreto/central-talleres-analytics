@@ -52,6 +52,28 @@ def _font(sans_bold: bool = False, mono: bool = False) -> str:
     return "EditorialSans" if pdfmetrics and "EditorialSans" in pdfmetrics.getRegisteredFontNames() else "Helvetica"
 
 
+def _wrap_text(c, text: str, max_width: float, font_name: str, font_size: float, max_lines: int = 3) -> list[str]:
+    if not text:
+        return []
+    words = str(text).split()
+    if not words:
+        return []
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        if c.stringWidth(trial, font_name, font_size) <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+            if len(lines) >= max_lines - 1:
+                break
+    if len(lines) < max_lines:
+        lines.append(current)
+    return lines[:max_lines]
+
+
 def draw_pdf_header(c, page_w: float, page_h: float, title: str, subtitle: str, bg_hex: str = "#111827"):
     _ensure_reportlab()
     c.setFillColor(HexColor(bg_hex))
@@ -103,6 +125,53 @@ def draw_story_box(c, x: float, y: float, width: float, lines: list[str], bullet
         c.drawString(x + 10, ly, f"{bullet} {line[:112]}")
         ly -= 12
     return y - box_h - 10
+
+
+def draw_narrative_callout(
+    c,
+    x: float,
+    y: float,
+    width: float,
+    headline: str,
+    supporting_text: str,
+    accent_hex: str = "#4f46e5",
+):
+    _ensure_reportlab()
+    title_font = _font(sans_bold=True)
+    title_size = 15.5
+    max_title_width = max(width - 24, 80)
+    headline_lines = _wrap_text(c, headline, max_title_width, title_font, title_size, max_lines=2)
+
+    body_font = _font()
+    body_size = 9.2
+    support_lines = _wrap_text(c, supporting_text, max(width - 24, 80), body_font, body_size, max_lines=4)
+    if not support_lines:
+        support_lines = [""]
+
+    # Dynamic height: padding + headline lines + gap + support lines + padding
+    box_h = 20 + len(headline_lines) * 17 + 4 + len(support_lines) * 12 + 12
+    box_h = max(box_h, 72)
+
+    c.setFillColor(HexColor("#f8fafc"))
+    c.setStrokeColor(HexColor("#e2e8f0"))
+    c.roundRect(x, y - box_h, width, box_h, 7, stroke=1, fill=1)
+    c.setFillColor(HexColor(accent_hex))
+    c.rect(x, y - box_h, 4, box_h, stroke=0, fill=1)
+
+    c.setFillColor(HexColor("#0f172a"))
+    c.setFont(title_font, title_size)
+    line_y = y - 20
+    for line in headline_lines:
+        c.drawString(x + 12, line_y, line)
+        line_y -= 17
+
+    c.setFillColor(HexColor("#475569"))
+    c.setFont(body_font, body_size)
+    line_y -= 2
+    for line in support_lines:
+        c.drawString(x + 12, line_y, line)
+        line_y -= 12
+    return y - box_h - 14
 
 
 def draw_bar_list(
@@ -245,10 +314,23 @@ def draw_kpi_strip(
     gap = 12
     card_w = (width - gap * (cols - 1)) / max(cols, 1)
     card_h = 70
+
+    def _fit_font(text: str, font_name: str, start_size: float, min_size: float, available_w: float) -> float:
+        size = start_size
+        while size > min_size and c.stringWidth(text, font_name, size) > available_w:
+            size -= 0.5
+        return max(size, min_size)
+
+    def _trend_arrow(delta: float) -> str:
+        if delta > 0:
+            return "▲"
+        if delta < 0:
+            return "▼"
+        return "•"
+
     for i, card in enumerate(cards):
         cx = x + i * (card_w + gap)
-        # Reserve 70% for text and 30% for sparkline to prevent collisions.
-        text_zone_w = max(card_w * 0.70 - 12, 24)
+        text_zone_w = max(card_w * 0.70 - 12, 28)
         spark_w = min(max(card_w * 0.22, 48), max(card_w * 0.30 - 8, 48))
         spark_x = cx + card_w - spark_w - 8
         text_right = cx + text_zone_w
@@ -256,24 +338,26 @@ def draw_kpi_strip(
         c.setStrokeColor(HexColor("#dbe3ef"))
         c.roundRect(cx, y - card_h, card_w, card_h, 6, stroke=1, fill=1)
         c.setFillColor(HexColor("#64748b"))
-        c.setFont(_font(mono=True), 7.8)
+        label_font = _font(mono=True)
+        c.setFont(label_font, 7.8)
         label = str(card.get("label", "")).upper()
-        while label and pdfmetrics and c.stringWidth(label, _font(mono=True), 7.8) > (text_zone_w - 4):
-            label = label[:-1]
-        c.drawString(cx + 8, y - 11, label)
+        label_lines = _wrap_text(c, label, text_zone_w - 4, label_font, 7.8, max_lines=2)
+        c.drawString(cx + 8, y - 11, label_lines[0] if label_lines else "")
+        if len(label_lines) > 1:
+            c.drawString(cx + 8, y - 19, label_lines[1])
         c.setFillColor(HexColor("#0f172a"))
-        c.setFont(_font(sans_bold=True), 24)
+        value_font = _font(sans_bold=True)
         value_txt = str(card.get("value", 0))
-        while value_txt and pdfmetrics and c.stringWidth(value_txt, _font(sans_bold=True), 24) > (text_zone_w - 4):
-            value_txt = value_txt[:-1]
+        value_size = _fit_font(value_txt, value_font, start_size=24, min_size=14, available_w=text_zone_w - 4)
+        c.setFont(value_font, value_size)
         c.drawRightString(text_right, y - 31, value_txt)
         delta = float(card.get("delta_pct", 0) or 0)
         delta_hex = "#059669" if delta > 0 else "#b91c1c" if delta < 0 else "#64748b"
-        delta_txt = f"{'+' if delta > 0 else ''}{round(delta, 1)}% vs prev."
+        delta_txt = f"{_trend_arrow(delta)} {'+' if delta > 0 else ''}{round(delta, 1)}% vs prev."
         c.setFillColor(HexColor(delta_hex))
-        c.setFont(_font(), 8)
-        while delta_txt and pdfmetrics and c.stringWidth(delta_txt, _font(), 8) > (text_zone_w - 4):
-            delta_txt = delta_txt[:-1]
+        delta_font = _font()
+        delta_size = _fit_font(delta_txt, delta_font, start_size=8.2, min_size=7.0, available_w=text_zone_w - 4)
+        c.setFont(delta_font, delta_size)
         c.drawRightString(text_right, y - 48, delta_txt)
         _sparkline(
             c,
@@ -290,20 +374,20 @@ def draw_kpi_strip(
 def draw_insight_panel(c, x: float, y: float, width: float, title: str, bullets: list[str], accent_hex: str = "#4f46e5"):
     _ensure_reportlab()
     box_h = 74
-    c.setFillColor(HexColor("#f8fafc"))
-    c.setStrokeColor(HexColor("#e2e8f0"))
-    c.roundRect(x, y - box_h, width, box_h, 6, stroke=1, fill=1)
+    
+    # Cleaner editorial look: no background, just the accent bar
     c.setFillColor(HexColor(accent_hex))
-    c.rect(x, y - box_h, 4, box_h, stroke=0, fill=1)
-    c.setFillColor(HexColor(accent_hex))
+    c.rect(x, y - box_h, 3, box_h, stroke=0, fill=1)
+    
+    c.setFillColor(HexColor("#0f172a"))
     c.setFont(_font(sans_bold=True), 11.1)
     c.drawString(x + 10, y - 15, title)
     c.setFont(_font(), 9.2)
-    ly = y - 30.5
+    ly = y - 32
     for bullet in bullets[:3]:
         c.setFillColor(HexColor("#334155"))
         c.drawString(x + 12, ly, f"- {str(bullet)[:118]}")
-        ly -= 14
+        ly -= 15
     return y - box_h - 12
 
 
@@ -376,18 +460,23 @@ def draw_minimal_table(
     _ensure_reportlab()
     ratios = col_ratios or [0.45, 0.15, 0.20, 0.20]
     col_w = [width * r for r in ratios]
+    
+    # Table Header Background
+    c.setFillColor(HexColor("#f8fafc"))
+    c.rect(x - 4, y - 10, width + 8, 22, stroke=0, fill=1)
+    
     c.setFillColor(HexColor("#0f172a"))
-    c.setFont(_font(sans_bold=True), 9)
+    c.setFont(_font(sans_bold=True), 10.5)
     cx = x
     for i, col in enumerate(columns):
         c.drawString(cx + 2, y, col)
         cx += col_w[i]
-    y -= 7
+    y -= 10
     c.setStrokeColor(HexColor("#cbd5e1"))
-    c.setLineWidth(0.8)
+    c.setLineWidth(1.2)
     c.line(x, y, x + width, y)
-    y -= 12
-    c.setFont(_font(), 8.3)
+    y -= 14
+    c.setFont(_font(), 9.2)
     for row in rows[:max_rows]:
         cx = x
         c.setFillColor(HexColor("#334155"))
@@ -395,10 +484,10 @@ def draw_minimal_table(
             trunc = 46 if i == 0 else 18
             c.drawString(cx + 2, y, str(value)[:trunc])
             cx += col_w[i]
-        y -= 11.5
+        y -= 14
         c.setStrokeColor(HexColor("#e2e8f0"))
-        c.setLineWidth(0.35)
-        c.line(x, y + 2.7, x + width, y + 2.7)
+        c.setLineWidth(0.5)
+        c.line(x, y + 4, x + width, y + 4)
         if y < 40:
             break
     return y
@@ -426,6 +515,20 @@ def draw_section_heading(
         c.drawString(x, y - 10, subtitle[:96])
         return y - 20
     return y - 12
+
+
+def draw_section_divider(
+    c,
+    x: float,
+    y: float,
+    width: float,
+    line_hex: str = "#e2e8f0",
+):
+    _ensure_reportlab()
+    c.setStrokeColor(HexColor(line_hex))
+    c.setLineWidth(0.6)
+    c.line(x, y - 4, x + width, y - 4)
+    return y - 14
 
 
 def draw_dual_line_chart(
@@ -477,20 +580,20 @@ def draw_dual_line_chart(
         return gy + (v / vmax) * gh
 
     c.setStrokeColor(HexColor("#94a3b8"))
-    c.setLineWidth(1.1)
+    c.setLineWidth(1.4)
     for i in range(1, n):
         c.line(_px(i - 1), _py(s_vals[i - 1]), _px(i), _py(s_vals[i]))
     c.setFillColor(HexColor("#94a3b8"))
     for i in range(n):
-        c.circle(_px(i), _py(s_vals[i]), 1.2, stroke=0, fill=1)
+        c.circle(_px(i), _py(s_vals[i]), 1.8, stroke=0, fill=1)
 
     c.setStrokeColor(HexColor(accent_hex))
-    c.setLineWidth(1.6)
+    c.setLineWidth(2.2)
     for i in range(1, n):
         c.line(_px(i - 1), _py(p_vals[i - 1]), _px(i), _py(p_vals[i]))
     c.setFillColor(HexColor(accent_hex))
     for i in range(n):
-        c.circle(_px(i), _py(p_vals[i]), 1.6, stroke=0, fill=1)
+        c.circle(_px(i), _py(p_vals[i]), 2.8, stroke=0, fill=1)
 
     c.setFillColor(HexColor("#0f172a"))
     c.setFont(_font(), 7.6)
@@ -546,7 +649,7 @@ def draw_stacked_composition_bar(
         c.setFillColor(HexColor("#334155"))
         c.drawString(x + 10, y - 6, f"{label}: {int(value)} ({pct:.1f}%)")
         y -= 11
-    return y - 4
+    return y - 12
 
 
 def draw_lollipop_rank_chart(
@@ -563,34 +666,34 @@ def draw_lollipop_rank_chart(
 ):
     _ensure_reportlab()
     c.setFillColor(HexColor("#0f172a"))
-    c.setFont(_font(sans_bold=True), 10.5)
+    c.setFont(_font(sans_bold=True), 11.5)
     c.drawString(x, y, title)
-    y -= 16
+    y -= 20
     label_w = max(width * 0.46, 96)
     axis_x = x + label_w
     chart_w = max(width - label_w - 22, 40)
     vals = [float(r.get(value_key, 0) or 0) for r in rows[:max_rows]]
     vmax = max(vals or [1.0])
     c.setStrokeColor(HexColor("#e2e8f0"))
-    c.setLineWidth(0.7)
+    c.setLineWidth(1.8)
     c.line(axis_x, y + 4, axis_x + chart_w, y + 4)
     for r in rows[:max_rows]:
         label = str(r.get(label_key, "-"))
         val = float(r.get(value_key, 0) or 0)
         dot_x = axis_x + (val / vmax) * chart_w if vmax else axis_x
         c.setFillColor(HexColor("#475569"))
-        c.setFont(_font(), 8.1)
+        c.setFont(_font(), 9.0)
         c.drawString(x, y, label[:28])
         c.setStrokeColor(HexColor("#cbd5e1"))
-        c.setLineWidth(1.2)
+        c.setLineWidth(1.5)
         c.line(axis_x, y + 3, dot_x, y + 3)
         c.setFillColor(HexColor(accent_hex))
-        c.circle(dot_x, y + 3, 2.0, stroke=0, fill=1)
+        c.circle(dot_x, y + 3, 2.5, stroke=0, fill=1)
         c.setFillColor(HexColor("#0f172a"))
-        c.setFont(_font(mono=True), 7.7)
-        c.drawString(dot_x + 4, y, str(int(val)))
-        y -= 12
-    return y - 4
+        c.setFont(_font(mono=True), 8.5)
+        c.drawString(dot_x + 6, y, str(int(val)))
+        y -= 15
+    return y - 8
 
 
 def draw_page_footer(c, page_w: float, page_h: float, label: str, page_no: int, margin_x: float = 28):
@@ -601,4 +704,4 @@ def draw_page_footer(c, page_w: float, page_h: float, label: str, page_no: int, 
     c.setFillColor(HexColor("#94a3b8"))
     c.setFont(_font(mono=True), 7.4)
     c.drawString(margin_x, 14, label)
-    c.drawRightString(page_w - margin_x, 14, f"Pag. {page_no}")
+    c.drawRightString(page_w - margin_x, 14, f"Pág. {page_no}")

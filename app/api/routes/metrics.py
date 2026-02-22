@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -19,6 +21,7 @@ from app.services.reporting_service import build_dashboard_pdf_bytes
 
 
 router = APIRouter(prefix="/metrics", tags=["metrics"])
+logger = logging.getLogger("app.api.metrics")
 
 
 def _range_start(range_key: str | None):
@@ -29,7 +32,7 @@ def _range_start(range_key: str | None):
     return datetime.now(UTC) - timedelta(days=days)
 
 
-def _dashboard_dataset(db: Session, range_key: str, year: str | None, status: str | None, workshop_id: str | None):
+def _dashboard_dataset(db: Session, range_key: str, year: str | None, status: str | None, workshop_id: UUID | None):
     q = db.query(
         Workshop.id,
         Workshop.name,
@@ -47,8 +50,6 @@ def _dashboard_dataset(db: Session, range_key: str, year: str | None, status: st
     if workshop_id:
         q = q.filter(Workshop.id == workshop_id)
     rs = _range_start(range_key)
-    if rs is not None:
-        q = q.filter(Workshop.created_at >= rs)
 
     workshops = q.order_by(Workshop.created_at.desc()).all()
     workshop_ids = [w.id for w in workshops]
@@ -96,7 +97,7 @@ def dashboard_report_pdf(
     range: str = Query(default="30d"),
     year: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    workshop_id: str | None = Query(default=None),
+    workshop_id: UUID | None = Query(default=None),
     db: Session = Depends(get_db),
     _: str = Depends(get_current_admin),
 ):
@@ -104,7 +105,8 @@ def dashboard_report_pdf(
     try:
         pdf_bytes = build_dashboard_pdf_bytes(workshops, enrollments, communications, range, year, status)
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.exception("dashboard_pdf_build_failed", extra={"range": range, "year": year, "status": status})
+        raise HTTPException(status_code=500, detail="No se pudo generar el PDF del dashboard") from exc
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -118,13 +120,14 @@ def create_dashboard_report_pdf_job(
     range: str = Query(default="30d"),
     year: str | None = Query(default=None),
     status: str | None = Query(default=None),
-    workshop_id: str | None = Query(default=None),
+    workshop_id: UUID | None = Query(default=None),
     _: str = Depends(get_current_admin),
 ):
     try:
         job = report_job_store.create()
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Sistema de reportes no disponible: {exc}") from exc
+        logger.exception("dashboard_report_job_unavailable")
+        raise HTTPException(status_code=503, detail="Sistema de reportes temporalmente no disponible") from exc
     def builder():
         db = SessionLocal()
         try:

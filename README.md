@@ -155,19 +155,6 @@ El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` 
 
 La plataforma está diseñada para ser desplegada mediante **Docker**. El stack incluye un proxy reverso (Traefik) y soporte para bases de datos PostgreSQL gestionadas (como Supabase).
 
-Consulta [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) para el runbook detallado.
-
----
-
-## Documentación
-
-| Documento | Contenido |
-|---|---|
-| [`docs/USO.md`](docs/USO.md) | Guía de uso de la aplicación |
-| [`docs/DESARROLLO.md`](docs/DESARROLLO.md) | Guía para desarrolladores |
-| [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) | Guía de despliegue |
-| [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Configuración de Supabase |
-
 ---
 
 ## Estado del proyecto

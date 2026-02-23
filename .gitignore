@@ -43,4 +43,8 @@ dist/
 build/
 *.egg-info/
 
+# Private documentation and infrastructure details
+docs/
+
 claves.txt 
+ 

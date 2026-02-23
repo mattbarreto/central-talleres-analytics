@@ -18,7 +18,7 @@
   <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+  <svg aria-hidden="true" class="icon-sprite">
     <symbol id="i-brand" viewBox="0 0 24 24"><path fill="currentColor" d="M3 7.5 12 3l9 4.5-9 4.5zm4.5 4.7v3.6c0 1.5 2 2.7 4.5 2.7s4.5-1.2 4.5-2.7v-3.6L12 14.5z"/></symbol>
     <symbol id="i-dashboard" viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v5h-8zM3 13h5v8H3zm7 0h11v8H10z"/></symbol>
     <symbol id="i-insights" viewBox="0 0 24 24"><path fill="currentColor" d="M4 19h16v2H4zm2-3h2V9H6zm5 0h2V5h-2zm5 0h2v-7h-2z"/></symbol>
@@ -40,6 +40,7 @@
     <symbol id="i-empty-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12m8.7 13.3 2.8 2.8-1.4 1.4-2.8-2.8z"/></symbol>
     <symbol id="i-menu" viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></symbol>
     <symbol id="i-chevron-left" viewBox="0 0 24 24"><path fill="currentColor" d="m14.7 5.3 1.4 1.4L10.8 12l5.3 5.3-1.4 1.4L8 12z"/></symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h8v2H7v14h6v2H5zm9.6 3.6 1.4-1.2L22 12l-6 6.6-1.4-1.2 3.7-4H9v-2h9.3z"/></symbol>
   </svg>
   <a class="skip-link" href="#main-content">Saltar al contenido principal</a>
 
@@ -61,7 +62,7 @@
           <input id="login-password" name="password" type="password" class="form-input" autocomplete="current-password" required>
         </div>
         <p id="login-error" class="login-error" role="alert"></p>
-        <button id="login-btn" type="submit" class="btn btn-primary" style="width:100%">Iniciar sesión</button>
+        <button id="login-btn" type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
       </form>
     </div>
   </section>
@@ -133,8 +134,16 @@
           </div>
         </div>
         <div class="sidebar-meta-compact" aria-label="Información del sistema">
-          <span id="meta-version" class="project-meta-badge">v2026.02.20</span>
+          <span id="meta-version" class="project-meta-badge">v2026.02.22</span>
           <button id="btn-about-system" type="button" class="btn btn-ghost btn-sm about-link">Acerca de</button>
+        </div>
+        <div class="sidebar-quick-actions" aria-label="Accesos rápidos">
+          <button id="about-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action" aria-label="Acerca del sistema" title="Acerca del sistema">
+            <svg class="ui-icon" aria-hidden="true"><use href="#i-insights"></use></svg>
+          </button>
+          <button id="logout-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action" aria-label="Cerrar sesión" title="Cerrar sesión">
+            <svg class="ui-icon" aria-hidden="true"><use href="#i-logout"></use></svg>
+          </button>
         </div>
       </footer>
     </aside>
@@ -153,280 +162,28 @@
       </section>
 
       <section id="view-workshops" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Talleres</h2>
-            <p class="page-subtitle">Gestión de oferta y estado de cursos</p>
-          </div>
-          <div class="page-header-actions">
-            <button id="btn-add-workshop" class="btn btn-primary" type="button">+ Nuevo taller</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section id="workshops-overview" class="summary-grid"></section>
-          <section id="workshops-story" class="cards-grid"></section>
-          <section class="table-container">
-            <div class="table-toolbar">
-              <div class="search-input">
-                <label class="sr-only" for="search-workshops">Buscar taller</label>
-                <input id="search-workshops" name="workshops_search" class="form-input" type="search" placeholder="Buscar taller...">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="workshops-density">Densidad</label>
-                <select id="workshops-density" name="workshops_density" class="form-select">
-                  <option value="regular">Regular</option>
-                  <option value="compact">Compacta</option>
-                </select>
-              </div>
-            </div>
-            <div id="workshops-table-body"></div>
-          </section>
-
-          <section id="workshop-detail" class="card detail-panel hidden">
-            <div class="detail-header">
-              <div>
-                <h3 id="detail-title" class="detail-title"></h3>
-                <div id="detail-meta" class="detail-meta"></div>
-              </div>
-              <div class="detail-actions">
-                <button id="detail-copy-emails" class="btn btn-secondary" type="button">Copiar correos</button>
-                <button id="detail-send-email" class="btn btn-primary" type="button">Enviar comunicación</button>
-              </div>
-            </div>
-            <div id="detail-tabs" class="tabs">
-              <button class="tab" data-tab="overview" type="button">Resumen</button>
-              <button class="tab" data-tab="participants" type="button">Participantes</button>
-              <button class="tab" data-tab="enrollments" type="button">Inscripciones</button>
-              <button class="tab" data-tab="communications" type="button">Comunicaciones</button>
-              <button class="tab" data-tab="metrics" type="button">Métricas</button>
-            </div>
-            <div id="detail-body"></div>
-          </section>
-        </div>
+        <div class="page-body"></div>
       </section>
 
-      <section id="view-participants" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Participantes</h2>
-            <p class="page-subtitle">Base histórica y actual de personas del centro</p>
-          </div>
-          <div class="page-header-actions">
-            <div class="dashboard-view-switch">
-              <button class="switch-btn" type="button" data-participants-mode="summary">Resumen</button>
-              <button class="switch-btn" type="button" data-participants-mode="advanced">Avanzada</button>
-            </div>
-            <button id="btn-add-participant" class="btn btn-primary" type="button">+ Nuevo</button>
-            <button id="btn-open-participants-advanced" class="btn btn-secondary" type="button">Ir a vista avanzada</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section id="participants-overview" class="summary-grid"></section>
-          <section id="participants-demographics" class="cards-grid"></section>
-          <section id="participants-story" class="cards-grid"></section>
 
-          <section id="participants-advanced" class="table-container hidden">
-            <div class="table-toolbar">
-              <div class="search-input">
-                <label class="sr-only" for="search-participants">Buscar participantes</label>
-                <input id="search-participants" name="participants_search" class="form-input" type="search" placeholder="Buscar por DNI, email o apellido...">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="participants-search-mode">Modo</label>
-                <select id="participants-search-mode" name="participants_search_mode" class="form-select">
-                  <option value="explore">Explorar base</option>
-                  <option value="filter">Filtrar resultados</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="participants-view-mode">Vista</label>
-                <select id="participants-view-mode" name="participants_view_mode" class="form-select">
-                  <option value="person">Por persona</option>
-                  <option value="workshop">Por taller</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-workshop">Taller</label>
-                <select id="filter-participant-workshop" name="participants_workshop" class="form-select"></select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-status">Estado</label>
-                <select id="filter-participant-status" name="participants_status" class="form-select">
-                  <option value="all">Todos</option>
-                  <option value="enrolled">Inscripto</option>
-                  <option value="active">Activo</option>
-                  <option value="finished">Finalizado</option>
-                  <option value="dropped">Baja</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-population">Población</label>
-                <select id="filter-participant-population" name="participants_population" class="form-select">
-                  <option value="all">Toda la base</option>
-                  <option value="current">Actuales</option>
-                  <option value="historical">Históricos</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-engagement">Actividad</label>
-                <select id="filter-participant-engagement" name="participants_engagement" class="form-select">
-                  <option value="">Todas</option>
-                  <option value="low">Baja</option>
-                  <option value="medium">Media</option>
-                  <option value="high">Alta</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-gender">Género</label>
-                <select id="filter-participant-gender" name="participants_gender" class="form-select">
-                  <option value="">Todos</option>
-                  <option value="female">Mujer</option>
-                  <option value="male">Varón</option>
-                  <option value="non_binary">No binario</option>
-                  <option value="other">Otro</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-age-min">Edad mín.</label>
-                <input id="filter-participant-age-min" name="participants_age_min" type="number" min="0" class="form-input" placeholder="0">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-participant-age-max">Edad máx.</label>
-                <input id="filter-participant-age-max" name="participants_age_max" type="number" min="0" class="form-input" placeholder="99">
-              </div>
-              <button id="btn-participants-run-query" class="btn btn-primary" type="button">Buscar</button>
-              <button id="btn-participants-clear-filters" class="btn btn-secondary" type="button">Limpiar</button>
-              <button id="btn-export-participants-csv" class="btn btn-secondary" type="button">Exportar CSV</button>
-              <button id="btn-import-participants-csv" class="btn btn-secondary" type="button">Importar CSV</button>
-              <input id="participants-csv-file" type="file" accept=".csv,text/csv" hidden>
-            </div>
-            <div id="participants-results-gate" class="empty-state">Ingresá un criterio o filtro para cargar resultados.</div>
-            <div id="participants-results-summary" class="participants-query-summary hidden"></div>
-            <div id="participants-table-body" class="hidden"></div>
-            <div id="participants-grouped-body" class="participants-groups hidden"></div>
-          </section>
-        </div>
+      <section id="view-participants" class="view-section hidden">
+        <div class="page-body"></div>
       </section>
 
       <section id="view-enrollments" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Inscripciones</h2>
-            <p class="page-subtitle">Administración por taller</p>
-          </div>
-          <div class="page-header-actions">
-            <button id="btn-add-enrollment" class="btn btn-primary" type="button">+ Inscribir</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section id="enrollments-story" class="cards-grid"></section>
-          <section class="table-container">
-            <div class="table-toolbar">
-              <div class="filter-group">
-                <label class="form-label" for="enrollment-workshop-select">Taller</label>
-                <select id="enrollment-workshop-select" name="enrollment_workshop" class="form-select"></select>
-              </div>
-            </div>
-            <div id="enrollments-summary" class="summary-grid"></div>
-            <div id="enrollments-table-body"></div>
-          </section>
-        </div>
+        <div class="page-body"></div>
       </section>
 
       <section id="view-communications" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Comunicaciones</h2>
-            <p class="page-subtitle">Mensajes y trazabilidad de envíos</p>
-          </div>
-          <div class="page-header-actions">
-            <button id="btn-send-comm" class="btn btn-primary" type="button">Nueva comunicación</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section id="communications-overview" class="summary-grid"></section>
-          <section id="communications-story" class="cards-grid"></section>
-          <section class="table-container">
-            <div class="table-toolbar">
-              <div class="search-input">
-                <label class="sr-only" for="search-comms">Buscar comunicaciones</label>
-                <input id="search-comms" name="communications_search" class="form-input" type="search" placeholder="Buscar por asunto o contenido...">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-comms-workshop">Taller</label>
-                <select id="filter-comms-workshop" name="communications_workshop" class="form-select"></select>
-              </div>
-            </div>
-            <div id="communications-table-body"></div>
-          </section>
-        </div>
+        <div class="page-body"></div>
       </section>
 
       <section id="view-team" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Equipo</h2>
-            <p class="page-subtitle">Docentes y coordinación por actividad e impacto</p>
-          </div>
-          <div class="page-header-actions">
-            <button id="btn-add-team-member" class="btn btn-primary" type="button">+ Nuevo perfil</button>
-            <button id="btn-team-apply" class="btn btn-secondary" type="button">Aplicar</button>
-            <button id="btn-team-refresh" class="btn btn-ghost" type="button">Actualizar</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section class="table-container">
-            <div class="table-toolbar">
-              <div class="search-input">
-                <label class="sr-only" for="search-team">Buscar equipo</label>
-                <input id="search-team" name="team_search" class="form-input" type="search" placeholder="Buscar por nombre, email o teléfono...">
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-team-role">Rol</label>
-                <select id="filter-team-role" name="team_role" class="form-select">
-                  <option value="all">Todos</option>
-                  <option value="teacher">Docente</option>
-                  <option value="coordinator">Coordinación</option>
-                </select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-team-year">Año</label>
-                <select id="filter-team-year" name="team_year" class="form-select"></select>
-              </div>
-              <div class="filter-group">
-                <label class="form-label" for="filter-team-workshop-status">Estado del taller</label>
-                <select id="filter-team-workshop-status" name="team_workshop_status" class="form-select">
-                  <option value="all">Todos</option>
-                  <option value="planned">Planificado</option>
-                  <option value="active">Activo</option>
-                  <option value="finished">Finalizado</option>
-                </select>
-              </div>
-            </div>
-          </section>
-
-          <section id="team-overview-metrics" class="summary-grid"></section>
-          <section id="team-overview-rankings" class="cards-grid"></section>
-          <section id="team-story" class="cards-grid"></section>
-          <section id="team-table-body" class="table-container"></section>
-        </div>
+        <div class="page-body"></div>
       </section>
 
       <section id="view-admins" class="view-section hidden">
-        <header class="page-header">
-          <div>
-            <h2 class="page-title">Administradores</h2>
-            <p class="page-subtitle">Gestión de accesos del sistema</p>
-          </div>
-          <div class="page-header-actions">
-            <button id="btn-add-admin" class="btn btn-primary" type="button">+ Nuevo admin</button>
-          </div>
-        </header>
-        <div class="page-body">
-          <section id="admins-overview" class="summary-grid"></section>
-          <section id="admins-story" class="cards-grid"></section>
-          <section id="admins-table-body" class="table-container"></section>
-        </div>
+        <div class="page-body"></div>
       </section>
     </main>
   </div>
@@ -445,7 +202,6 @@
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0" integrity="sha384-cVMg8E3QFwTvGCDuK+ET4PD341jF3W8nO1auiXfuZNQkzbUUiBGLsIQUE+b1mxws" crossorigin="anonymous"></script>
   <script defer src="/static/js/ui/state.js"></script>
   <script defer src="/static/js/ui/components.js"></script>
   <script defer src="/static/js/ui/charts.js"></script>
@@ -456,6 +212,7 @@
   <script defer src="/static/js/core/route_state.js"></script>
   <script defer src="/static/js/core/view_shell.js"></script>
   <script defer src="/static/js/core/view_loader.js"></script>
+  <script defer src="/static/js/core/app_shell.js"></script>
   <script defer src="/static/js/pages/dashboard.js"></script>
   <script defer src="/static/js/pages/participants.js"></script>
   <script defer src="/static/js/pages/team.js"></script>

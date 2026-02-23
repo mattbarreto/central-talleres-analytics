@@ -28,6 +28,7 @@
 | 📊 **Dashboard & Insights** | Métricas en tiempo real, gráficos de tendencia y reportes PDF narrativos. |
 | 📜 **Certificados** | Emisión de certificados PDF con verificación por código único. |
 | 👤 **Equipo** | Gestión de docentes, coordinadores y administradores. |
+| 🔒 **Seguridad** | Auditoría global, hardening de exportaciones y revocación de tokens. |
 
 ---
 
@@ -91,6 +92,13 @@ docker compose up --build
 | ReDoc | [`http://localhost:8000/redoc`](http://localhost:8000/redoc) |
 | Healthcheck | [`http://localhost:8000/health`](http://localhost:8000/health) |
 
+### Tests
+
+```powershell
+# Ejecutar suite completa de tests automatizados
+.\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+```
+
 ---
 
 ## Variables de entorno
@@ -101,11 +109,10 @@ Copiar `.env.example` y completar los valores requeridos:
 |---|---|---|
 | `DATABASE_URL` | Cadena de conexión (PostgreSQL o SQLite) | ✅ |
 | `SECRET_KEY` | Clave secreta para JWT | ✅ |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del token de acceso | ✅ |
-| `REPORT_JOBS_TTL_SECONDS` | Tiempo de vida de los jobs de reporte | ✅ |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del access token | ✅ |
+| `REFRESH_TOKEN_EXPIRE_MINUTES` | Duración del refresh token | ✅ |
+| `CORS_ORIGINS` | Orígenes permitidos (separados por coma) | ✅ |
 | `REPORT_JOBS_MAX_JOBS` | Máximo de jobs concurrentes | ✅ |
-
-> Ver [`.env.example`](.env.example) para la lista completa con valores por defecto.
 
 ---
 
@@ -122,11 +129,10 @@ central-talleres-analytics/
 ├── alembic/              # Migraciones de base de datos
 ├── frontend/             # SPA vanilla (HTML/CSS/JS)
 ├── scripts/              # Scripts auxiliares (bootstrap admin, etc.)
-├── tests/                # Suite de tests con pytest
+├── tests/                # Suite de tests automatizados
 ├── docs/                 # Documentación operativa y de deploy
 ├── .github/workflows/    # CI con GitHub Actions
-├── Dockerfile            # Imagen de producción
-└── docker-compose.yml    # Orquestación local
+└── Dockerfile            # Imagen de producción
 ```
 
 ---
@@ -143,15 +149,13 @@ El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` 
 .\venv\Scripts\python.exe -m alembic revision --autogenerate -m "descripción"
 ```
 
-> **Supabase**: ver la guía de configuración en [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md).
-
 ---
 
 ## Producción
 
-- **Base de datos**: PostgreSQL gestionado por Supabase.
-- **Proxy reverso**: Traefik con File Provider externo.
-- **Runbook completo**: [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md).
+La plataforma está diseñada para ser desplegada mediante **Docker**. El stack incluye un proxy reverso (Traefik) y soporte para bases de datos PostgreSQL gestionadas (como Supabase).
+
+Consulta [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) para el runbook detallado.
 
 ---
 
@@ -161,9 +165,8 @@ El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` 
 |---|---|
 | [`docs/USO.md`](docs/USO.md) | Guía de uso de la aplicación |
 | [`docs/DESARROLLO.md`](docs/DESARROLLO.md) | Guía para desarrolladores |
-| [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) | Runbook de despliegue |
+| [`docs/DEPLOY_PRODUCCION.md`](docs/DEPLOY_PRODUCCION.md) | Guía de despliegue |
 | [`docs/SUPABASE_SETUP.md`](docs/SUPABASE_SETUP.md) | Configuración de Supabase |
-| [`docs/INFRASTRUCTURE.md`](docs/INFRASTRUCTURE.md) | Arquitectura de infraestructura |
 
 ---
 
@@ -172,9 +175,9 @@ El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` 
 En **desarrollo activo**, con foco actual en:
 
 - ✅ Reportes PDF con diseño editorial y data storytelling
-- 🔄 Consistencia UI/UX del dashboard
-- 🔄 Escalabilidad de datos
-- 🔄 Hardening para producción
+- ✅ Hardening de seguridad y auditoría global
+- 🔄 Consistencia UI/UX y modularización del frontend
+- 🔄 Optimización de escalabilidad de datos
 
 ---
 
@@ -182,5 +185,7 @@ En **desarrollo activo**, con foco actual en:
 
 **Matías Barreto**
 
+
 [![Website](https://img.shields.io/badge/Web-matiasbarreto.com-4f46e5?style=flat&logo=google-chrome&logoColor=white)](https://matiasbarreto.com)
 [![GitHub](https://img.shields.io/badge/GitHub-mattbarreto-181717?style=flat&logo=github)](https://github.com/mattbarreto)
+

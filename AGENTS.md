@@ -14,7 +14,7 @@
 - `./venv/Scripts/pip.exe install -r requirements.txt` installs backend dependencies.
 - `./venv/Scripts/alembic.exe upgrade head` applies database migrations.
 - `./venv/Scripts/uvicorn.exe app.main:app --reload --port 8000` runs API + static frontend locally.
-- `./venv/Scripts/python.exe test_api.py` runs the current API smoke script against a live local server.
+- `./venv/Scripts/python.exe -m unittest discover -s tests -p "test_*.py"` runs the automated API/backend suite locally.
 
 ## Coding Style & Naming Conventions
 - Follow PEP 8: 4-space indentation, clear imports, and type-aware FastAPI/Pydantic patterns.
@@ -23,7 +23,7 @@
 - There is no enforced formatter/linter config in-repo; keep changes consistent with surrounding code.
 
 ## Testing Guidelines
-- Current tests are smoke-style (`test_api.py`) and require `http://127.0.0.1:8000` running.
+- Automated tests run via `unittest`/`pytest` style test files in `tests/` and do not require a live server.
 - For new work, add focused API tests (auth, validation, CRUD success/failure paths) and keep filenames as `test_<area>.py`.
 - Validate critical flows manually via `http://127.0.0.1:8000/docs` when touching routes or schemas.
 

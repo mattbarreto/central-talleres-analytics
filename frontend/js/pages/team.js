@@ -1,11 +1,19 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
   const store = window.DashboardState;
+  const charts = window.DashboardCharts;
   const esc = UI.esc;
 
   async function render(opts) {
     if (!UI.Card || !store || !esc || !opts?.root) return false;
     const root = opts.root;
+    let renderHost = root.querySelector('[data-team-render-host="1"]');
+    if (!renderHost) {
+      root.innerHTML = '<div data-team-render-host="1"></div>';
+      renderHost = root.querySelector('[data-team-render-host="1"]');
+    }
+    charts?.destroyRootCharts?.(renderHost);
+
     const overview = opts.overview || {};
     const profiles = opts.profiles || [];
     const kpiDeltas = opts.kpiDeltas || {};
@@ -15,14 +23,59 @@
     const rows = mode === 'advanced' ? profiles.slice(0, 40) : profiles.slice(0, 12);
     const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
-    const topStaff = (overview.top_active_staff || []).slice(0, 6).map((r) => ({ label: r.name, value: r.workshops_count || 0 }));
-    const topWorkshops = (overview.top_workshops_by_enrollments || []).slice(0, 6).map((r) => ({ label: r.workshop_name, value: r.total_enrollments || 0 }));
+    const topStaff = (overview.top_active_staff || []).slice(0, 8).map((r) => ({
+      id: String(r.id || r.name || ''),
+      colorKey: String(r.id || r.name || ''),
+      label: r.name,
+      value: Number(r.workshops_count || 0),
+    }));
+    const topWorkshops = (overview.top_workshops_by_enrollments || []).slice(0, 8).map((r) => ({
+      id: String(r.workshop_id || r.workshop_name || ''),
+      colorKey: String(r.workshop_id || r.workshop_name || ''),
+      label: r.workshop_name,
+      value: Number(r.total_enrollments || 0),
+    }));
 
     const table = rows.length
       ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Perfil</th><th>Rol</th><th>Talleres</th><th>Alcance</th><th>Acciones</th></tr></thead><tbody>${rows.map((r) => `<tr><td><strong>${esc(r.name)}</strong><br><span class="dash-page-subtitle">${esc(r.email || '-')} · ${esc(r.phone || '-')}</span></td><td>${esc(r.role)}</td><td>${r.workshops_count || 0}</td><td>${r.participants_reached || 0}</td><td><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-t-profile="${esc(r.id)}">Perfil</button></td></tr>`).join('')}</tbody></table></div>`
       : UI.EmptyState({ title: 'Sin perfiles', message: 'No hay resultados para el filtro actual.' });
 
-    root.innerHTML = `
+    const useCanvasCharts = Boolean(UI.ChartCanvasCard && charts?.isAvailable?.());
+    const chartCard = useCanvasCharts ? UI.ChartCanvasCard : UI.ChartCard;
+    const hasChartData = (rows, allowZero = true) => (
+      charts?.hasRenderableData?.(rows, { allowZero })
+      ?? (Array.isArray(rows) && (allowZero ? rows.length > 0 : rows.some((row) => Number(row?.value) > 0)))
+    );
+    const staffChartHeight = `${Math.min(460, Math.max(260, (topStaff.length * 34) + 110))}px`;
+    const workshopChartHeight = `${Math.min(460, Math.max(260, (topWorkshops.length * 34) + 110))}px`;
+    const renderChartOrEmpty = ({
+      title,
+      subtitle,
+      chartId,
+      chartType,
+      chartHeight = '260px',
+      ariaLabel,
+      rows,
+      valueLabel,
+      emptyTitle = 'Sin datos para graficar',
+      emptyMessage = 'No hay datos suficientes con el filtro actual.',
+    }) => {
+      if (!hasChartData(rows)) {
+        return UI.Card({ title, body: UI.EmptyState({ title: emptyTitle, message: emptyMessage }) });
+      }
+      return chartCard({
+        title,
+        subtitle,
+        chartId,
+        chartType,
+        chartHeight,
+        ariaLabel,
+        rows,
+        valueLabel,
+      });
+    };
+
+    renderHost.innerHTML = `
       <div class="dashboard-v2">
         <div class="dash-container">
           <header class="dash-page-header">
@@ -93,7 +146,25 @@
             description: 'Rendimiento relativo por perfiles y talleres.',
             collapsible: true,
             collapsed: Boolean(store.state.collapsed.team_trends),
-            content: `<div class="dash-grid"><div class="dash-col-6">${UI.ChartCard({ title: 'Perfiles más activos', subtitle: 'Por cantidad de talleres', rows: topStaff })}</div><div class="dash-col-6">${UI.ChartCard({ title: 'Talleres con más convocatoria', subtitle: 'Por inscripciones', rows: topWorkshops })}</div></div>`
+            content: `<div class="dash-grid"><div class="dash-col-6">${renderChartOrEmpty({
+              title: 'Perfiles más activos',
+              subtitle: 'Por cantidad de talleres',
+              chartId: 't-chart-top-staff',
+              chartType: 'bar',
+              chartHeight: staffChartHeight,
+              ariaLabel: 'Ranking de perfiles por cantidad de talleres',
+              rows: topStaff,
+              valueLabel: 'Talleres',
+            })}</div><div class="dash-col-6">${renderChartOrEmpty({
+              title: 'Talleres con más convocatoria',
+              subtitle: 'Por inscripciones',
+              chartId: 't-chart-top-workshops',
+              chartType: 'bar',
+              chartHeight: workshopChartHeight,
+              ariaLabel: 'Ranking de talleres por inscripciones',
+              rows: topWorkshops,
+              valueLabel: 'Inscripciones',
+            })}</div></div>`
           })}
 
           ${mode === 'advanced' ? UI.Section({
@@ -108,45 +179,71 @@
       </div>
     `;
 
-    root.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
+    if (useCanvasCharts) {
+      const chartSpecs = [];
+      if (hasChartData(topStaff)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 't-top-staff-bar',
+          selector: '#t-chart-top-staff',
+          rows: topStaff,
+          datasetLabel: 'Talleres',
+          horizontal: true,
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('primary'),
+          yLabel: 'Talleres',
+        }));
+      }
+      if (hasChartData(topWorkshops)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 't-top-workshops-bar',
+          selector: '#t-chart-top-workshops',
+          rows: topWorkshops,
+          datasetLabel: 'Inscripciones',
+          horizontal: true,
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('primary'),
+          yLabel: 'Inscripciones',
+        }));
+      }
+      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
+    }
+
+    renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-section-toggle');
       const collapsed = store.toggleCollapsed(key);
-      root.querySelector(`[data-section-content="${key}"]`)?.classList.toggle('is-collapsed', collapsed);
+      renderHost.querySelector(`[data-section-content="${key}"]`)?.classList.toggle('is-collapsed', collapsed);
       btn.textContent = collapsed ? 'Expandir' : 'Colapsar';
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }));
-    root.querySelector('[data-t-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
-    root.querySelector('[data-t-new="1"]')?.addEventListener('click', () => opts.onNew?.());
+    renderHost.querySelector('[data-t-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
+    renderHost.querySelector('[data-t-new="1"]')?.addEventListener('click', () => opts.onNew?.());
     const emitFilters = () => {
       opts.onFilterChange?.({
-        q: root.querySelector('#t-q')?.value || '',
-        role: root.querySelector('#t-role')?.value || 'all',
-        year: root.querySelector('#t-year')?.value || '',
-        wstatus: root.querySelector('#t-wstatus')?.value || 'all',
+        q: renderHost.querySelector('#t-q')?.value || '',
+        role: renderHost.querySelector('#t-role')?.value || 'all',
+        year: renderHost.querySelector('#t-year')?.value || '',
+        wstatus: renderHost.querySelector('#t-wstatus')?.value || 'all',
       });
     };
     let searchDebounce = null;
-    root.querySelector('[data-t-apply="1"]')?.addEventListener('click', emitFilters);
-    root.querySelector('#t-q')?.addEventListener('input', () => {
+    renderHost.querySelector('[data-t-apply="1"]')?.addEventListener('click', emitFilters);
+    renderHost.querySelector('#t-q')?.addEventListener('input', () => {
       clearTimeout(searchDebounce);
       searchDebounce = setTimeout(emitFilters, 180);
     });
-    root.querySelector('#t-q')?.addEventListener('keydown', (e) => {
+    renderHost.querySelector('#t-q')?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
       clearTimeout(searchDebounce);
       emitFilters();
     });
-    root.querySelector('#t-role')?.addEventListener('change', emitFilters);
-    root.querySelector('#t-year')?.addEventListener('change', emitFilters);
-    root.querySelector('#t-wstatus')?.addEventListener('change', emitFilters);
-    root.querySelector('[data-t-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', role: 'all', year: '', wstatus: 'all', reset: true }));
-    root.querySelectorAll('[data-t-profile]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-t-profile'))));
+    renderHost.querySelector('#t-role')?.addEventListener('change', emitFilters);
+    renderHost.querySelector('#t-year')?.addEventListener('change', emitFilters);
+    renderHost.querySelector('#t-wstatus')?.addEventListener('change', emitFilters);
+    renderHost.querySelector('[data-t-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', role: 'all', year: '', wstatus: 'all', reset: true }));
+    renderHost.querySelectorAll('[data-t-profile]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-t-profile'))));
     return true;
   }
 
   window.TeamPage = { render };
 })();
-
-
-

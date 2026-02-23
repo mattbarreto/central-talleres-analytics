@@ -2,6 +2,9 @@
 
 const API_BASE = '/api/v1';
 const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollments', 'communications', 'team', 'admins'];
+const appShell = window.AppShell || null;
+const appViewUtils = window.AppViewUtils || null;
+const appTableUtils = window.AppTableUtils || null;
 const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
 const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
 const metaSource = document.documentElement?.dataset || {};
@@ -30,12 +33,10 @@ const INLINE_ACTION_WHITELIST = new Set([
   'openTeamAssignmentForm',
   'openTeamMemberForm',
   'openTeamProfile',
-  'openWorkshopDetail',
   'openWorkshopForm',
   'quickUpdateWorkshopStatus',
   'resendFailedCommunication',
   'setListPage',
-  'updateEnrollmentStatusInline',
 ]);
 
 function parseInlineArg(token, element) {
@@ -160,18 +161,12 @@ const state = {
   workshopSearch: '',
   enrollmentWorkshop: '',
   participantSearch: '',
-  participantSearchMode: 'explore',
-  participantWorkshop: '',
   participantEnrollmentStatus: 'all',
   participantPopulation: 'all',
-  participantEngagement: '',
-  participantGender: '',
-  participantAgeMin: '',
-  participantAgeMax: '',
   participantMode: 'summary',
-  participantAdvancedView: 'person',
   participantHasLoaded: false,
   participantProfiles: [],
+  activeParticipantProfile: null,
   communicationSearch: '',
   communicationWorkshop: '',
   teamSearch: '',
@@ -197,12 +192,8 @@ const state = {
   insightsJourneyQuery: '',
   insightsData: null,
   workshopsDensity: 'regular',
-  detailWorkshopId: '',
-  detailTab: 'overview',
   tablePages: {
     workshops: 1,
-    participantsPerson: 1,
-    participantsWorkshop: 1,
     enrollments: 1,
     communications: 1,
     team: 1,
@@ -262,11 +253,19 @@ const api = {
 };
 
 function hydrateAppMeta() {
+  if (appShell?.hydrateAppMeta) {
+    appShell.hydrateAppMeta();
+    return;
+  }
   const version = document.getElementById('meta-version');
   if (version) version.textContent = APP_META.version;
 }
 
 function openAboutSystem() {
+  if (appShell?.openAboutSystem) {
+    appShell.openAboutSystem({ openModal, escapeHTML });
+    return;
+  }
   openModal(
     'Acerca del sistema',
     `
@@ -284,7 +283,7 @@ function openAboutSystem() {
           <div class="about-value"><a href="${escapeHTML(APP_META.repo)}" target="_blank" rel="noopener noreferrer">${escapeHTML(APP_META.repo.replace(/^https?:\/\//, ''))}</a></div>
         </div>
         <div class="about-row">
-          <div class="about-label">VersiÃƒÂ³n</div>
+          <div class="about-label">Versión</div>
           <div class="about-value">${escapeHTML(APP_META.version)}</div>
         </div>
         <div class="about-row">
@@ -317,6 +316,10 @@ function toast(message, type = 'info') {
 const modalState = { previousFocused: null, handler: null, open: false };
 
 function setSidebarCollapsed(collapsed, persist = true) {
+  if (appShell?.setSidebarCollapsed) {
+    appShell.setSidebarCollapsed(collapsed, persist);
+    return;
+  }
   const normalized = Boolean(collapsed);
   const appLayout = document.getElementById('app-layout');
   appLayout?.classList.toggle('sidebar-collapsed', normalized);
@@ -330,6 +333,9 @@ function setSidebarCollapsed(collapsed, persist = true) {
 }
 
 function getInitialSidebarCollapsed() {
+  if (appShell?.getInitialSidebarCollapsed) {
+    return appShell.getInitialSidebarCollapsed();
+  }
   const current = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
   if (current === '1' || current === '0') return current === '1';
   const legacy = localStorage.getItem(SIDEBAR_LEGACY_MODE_KEY);
@@ -434,7 +440,7 @@ document.getElementById('modal-overlay').addEventListener('click', (e) => {
 function confirmDialog(message) {
   return new Promise((resolve) => {
     openModal(
-      'Confirmar acciÃƒÂ³n',
+      'Confirmar acción',
       `<p class="confirm-text">${message}</p>`,
       `<button class="btn btn-secondary" id="confirm-cancel">Cancelar</button><button class="btn btn-danger" id="confirm-ok">Eliminar</button>`
     );
@@ -449,10 +455,33 @@ function confirmDialog(message) {
   });
 }
 
+function withButtonBusy(button, busyLabel, task) {
+  if (!button || typeof task !== 'function') return Promise.resolve();
+  const originalHTML = button.innerHTML;
+  const originalAriaBusy = button.getAttribute('aria-busy');
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  if (busyLabel) button.innerHTML = `<span class="spinner" aria-hidden="true"></span> ${busyLabel}`;
+  return Promise.resolve()
+    .then(task)
+    .finally(() => {
+      button.disabled = false;
+      if (originalAriaBusy === null) button.removeAttribute('aria-busy');
+      else button.setAttribute('aria-busy', originalAriaBusy);
+      button.innerHTML = originalHTML;
+    });
+}
+
+function bindAsyncButtonAction(buttonId, handler, busyLabel = 'Procesando...') {
+  const button = document.getElementById(buttonId);
+  if (!button || typeof handler !== 'function') return;
+  button.onclick = () => withButtonBusy(button, busyLabel, handler);
+}
+
 const hashRouter = window.AppHashRouter?.create({
   views,
   getParamsForView: (targetView) => window.AppRouteState?.paramsForView?.(state, targetView, {
-    getEnrollmentWorkshop: () => document.getElementById('enrollment-workshop-select')?.value || '',
+    getEnrollmentWorkshop: () => state.enrollmentWorkshop || '',
   }) || {},
   onApplyRoute: () => applyRoute(),
 });
@@ -486,7 +515,7 @@ function syncViewParams() {
   }
   const { view } = parseHash();
   const params = window.AppRouteState?.paramsForView?.(state, view, {
-    getEnrollmentWorkshop: () => document.getElementById('enrollment-workshop-select')?.value || '',
+    getEnrollmentWorkshop: () => state.enrollmentWorkshop || '',
   }) || {};
   setHash(view, params, true);
 }
@@ -494,7 +523,7 @@ function syncViewParams() {
 function syncViewParamsSilent() {
   const { view } = parseHash();
   const params = window.AppRouteState?.paramsForView?.(state, view, {
-    getEnrollmentWorkshop: () => document.getElementById('enrollment-workshop-select')?.value || '',
+    getEnrollmentWorkshop: () => state.enrollmentWorkshop || '',
   }) || {};
   const hash = buildHash(view, params);
   history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`);
@@ -508,15 +537,18 @@ function escapeHTML(s) {
 }
 
 function icon(name, className = '') {
+  if (appViewUtils?.icon) return appViewUtils.icon(name, className);
   const cls = ['ui-icon', className].filter(Boolean).join(' ');
   return `<svg class="${cls}" aria-hidden="true"><use href="#i-${name}"></use></svg>`;
 }
 
 function escapeRegExp(text) {
+  if (appViewUtils?.escapeRegExp) return appViewUtils.escapeRegExp(text);
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function highlightMatch(text, term) {
+  if (appViewUtils?.highlightMatch) return appViewUtils.highlightMatch(text, term, escapeHTML);
   const raw = String(text ?? '');
   const q = (term || '').trim();
   if (!q) return escapeHTML(raw);
@@ -529,6 +561,7 @@ function highlightMatch(text, term) {
 }
 
 function toQuery(params) {
+  if (appViewUtils?.toQuery) return appViewUtils.toQuery(params);
   const q = new URLSearchParams();
   Object.entries(params).forEach(([k, v]) => {
     if (v !== null && v !== undefined && String(v) !== '') q.set(k, String(v));
@@ -562,6 +595,7 @@ function buildKpiDeltas(scopeKey, currentMetrics) {
 }
 
 function paginateRows(rows, key, pageSize = 25) {
+  if (appTableUtils?.paginateRows) return appTableUtils.paginateRows(rows, state.tablePages, key, pageSize);
   const safeRows = Array.isArray(rows) ? rows : [];
   const total = safeRows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -580,15 +614,16 @@ function paginateRows(rows, key, pageSize = 25) {
 }
 
 function tablePaginationHTML(key, pageData, label = 'resultados') {
+  if (appTableUtils?.tablePaginationHTML) return appTableUtils.tablePaginationHTML(key, pageData, label);
   if (!pageData.total || pageData.totalPages <= 1) return '';
   const prevDisabled = pageData.page <= 1 ? 'disabled' : '';
   const nextDisabled = pageData.page >= pageData.totalPages ? 'disabled' : '';
   return `
-    <div class="table-pagination" role="navigation" aria-label="PaginaciÃƒÂ³n">
+    <div class="table-pagination" role="navigation" aria-label="Paginación">
       <span class="table-pagination-meta">Mostrando ${pageData.start}-${pageData.end} de ${pageData.total} ${label}</span>
       <div class="table-pagination-controls">
         <button class="btn btn-ghost btn-sm" ${prevDisabled} data-inline-click="setListPage('${key}', ${pageData.page - 1})">Anterior</button>
-        <span class="table-pagination-page">PÃƒÂ¡gina ${pageData.page} de ${pageData.totalPages}</span>
+        <span class="table-pagination-page">Página ${pageData.page} de ${pageData.totalPages}</span>
         <button class="btn btn-ghost btn-sm" ${nextDisabled} data-inline-click="setListPage('${key}', ${pageData.page + 1})">Siguiente</button>
       </div>
     </div>
@@ -598,9 +633,8 @@ function tablePaginationHTML(key, pageData, label = 'resultados') {
 window.setListPage = async function (key, page) {
   state.tablePages[key] = Math.max(1, Number(page) || 1);
   if (key === 'workshops') await loadWorkshops();
-  if (key === 'participantsPerson' || key === 'participantsWorkshop') await loadParticipants();
   if (key === 'enrollments') {
-    const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
+    const wid = state.enrollmentWorkshop;
     if (wid) await loadEnrollments(wid);
   }
   if (key === 'communications') await loadCommunications();
@@ -608,23 +642,14 @@ window.setListPage = async function (key, page) {
   if (key === 'admins') await loadAdmins();
   const { view } = parseHash();
   const hash = buildHash(view, (() => {
-    if (view === 'workshops') return { q: state.workshopSearch, density: state.workshopsDensity, detail: state.detailWorkshopId, tab: state.detailTab, p: state.tablePages.workshops };
+    if (view === 'workshops') return { q: state.workshopSearch, density: state.workshopsDensity, p: state.tablePages.workshops };
     if (view === 'participants') return {
       q: state.participantSearch,
-      smode: state.participantSearchMode,
-      workshop: state.participantWorkshop,
       status: state.participantEnrollmentStatus,
       population: state.participantPopulation,
-      engagement: state.participantEngagement,
-      gender: state.participantGender,
-      age_min: state.participantAgeMin,
-      age_max: state.participantAgeMax,
       mode: state.participantMode,
-      pview: state.participantAdvancedView,
-      pp: state.tablePages.participantsPerson,
-      pw: state.tablePages.participantsWorkshop,
     };
-    if (view === 'enrollments') return { workshop: state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value || '', p: state.tablePages.enrollments };
+    if (view === 'enrollments') return { workshop: state.enrollmentWorkshop || '', p: state.tablePages.enrollments };
     if (view === 'communications') return { q: state.communicationSearch, workshop: state.communicationWorkshop, p: state.tablePages.communications };
     if (view === 'team') return { q: state.teamSearch, role: state.teamRole, year: state.teamYear, wstatus: state.teamWorkshopStatus, mode: state.teamMode, p: state.tablePages.team };
     if (view === 'admins') return { p: state.tablePages.admins };
@@ -633,15 +658,15 @@ window.setListPage = async function (key, page) {
   history.replaceState(null, '', `${window.location.pathname}${window.location.search}#${hash}`);
 };
 
-const statusLabels = { planned: 'Planificado', active: 'Activo', finished: 'Finalizado', enrolled: 'Inscripto', dropped: 'Dado de baja', sent: 'Enviado', failed: 'Fallido' };
-const badge = (s) => `<span class="badge badge-${s}">${statusLabels[s] || s}</span>`;
-const formatDate = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(d)) : '-';
-const formatDateTime = (d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d)) : '-';
+const statusLabels = appViewUtils?.statusLabels || { planned: 'Planificado', active: 'Activo', finished: 'Finalizado', enrolled: 'Inscripto', dropped: 'Dado de baja', sent: 'Enviado', failed: 'Fallido' };
+const badge = (s) => (appViewUtils?.badge ? appViewUtils.badge(s) : `<span class="badge badge-${s}">${statusLabels[s] || s}</span>`);
+const formatDate = appViewUtils?.formatDate || ((d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(new Date(d)) : '-');
+const formatDateTime = appViewUtils?.formatDateTime || ((d) => d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(d)) : '-');
 function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
   const body = document.querySelector(`#view-${viewKey} .page-body`);
   if (!body) return;
   body.innerHTML = `
-    <div class="dashboard-v2">
+    <div class="dashboard-v2" role="status" aria-live="polite" aria-label="${escapeHTML(`${title}. ${subtitle}`)}">
       <div class="dash-container">
         <header class="dash-page-header">
           <div>
@@ -649,10 +674,11 @@ function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
             <p class="dash-page-subtitle">${escapeHTML(subtitle)}</p>
           </div>
         </header>
+        <p class="sr-only">${escapeHTML(`${title}. ${subtitle}`)}</p>
         <div class="dash-skeleton" aria-hidden="true">
-          <div class="dash-skeleton-row"></div>
-          <div class="dash-skeleton-row"></div>
-          <div class="dash-skeleton-row"></div>
+          <span></span>
+          <span></span>
+          <span></span>
         </div>
       </div>
     </div>
@@ -714,16 +740,18 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
     showApp(email);
     toast('Bienvenido de nuevo', 'success');
   } catch {
-    error.textContent = 'Correo o contraseÃƒÂ±a incorrectos. IntentÃƒÂ¡ de nuevo.';
+    error.textContent = 'Correo o contraseña incorrectos. Intentá de nuevo.';
     error.classList.add('show');
   } finally {
     btn.disabled = false;
-    btn.textContent = 'Iniciar sesiÃƒÂ³n';
+    btn.textContent = 'Iniciar sesión';
   }
 });
 
 document.getElementById('logout-btn').addEventListener('click', logout);
+document.getElementById('logout-icon-btn')?.addEventListener('click', logout);
 document.getElementById('btn-about-system')?.addEventListener('click', openAboutSystem);
+document.getElementById('about-icon-btn')?.addEventListener('click', openAboutSystem);
 hashRouter?.start?.();
 document.getElementById('mobile-toggle')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');
@@ -978,7 +1006,10 @@ async function loadDashboard() {
         printDashboardExecutiveReport();
       },
       onNewActivity: () => setHash('workshops', {}),
-      onWorkshopDetail: (workshopId) => setHash('workshops', { detail: workshopId, tab: 'overview' }),
+      onWorkshopDetail: (workshopId) => {
+        const workshop = workshops.find((row) => row.id === workshopId);
+        setHash('workshops', { q: workshop?.name || '' });
+      },
       onKpiDrilldown: (kpiId) => {
         if (kpiId === 'communications') {
           setHash('communications', { workshop: state.dashboardWorkshop || '' });
@@ -1050,9 +1081,9 @@ const insightsAgeLabels = {
   unknown: 'Sin dato',
 };
 const insightsSeverityLabels = {
-  info: 'InformaciÃƒÂ³n',
+  info: 'Información',
   warning: 'Advertencia',
-  critical: 'CrÃƒÂ­tica',
+  critical: 'Crítica',
 };
 
 function formatPct(part, total) {
@@ -1060,93 +1091,187 @@ function formatPct(part, total) {
   return `${Math.round((part / total) * 100)}%`;
 }
 
+function normalizeChartMetric(rawValue, valueType = 'count') {
+  const value = Number(rawValue);
+  if (!Number.isFinite(value)) return 0;
+  return valueType === 'count' ? Math.round(value) : value;
+}
+
+function formatChartMetric(rawValue, valueType = 'count') {
+  const value = normalizeChartMetric(rawValue, valueType);
+  if (valueType === 'percent') {
+    return value.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  }
+  return value.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+
+function metricSuffix(valueType = 'count') {
+  return valueType === 'percent' ? '%' : '';
+}
+
+function themeColor(token, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+  return value || fallback;
+}
+
+function compactChartLabel(value, maxChars = 12) {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+  if (raw.length <= maxChars) return raw;
+  return `${raw.slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`;
+}
+
 function inlineBarsSVG(rows, {
   width = 560,
   height = 220,
-  color = '#8b5cf6',
+  color = '',
   valueKey = 'value',
   labelKey = 'label',
+  valueType = 'count',
+  ariaLabel = 'Grafico de barras',
+  mode = 'screen',
 } = {}) {
   const safeRows = (rows || []).slice(0, 8);
   if (!safeRows.length) return '';
+  const normalizedRows = safeRows.map((row) => ({
+    ...row,
+    __metric: normalizeChartMetric(row?.[valueKey], valueType),
+  }));
+  const isPrint = mode === 'print';
+  const chartColor = color || (isPrint ? '#2563eb' : themeColor('--chart-2', '#38bdf8'));
+  const labelColor = isPrint ? '#4b5563' : themeColor('--text-secondary', '#8b8b9e');
+  const valueColor = isPrint ? '#111827' : themeColor('--text-primary', '#f0f0f5');
+  const gridColor = isPrint ? 'rgba(17,24,39,0.16)' : 'rgba(255,255,255,0.12)';
+  const axisColor = isPrint ? 'rgba(17,24,39,0.35)' : 'rgba(255,255,255,0.3)';
   const pad = { top: 16, right: 18, bottom: 52, left: 34 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
-  const max = Math.max(...safeRows.map((r) => Number(r[valueKey]) || 0), 1);
-  const step = chartW / safeRows.length;
+  const max = Math.max(...normalizedRows.map((r) => r.__metric), 1);
+  const step = chartW / normalizedRows.length;
   const barW = Math.max(16, Math.min(52, step * 0.62));
   const yTicks = [0, Math.ceil(max * 0.25), Math.ceil(max * 0.5), Math.ceil(max * 0.75), max];
-  const bars = safeRows.map((r, i) => {
-    const value = Number(r[valueKey]) || 0;
+
+  const bars = normalizedRows.map((r, i) => {
+    const value = r.__metric;
     const h = (value / max) * chartH;
     const x = pad.left + (step * i) + ((step - barW) / 2);
     const y = pad.top + (chartH - h);
-    const label = escapeHTML(String(r[labelKey] || ''));
+    const fullLabel = String(r[labelKey] || '');
+    const label = escapeHTML(compactChartLabel(fullLabel, 11));
+    const barColor = r.color || chartColor;
+    const valueLabel = `${formatChartMetric(value, valueType)}${metricSuffix(valueType)}`;
     return `
-      <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${color}" opacity="0.88"></rect>
-      <text x="${(x + (barW / 2)).toFixed(1)}" y="${(pad.top + chartH + 16).toFixed(1)}" fill="#8b8b9e" font-size="10" text-anchor="middle">${label}</text>
-      <text x="${(x + (barW / 2)).toFixed(1)}" y="${(y - 6).toFixed(1)}" fill="#f0f0f5" font-size="10" text-anchor="middle">${value}</text>
+      <g>
+        <title>${escapeHTML(fullLabel)}</title>
+        <rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${h.toFixed(1)}" rx="4" fill="${barColor}" opacity="0.88"></rect>
+        <text x="${(x + (barW / 2)).toFixed(1)}" y="${(pad.top + chartH + 16).toFixed(1)}" fill="${labelColor}" font-size="10" text-anchor="middle">${label}</text>
+        <text x="${(x + (barW / 2)).toFixed(1)}" y="${(y - 6).toFixed(1)}" fill="${valueColor}" font-size="10" text-anchor="middle">${valueLabel}</text>
+      </g>
     `;
   }).join('');
+
   const grid = yTicks.map((tick) => {
     const y = pad.top + (chartH - ((tick / max) * chartH));
+    const tickLabel = `${formatChartMetric(tick, valueType)}${metricSuffix(valueType)}`;
     return `
-      <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"></line>
-      <text x="${(pad.left - 8).toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="#8b8b9e" font-size="10" text-anchor="end">${tick}</text>
+      <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${gridColor}" stroke-width="1"></line>
+      <text x="${(pad.left - 8).toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="${labelColor}" font-size="10" text-anchor="end">${tickLabel}</text>
     `;
   }).join('');
+
+  const colorCount = new Set(normalizedRows.map((r) => r.color || chartColor)).size;
+  const swatchBorder = isPrint ? 'rgba(15,23,42,0.24)' : 'rgba(255,255,255,0.22)';
+  const legend = colorCount > 1
+    ? `<ul class="report-inline-legend" role="list" aria-label="Referencias de color" style="display:grid;gap:6px;list-style:none;padding:10px 0 0;margin:0;">
+        ${normalizedRows.map((r) => `<li style="display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:8px;font-size:12px;color:${labelColor};"><span style="display:inline-flex;align-items:center;gap:6px;min-width:0;"><span style="width:10px;height:10px;border-radius:999px;border:1px solid ${swatchBorder};background:${escapeHTML(r.color || chartColor)};"></span><span style="overflow-wrap:anywhere;">${escapeHTML(String(r[labelKey] || '-'))}</span></span><strong style="color:${valueColor};font-variant-numeric:tabular-nums;">${formatChartMetric(r.__metric, valueType)}${metricSuffix(valueType)}</strong></li>`).join('')}
+      </ul>`
+    : '';
+
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="GrÃƒÂ¡fico de barras" class="report-svg-chart">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-      ${grid}
-      ${bars}
-      <line x1="${pad.left}" y1="${(pad.top + chartH).toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${(pad.top + chartH).toFixed(1)}" stroke="rgba(255,255,255,0.3)" stroke-width="1.1"></line>
-    </svg>
+    <figure class="report-inline-chart" role="group" aria-label="${escapeHTML(ariaLabel)}" style="margin:0;">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(ariaLabel)}" class="report-svg-chart">
+        <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+        ${grid}
+        ${bars}
+        <line x1="${pad.left}" y1="${(pad.top + chartH).toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${(pad.top + chartH).toFixed(1)}" stroke="${axisColor}" stroke-width="1.1"></line>
+      </svg>
+      ${legend}
+    </figure>
   `;
 }
 
 function inlineLineSVG(rows, {
   width = 560,
   height = 220,
-  color = '#60a5fa',
+  color = '',
   valueKey = 'value',
   labelKey = 'label',
+  valueType = 'count',
+  ariaLabel = 'Grafico de linea',
+  mode = 'screen',
 } = {}) {
   const safeRows = (rows || []).slice(-12);
   if (!safeRows.length) return '';
+  const normalizedRows = safeRows.map((row) => ({
+    ...row,
+    __metric: normalizeChartMetric(row?.[valueKey], valueType),
+  }));
+  const isPrint = mode === 'print';
+  const chartColor = color || (isPrint ? '#1d4ed8' : themeColor('--chart-1', '#60a5fa'));
+  const labelColor = isPrint ? '#4b5563' : themeColor('--text-secondary', '#8b8b9e');
+  const valueColor = isPrint ? '#111827' : themeColor('--text-primary', '#f0f0f5');
+  const bgStroke = isPrint ? '#ffffff' : themeColor('--color-bg', '#0a0a0f');
+  const gridColor = isPrint ? 'rgba(17,24,39,0.16)' : 'rgba(255,255,255,0.12)';
+  const axisColor = isPrint ? 'rgba(17,24,39,0.35)' : 'rgba(255,255,255,0.3)';
   const pad = { top: 16, right: 18, bottom: 52, left: 34 };
   const chartW = width - pad.left - pad.right;
   const chartH = height - pad.top - pad.bottom;
-  const max = Math.max(...safeRows.map((r) => Number(r[valueKey]) || 0), 1);
-  const step = safeRows.length > 1 ? chartW / (safeRows.length - 1) : 0;
+  const max = Math.max(...normalizedRows.map((r) => r.__metric), 1);
+  const step = normalizedRows.length > 1 ? chartW / (normalizedRows.length - 1) : 0;
   const yTicks = [0, Math.ceil(max * 0.25), Math.ceil(max * 0.5), Math.ceil(max * 0.75), max];
-  const points = safeRows.map((r, i) => {
-    const value = Number(r[valueKey]) || 0;
+  const points = normalizedRows.map((r, i) => {
+    const value = r.__metric;
     const x = pad.left + (step * i);
     const y = pad.top + (chartH - ((value / max) * chartH));
-    return { x, y, value, label: escapeHTML(String(r[labelKey] || '')) };
+    const fullLabel = String(r[labelKey] || '');
+    return {
+      x,
+      y,
+      value,
+      label: escapeHTML(compactChartLabel(fullLabel, 11)),
+      fullLabel: escapeHTML(fullLabel),
+    };
   });
+
   const pathD = points.map((p, idx) => `${idx ? 'L' : 'M'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
   const grid = yTicks.map((tick) => {
     const y = pad.top + (chartH - ((tick / max) * chartH));
+    const tickLabel = `${formatChartMetric(tick, valueType)}${metricSuffix(valueType)}`;
     return `
-      <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1"></line>
-      <text x="${(pad.left - 8).toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="#8b8b9e" font-size="10" text-anchor="end">${tick}</text>
+      <line x1="${pad.left}" y1="${y.toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="${gridColor}" stroke-width="1"></line>
+      <text x="${(pad.left - 8).toFixed(1)}" y="${(y + 3).toFixed(1)}" fill="${labelColor}" font-size="10" text-anchor="end">${tickLabel}</text>
     `;
   }).join('');
+
   const dots = points.map((p) => `
-    <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.6" fill="${color}" stroke="#0a0a0f" stroke-width="1.2"></circle>
-    <text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" fill="#f0f0f5" font-size="10" text-anchor="middle">${p.value}</text>
-    <text x="${p.x.toFixed(1)}" y="${(pad.top + chartH + 16).toFixed(1)}" fill="#8b8b9e" font-size="10" text-anchor="middle">${p.label}</text>
+    <g>
+      <title>${p.fullLabel}</title>
+      <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.6" fill="${chartColor}" stroke="${bgStroke}" stroke-width="1.2"></circle>
+      <text x="${p.x.toFixed(1)}" y="${(p.y - 8).toFixed(1)}" fill="${valueColor}" font-size="10" text-anchor="middle">${formatChartMetric(p.value, valueType)}${metricSuffix(valueType)}</text>
+      <text x="${p.x.toFixed(1)}" y="${(pad.top + chartH + 16).toFixed(1)}" fill="${labelColor}" font-size="10" text-anchor="middle">${p.label}</text>
+    </g>
   `).join('');
+
   return `
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="GrÃƒÂ¡fico de lÃƒÂ­nea" class="report-svg-chart">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-      ${grid}
-      <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
-      ${dots}
-      <line x1="${pad.left}" y1="${(pad.top + chartH).toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${(pad.top + chartH).toFixed(1)}" stroke="rgba(255,255,255,0.3)" stroke-width="1.1"></line>
-    </svg>
+    <figure class="report-inline-chart" role="group" aria-label="${escapeHTML(ariaLabel)}" style="margin:0;">
+      <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHTML(ariaLabel)}" class="report-svg-chart">
+        <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
+        ${grid}
+        <path d="${pathD}" fill="none" stroke="${chartColor}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path>
+        ${dots}
+        <line x1="${pad.left}" y1="${(pad.top + chartH).toFixed(1)}" x2="${(pad.left + chartW).toFixed(1)}" y2="${(pad.top + chartH).toFixed(1)}" stroke="${axisColor}" stroke-width="1.1"></line>
+      </svg>
+    </figure>
   `;
 }
 
@@ -1157,19 +1282,19 @@ function buildInsightsStory(data) {
   const topParticipant = (data.top_participants_by_activity || [])[0];
   return [
     {
-      title: 'InstituciÃƒÂ³n',
-      body: `Se registran ${k.enrollments_total || 0} inscripciones y ${k.communications_total || 0} comunicaciones en el perÃƒÂ­odo.`,
+      title: 'Institución',
+      body: `Se registran ${k.enrollments_total || 0} inscripciones y ${k.communications_total || 0} comunicaciones en el período.`,
     },
     {
       title: 'Taller destacado',
       body: topWorkshop
         ? `${topWorkshop.workshop_name} lidera con ${topWorkshop.enrollments_total} inscripciones y ${topWorkshop.attendees_estimated} asistentes estimados.`
-        : 'No hay talleres destacados para este perÃƒÂ­odo.',
+        : 'No hay talleres destacados para este período.',
     },
     {
       title: 'Equipo destacado',
       body: topStaff
-        ? `${topStaff.name} (${teamRoleLabels[topStaff.role] || topStaff.role}) alcanzÃƒÂ³ ${topStaff.participants_reached} personas en ${topStaff.workshops_count} talleres.`
+        ? `${topStaff.name} (${teamRoleLabels[topStaff.role] || topStaff.role}) alcanzó ${topStaff.participants_reached} personas en ${topStaff.workshops_count} talleres.`
         : 'No hay actividad de equipo suficiente para destacar perfiles.',
     },
     {
@@ -1246,7 +1371,7 @@ async function loadInsights() {
       onJourney: async () => openInsightsJourneyPicker(),
     });
   } catch (err) {
-    toast(err.message || 'Error al cargar analÃƒÂ­tica', 'error');
+    toast(err.message || 'Error al cargar analítica', 'error');
   }
 }
 
@@ -1267,7 +1392,7 @@ async function exportInsightsReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analÃƒÂ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.csv`;
+    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1290,7 +1415,7 @@ async function exportInsightsReportJSON() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analÃƒÂ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.json`;
+    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1332,7 +1457,7 @@ async function exportInsightsReportExcel() {
 
     const periodLabel = insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado';
     const kpiRows = [
-      ['MÃƒÂ©trica', 'Valor'],
+      ['Métrica', 'Valor'],
       ['Periodo', periodLabel],
       ['Talleres', data.kpis?.workshops_total || 0],
       ['Inscripciones', data.kpis?.enrollments_total || 0],
@@ -1343,7 +1468,7 @@ async function exportInsightsReportExcel() {
       ['Participantes activos', data.kpis?.active_participants_total || 0],
     ];
     const comparisonsRows = [
-      ['MÃƒÂ©trica', 'Actual', 'Anterior', 'Delta', 'Delta %', 'Tendencia'],
+      ['Métrica', 'Actual', 'Anterior', 'Delta', 'Delta %', 'Tendencia'],
       ...((data.comparisons || []).map((c) => [c.label, c.current, c.previous, c.delta, c.delta_pct, c.trend])),
     ];
     const seriesRows = [
@@ -1351,7 +1476,7 @@ async function exportInsightsReportExcel() {
       ...((data.series || []).map((s) => [s.period_label || s.period_key, s.enrollments, s.active_enrollments, s.finished_enrollments, s.dropped_enrollments, s.communications, s.workshops_started])),
     ];
     const workshopsRows = [
-      ['Taller', 'AÃƒÂ±o', 'Estado', 'Inscripciones', 'Asistentes', 'Finalizados'],
+      ['Taller', 'Año', 'Estado', 'Inscripciones', 'Asistentes', 'Finalizados'],
       ...((data.top_workshops_by_enrollments || []).map((w) => [w.workshop_name, w.cohort_year, w.workshop_status, w.enrollments_total, w.attendees_estimated, w.finished_total])),
     ];
     const staffRows = [
@@ -1363,7 +1488,7 @@ async function exportInsightsReportExcel() {
       ...((data.top_participants_by_activity || []).map((p) => [p.name, p.email || '', p.workshops_total, p.active_workshops, p.finished_workshops, p.enrolled_workshops, p.dropped_workshops])),
     ];
     const definitionsRows = [
-      ['MÃƒÂ©trica', 'DescripciÃƒÂ³n', 'FÃƒÂ³rmula'],
+      ['Métrica', 'Descripción', 'Fórmula'],
       ...((data.metric_definitions || []).map((m) => [m.label, m.description, m.formula])),
     ];
 
@@ -1388,7 +1513,7 @@ async function exportInsightsReportExcel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `analÃƒÂ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.xls`;
+    a.download = `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.xls`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1402,7 +1527,7 @@ async function exportInsightsReportExcel() {
 async function printInsightsReportPDF() {
   const data = state.insightsData;
   if (!data) {
-    toast('Primero cargÃƒÂ¡ la analÃƒÂ­tica', 'error');
+    toast('Primero cargá la analítica', 'error');
     return;
   }
   const query = toQuery({
@@ -1416,16 +1541,16 @@ async function printInsightsReportPDF() {
     await window.ReportJobs.createAndDownload({
       createUrl: `${API_BASE}/insights/report-jobs/pdf${query ? `?${query}` : ''}`,
       headers: api.headers(false),
-      filename: `analÃƒÂ­tica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.pdf`,
+      filename: `analítica_${insightsPeriodFileLabels[state.insightsReportPeriod || state.insightsPeriod] || 'reporte'}.pdf`,
     });
     toast('Reporte PDF descargado', 'success');
     return;
   } catch {
-    // Fallback al flujo de impresiÃƒÂ³n HTML si falla la generaciÃƒÂ³n PDF en backend.
+    // Fallback al flujo de impresión HTML si falla la generación PDF en backend.
   }
   const w = window.open('', '_blank', 'noopener,noreferrer,width=1000,height=720');
   if (!w) {
-    toast('No se pudo abrir la ventana de impresiÃƒÂ³n', 'error');
+    toast('No se pudo abrir la ventana de impresión', 'error');
     return;
   }
   const rows = (data.comparisons || []).map((c) => `<tr><td>${escapeHTML(c.label)}</td><td>${c.current}</td><td>${c.previous}</td><td>${c.delta_pct}%</td></tr>`).join('');
@@ -1439,7 +1564,7 @@ async function printInsightsReportPDF() {
     .slice(0, 5)
     .map((p) => `<tr><td>${escapeHTML(p.name)}</td><td>${p.workshops_total}</td><td>${p.active_workshops}</td><td>${p.finished_workshops}</td></tr>`)
     .join('');
-  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de AnalÃƒÂ­tica</title><style>
+  w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte de Analítica</title><style>
     body{font-family:Arial,sans-serif;padding:24px;color:#111;background:#fff}
     h1{margin:0 0 4px;font-size:26px} h2{margin:22px 0 10px;font-size:18px} h3{margin:12px 0 8px;font-size:14px}
     p{margin:6px 0;line-height:1.45}
@@ -1457,7 +1582,7 @@ async function printInsightsReportPDF() {
     @media print { .chart-block{break-inside:avoid} .story-card{break-inside:avoid} }
   </style></head><body>
     <h1>Reporte ejecutivo con narrativa</h1>
-    <p>PerÃƒÂ­odo: ${escapeHTML(insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado')}</p>
+    <p>Período: ${escapeHTML(insightsPeriodLabels[state.insightsReportPeriod || state.insightsPeriod] || 'Personalizado')}</p>
     <h2>Indicadores clave</h2>
     <section class="kpi-grid">
       <article class="kpi"><div class="k">Inscripciones</div><div class="v">${data.kpis.enrollments_total}</div></article>
@@ -1471,12 +1596,12 @@ async function printInsightsReportPDF() {
     <section class="story-grid">
       ${story.map((s) => `<article class="story-card"><h3>${escapeHTML(s.title)}</h3><p>${escapeHTML(s.body)}</p></article>`).join('')}
     </section>
-    <h2>EvoluciÃƒÂ³n y composiciÃƒÂ³n</h2>
-    <section class="chart-block"><h3>Inscripciones por perÃƒÂ­odo</h3>${inlineBarsSVG(seriesRows, { labelKey: 'label', valueKey: 'value', color: '#60a5fa' })}</section>
-    <section class="chart-block"><h3>Camino de las personas (Embudo)</h3>${inlineBarsSVG(funnelRows, { labelKey: 'label', valueKey: 'value', color: '#8b5cf6' })}</section>
-    <section class="chart-block"><h3>DistribuciÃƒÂ³n por gÃƒÂ©nero</h3>${inlineBarsSVG(genderRows, { labelKey: 'label', valueKey: 'value', color: '#34d399' })}</section>
-    <h2>ComparaciÃƒÂ³n con perÃƒÂ­odo anterior</h2>
-    <table><thead><tr><th>MÃƒÂ©trica</th><th>Actual</th><th>Anterior</th><th>VariaciÃƒÂ³n %</th></tr></thead><tbody>${rows}</tbody></table>
+    <h2>Evolución y composición</h2>
+    <section class="chart-block"><h3>Inscripciones por período</h3>${inlineBarsSVG(seriesRows, { labelKey: 'label', valueKey: 'value', color: themeColor('--chart-1', '#60a5fa'), mode: 'print' })}</section>
+    <section class="chart-block"><h3>Camino de las personas (Embudo)</h3>${inlineBarsSVG(funnelRows, { labelKey: 'label', valueKey: 'value', color: themeColor('--chart-2', '#38bdf8'), mode: 'print' })}</section>
+    <section class="chart-block"><h3>Distribución por género</h3>${inlineBarsSVG(genderRows, { labelKey: 'label', valueKey: 'value', color: themeColor('--chart-3', '#34d399'), mode: 'print' })}</section>
+    <h2>Comparación con período anterior</h2>
+    <table><thead><tr><th>Métrica</th><th>Actual</th><th>Anterior</th><th>Variación %</th></tr></thead><tbody>${rows}</tbody></table>
     <h2>Trayectorias destacadas de personas</h2>
     <table><thead><tr><th>Participante</th><th>Talleres</th><th>Activos</th><th>Finalizados</th></tr></thead><tbody>${topParticipantsRows || '<tr><td colspan="4">Sin datos</td></tr>'}</tbody></table>
   </body></html>`);
@@ -1508,7 +1633,7 @@ function renderJourneyPickerBody(candidates, query = '') {
       <div class="form-group">
         <label class="form-label" for="journey-picker-query">Buscar persona (DNI, apellido o nombre)</label>
         <div class="form-row">
-          <input id="journey-picker-query" class="form-input" value="${escapeHTML(query)}" placeholder="Ej: 30111222, GarcÃƒÂ­a, Ana">
+          <input id="journey-picker-query" class="form-input" value="${escapeHTML(query)}" placeholder="Ej: 30111222, García, Ana">
           <button type="button" class="btn btn-secondary" id="journey-picker-search">Buscar</button>
         </div>
       </div>
@@ -1516,13 +1641,13 @@ function renderJourneyPickerBody(candidates, query = '') {
         <label class="form-label" for="journey-picker-select">Resultados</label>
         <select id="journey-picker-select" class="form-select" size="10">
           ${shortQuery
-            ? '<option value="">EscribÃƒÂ­ al menos 2 caracteres para buscar</option>'
+            ? '<option value="">Escribí al menos 2 caracteres para buscar</option>'
             : candidates.length
-            ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` Ã‚Â· DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` Ã‚Â· ${escapeHTML(p.email)}` : ''}</option>`).join('')
+            ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` · DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` · ${escapeHTML(p.email)}` : ''}</option>`).join('')
             : '<option value="">Sin resultados</option>'}
         </select>
       </div>
-      <p class="muted">${shortQuery ? 'UsÃƒÂ¡ apellido, nombre o DNI.' : `Mostrando hasta ${candidates.length} resultados.`}</p>
+      <p class="muted">${shortQuery ? 'Usá apellido, nombre o DNI.' : `Mostrando hasta ${candidates.length} resultados.`}</p>
     </form>
   `;
 }
@@ -1590,35 +1715,35 @@ async function openInsightsJourney() {
         return { label: monthFmt.format(new Date(y, (m || 1) - 1, 1)).replace('.', ''), value };
       });
     const journeyCompositionRows = [
-      { label: 'Inscripto', value: journey.totals.enrolled || 0 },
-      { label: 'Activo', value: journey.totals.active || 0 },
-      { label: 'Finalizado', value: journey.totals.finished || 0 },
-      { label: 'Baja', value: journey.totals.dropped || 0 },
+      { label: 'Inscripto', value: journey.totals.enrolled || 0, color: themeColor('--chart-2', '#38bdf8') },
+      { label: 'Activo', value: journey.totals.active || 0, color: themeColor('--chart-1', '#60a5fa') },
+      { label: 'Finalizado', value: journey.totals.finished || 0, color: themeColor('--chart-3', '#34d399') },
+      { label: 'Baja', value: journey.totals.dropped || 0, color: themeColor('--chart-5', '#f87171') },
     ];
     const journeyVizHTML = `
       <section class="mt-md">
-        <h4>VisualizaciÃƒÂ³n de trayectoria</h4>
+        <h4>Visualización de trayectoria</h4>
         <div class="trends-grid">
           <article class="trend-card">
             <h5>Actividad por mes</h5>
-            ${journeyTrendRows.length ? inlineLineSVG(journeyTrendRows, { color: '#60a5fa' }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
+            ${journeyTrendRows.length ? inlineLineSVG(journeyTrendRows, { color: themeColor('--chart-1', '#60a5fa') }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
           </article>
           <article class="trend-card">
-            <h5>ComposiciÃƒÂ³n de estado</h5>
-            ${inlineBarsSVG(journeyCompositionRows, { color: '#f59e0b' })}
+            <h5>Composición de estado</h5>
+            ${inlineBarsSVG(journeyCompositionRows, { color: themeColor('--chart-4', '#fbbf24') })}
           </article>
         </div>
       </section>
     `;
     const eventsRows = journey.events.length
-      ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'InscripciÃƒÂ³n' : 'ComunicaciÃƒÂ³n'}</td><td>${escapeHTML(ev.workshop_name || '-')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail)}</td></tr>`).join('')
+      ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}</td><td>${escapeHTML(ev.workshop_name || '-')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail)}</td></tr>`).join('')
       : '<tr><td colspan="5" class="muted">Sin eventos registrados</td></tr>';
     const certRows = certificateIssues.length
       ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '-')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-inline-click="downloadCertificateIssue('${c.id}')">Descargar PDF</button></td></tr>`).join('')
       : '<tr><td colspan="4" class="muted">Sin certificados emitidos para esta persona</td></tr>';
     setModalContent(
-      `Perfil analÃƒÂ­tico de ${journey.participant_name}`,
-      `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${journey.totals.enrolled + journey.totals.active + journey.totals.finished + journey.totals.dropped}</div></div><div class="card"><div class="metric-label">Activos/Finalizados</div><div class="metric-value">${journey.totals.active + journey.totals.finished}</div></div><div class="card"><div class="metric-label">Comunicaciones enviadas</div><div class="metric-value">${journey.totals.communications_sent}</div></div><div class="card"><div class="metric-label">Comunicaciones fallidas</div><div class="metric-value">${journey.totals.communications_failed}</div></div></div>${journeyVizHTML}<div class="table-container mt-md"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table></div><section class="mt-md"><h4>Certificados emitidos</h4><div class="table-container"><table><thead><tr><th>Taller/Curso</th><th>Fecha de emisiÃƒÂ³n</th><th>CÃƒÂ³digo</th><th class="text-right">Acciones</th></tr></thead><tbody>${certRows}</tbody></table></div></section>`,
+      `Perfil analítico de ${journey.participant_name}`,
+      `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${journey.totals.enrolled + journey.totals.active + journey.totals.finished + journey.totals.dropped}</div></div><div class="card"><div class="metric-label">Activos/Finalizados</div><div class="metric-value">${journey.totals.active + journey.totals.finished}</div></div><div class="card"><div class="metric-label">Comunicaciones enviadas</div><div class="metric-value">${journey.totals.communications_sent}</div></div><div class="card"><div class="metric-label">Comunicaciones fallidas</div><div class="metric-value">${journey.totals.communications_failed}</div></div></div>${journeyVizHTML}<div class="table-container mt-md"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table></div><section class="mt-md"><h4>Certificados emitidos</h4><div class="table-container"><table><thead><tr><th>Taller/Curso</th><th>Fecha de emisión</th><th>Código</th><th class="text-right">Acciones</th></tr></thead><tbody>${certRows}</tbody></table></div></section>`,
       `<button class="btn btn-secondary" id="journey-back-selector">Volver al selector</button><button class="btn btn-secondary" id="journey-print-exec">Reporte ejecutivo (PDF)</button><button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button>`,
       { variant: 'profile' }
     );
@@ -1663,26 +1788,26 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
       return { label: monthFmt.format(new Date(y, (m || 1) - 1, 1)).replace('.', ''), value };
     });
   const journeyCompositionRows = [
-    { label: 'Inscripto', value: journey.totals.enrolled || 0 },
-    { label: 'Activo', value: journey.totals.active || 0 },
-    { label: 'Finalizado', value: journey.totals.finished || 0 },
-    { label: 'Baja', value: journey.totals.dropped || 0 },
+    { label: 'Inscripto', value: journey.totals.enrolled || 0, color: themeColor('--chart-2', '#38bdf8') },
+    { label: 'Activo', value: journey.totals.active || 0, color: themeColor('--chart-1', '#60a5fa') },
+    { label: 'Finalizado', value: journey.totals.finished || 0, color: themeColor('--chart-3', '#34d399') },
+    { label: 'Baja', value: journey.totals.dropped || 0, color: themeColor('--chart-5', '#f87171') },
   ];
   const highlights = [
-    `La persona registrÃƒÂ³ ${totalEnrollments} inscripciones en el perÃƒÂ­odo analizado.`,
+    `La persona registró ${totalEnrollments} inscripciones en el período analizado.`,
     `${journey.totals.active} se mantienen activas y ${journey.totals.finished} finalizaron (${completionRate}% de cierre).`,
     `Se emitieron ${certCount} certificado${certCount === 1 ? '' : 's'} asociados a su trayectoria.`,
-    lastEvent ? `ÃƒÅ¡ltimo evento registrado: ${formatDate(lastEvent.at)} (${lastEvent.type === 'enrollment' ? 'InscripciÃƒÂ³n' : 'ComunicaciÃƒÂ³n'}).` : 'No hay eventos recientes registrados.',
+    lastEvent ? `Último evento registrado: ${formatDate(lastEvent.at)} (${lastEvent.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}).` : 'No hay eventos recientes registrados.',
   ];
   const eventsRows = (journey.events || []).length
-    ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'InscripciÃƒÂ³n' : 'ComunicaciÃƒÂ³n'}</td><td>${escapeHTML(ev.workshop_name || '-')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail || '-')}</td></tr>`).join('')
+    ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}</td><td>${escapeHTML(ev.workshop_name || '-')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail || '-')}</td></tr>`).join('')
     : '<tr><td colspan="5">Sin eventos</td></tr>';
   const certRows = certificateIssues.length
     ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '-')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td>${escapeHTML(c.center_name || '-')}</td></tr>`).join('')
     : '<tr><td colspan="4">Sin certificados emitidos</td></tr>';
   const w = window.open('', '_blank', 'noopener,noreferrer');
   if (!w) {
-    toast('PermitÃƒÂ­ ventanas emergentes para imprimir el reporte', 'info');
+    toast('Permití ventanas emergentes para imprimir el reporte', 'info');
     return;
   }
   w.document.write(`<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Reporte ejecutivo - ${escapeHTML(journey.participant_name)}</title><style>
@@ -1704,7 +1829,7 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
     @media print {.card{break-inside:avoid} .chart-card{break-inside:avoid} table{break-inside:auto} tr{break-inside:avoid}}
   </style></head><body>
     <h1>Reporte ejecutivo con narrativa</h1>
-    <p class="muted">Perfil analÃƒÂ­tico de ${escapeHTML(journey.participant_name)}</p>
+    <p class="muted">Perfil analítico de ${escapeHTML(journey.participant_name)}</p>
     <section class="grid">
       <article class="card"><div class="k">Inscripciones</div><div class="v">${totalEnrollments}</div></article>
       <article class="card"><div class="k">Activas</div><div class="v">${journey.totals.active}</div></article>
@@ -1713,21 +1838,21 @@ function printParticipantExecutiveReportPDF(journey, certificateIssues = []) {
     </section>
     <h2>Narrativa ejecutiva</h2>
     <ul>${highlights.map((line) => `<li>${escapeHTML(line)}</li>`).join('')}</ul>
-    <h2>VisualizaciÃƒÂ³n de trayectoria</h2>
+    <h2>Visualización de trayectoria</h2>
     <section class="charts">
       <article class="chart-card">
         <h3>Actividad por mes</h3>
-        ${eventsByMonthRows.length ? inlineLineSVG(eventsByMonthRows, { color: '#60a5fa' }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
+        ${eventsByMonthRows.length ? inlineLineSVG(eventsByMonthRows, { color: themeColor('--chart-1', '#60a5fa'), mode: 'print' }) : '<p class="muted">Sin eventos suficientes para graficar.</p>'}
       </article>
       <article class="chart-card">
-        <h3>ComposiciÃƒÂ³n de estado</h3>
-        ${inlineBarsSVG(journeyCompositionRows, { color: '#f59e0b' })}
+        <h3>Composición de estado</h3>
+        ${inlineBarsSVG(journeyCompositionRows, { color: themeColor('--chart-4', '#fbbf24'), mode: 'print' })}
       </article>
     </section>
-    <h2>LÃƒÂ­nea de eventos</h2>
+    <h2>Línea de eventos</h2>
     <table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table>
     <h2>Certificados emitidos</h2>
-    <table><thead><tr><th>Taller/Curso</th><th>Fecha</th><th>CÃƒÂ³digo</th><th>Centro</th></tr></thead><tbody>${certRows}</tbody></table>
+    <table><thead><tr><th>Taller/Curso</th><th>Fecha</th><th>Código</th><th>Centro</th></tr></thead><tbody>${certRows}</tbody></table>
   </body></html>`);
   w.document.close();
   w.focus();
@@ -1744,7 +1869,7 @@ window.openInsightsJourneyByParticipant = async function (participantId) {
 };
 
 function workshopFormHTML(w = null) {
-  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre del taller</label><input type="text" id="f-name" name="name" class="form-input" value="${escapeHTML(w?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-year" class="form-label">AÃƒÂ±o de cohorte</label><input type="number" id="f-year" name="cohort_year" class="form-input" min="2000" max="2100" value="${w?.cohort_year || new Date().getFullYear()}" required></div><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" name="status" class="form-select"><option value="planned" ${w?.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w?.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w?.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></div><div class="form-row"><div class="form-group"><label for="f-start" class="form-label">Inicio</label><input type="date" id="f-start" name="start_date" class="form-input" value="${w?.start_date || ''}"></div><div class="form-group"><label for="f-end" class="form-label">Fin</label><input type="date" id="f-end" name="end_date" class="form-input" value="${w?.end_date || ''}"></div></div></form>`;
+  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre del taller</label><input type="text" id="f-name" name="name" class="form-input" value="${escapeHTML(w?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-year" class="form-label">Año de cohorte</label><input type="number" id="f-year" name="cohort_year" class="form-input" min="2000" max="2100" value="${w?.cohort_year || new Date().getFullYear()}" required></div><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" name="status" class="form-select"><option value="planned" ${w?.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w?.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w?.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></div><div class="form-row"><div class="form-group"><label for="f-start" class="form-label">Inicio</label><input type="date" id="f-start" name="start_date" class="form-input" value="${w?.start_date || ''}"></div><div class="form-group"><label for="f-end" class="form-label">Fin</label><input type="date" id="f-end" name="end_date" class="form-input" value="${w?.end_date || ''}"></div></div></form>`;
 }
 
 window.openWorkshopForm = function (id = null) {
@@ -1755,8 +1880,8 @@ window.openWorkshopForm = function (id = null) {
   });
   openModal(w ? 'Editar taller' : 'Nuevo taller', workshopFormHTML(w), actions);
   if (w) {
-    document.getElementById('delete-entity-btn').onclick = async () => {
-      if (!(await confirmDialog('Ã‚Â¿Eliminar este taller?'))) return;
+    bindAsyncButtonAction('delete-entity-btn', async () => {
+      if (!(await confirmDialog('¿Eliminar este taller?'))) return;
       try {
         await api.del(`/workshops/${w.id}`);
         toast('Taller eliminado', 'success');
@@ -1765,9 +1890,9 @@ window.openWorkshopForm = function (id = null) {
       } catch (err) {
         toast(err.message, 'error');
       }
-    };
+    }, 'Eliminando...');
   }
-  document.getElementById('save-entity-btn').onclick = async () => {
+  bindAsyncButtonAction('save-entity-btn', async () => {
     const form = document.getElementById('entity-form');
     if (!form.reportValidity()) return;
     const fd = new FormData(form);
@@ -1778,7 +1903,7 @@ window.openWorkshopForm = function (id = null) {
       closeModal();
       await loadWorkshops();
     } catch (err) { toast(err.message, 'error'); }
-  };
+  }, 'Guardando...');
 };
 
 window.quickUpdateWorkshopStatus = async function (id, status) {
@@ -1792,160 +1917,51 @@ window.quickUpdateWorkshopStatus = async function (id, status) {
 };
 
 window.deleteWorkshop = async function (id) {
-  if (!(await confirmDialog('Ã‚Â¿Eliminar este taller?'))) return;
+  if (!(await confirmDialog('¿Eliminar este taller?'))) return;
   try { await api.del(`/workshops/${id}`); toast('Taller eliminado', 'success'); await loadWorkshops(); } catch (err) { toast(err.message, 'error'); }
 };
 
-window.openWorkshopDetail = function (id, tab = 'overview') { state.detailWorkshopId = id; state.detailTab = tab; syncViewParams(); };
-
-async function renderWorkshopDetail() {
-  const panel = document.getElementById('workshop-detail');
-  if (!state.detailWorkshopId) { panel.classList.add('hidden'); return; }
-  const w = state.workshops.find((x) => x.id === state.detailWorkshopId);
-  if (!w) { panel.classList.add('hidden'); return; }
-  panel.classList.remove('hidden');
-  document.getElementById('detail-title').textContent = w.name;
-  document.getElementById('detail-meta').innerHTML = `AÃƒÂ±o ${w.cohort_year} Ã‚Â· ${badge(w.status)} Ã‚Â· ${formatDate(w.start_date)} a ${formatDate(w.end_date)}`;
-  document.querySelectorAll('#detail-tabs .tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.detailTab));
-
-  const [enrollments, comms, participants] = await Promise.all([
-    api.get(`/workshops/${w.id}/enrollments`).catch(() => []),
-    fetchCommunications().catch(() => []),
-    fetchParticipants().catch(() => []),
-  ]);
-  const pMap = Object.fromEntries(participants.map((p) => [p.id, p]));
-  const commRows = comms.filter((c) => c.workshop_id === w.id);
-  const detailBody = document.getElementById('detail-body');
-
-  if (state.detailTab === 'overview') {
-    const active = enrollments.filter((e) => e.status === 'active').length;
-    const finished = enrollments.filter((e) => e.status === 'finished').length;
-    const dropped = enrollments.filter((e) => e.status === 'dropped').length;
-    const progress = enrollments.length ? Math.round((finished / enrollments.length) * 100) : 0;
-    const workshopStories = [
-      { title: 'Estado del taller', body: `${w.name} tiene ${enrollments.length} inscripciones y ${active} activas actualmente.` },
-      { title: 'Resultado parcial', body: `${finished} recorridos finalizados (${progress}% de cierre) y ${dropped} bajas registradas.` },
-      { title: 'ComunicaciÃƒÂ³n', body: `Se registraron ${commRows.length} comunicaciones vinculadas a este taller.` },
-    ];
-    detailBody.innerHTML = `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${enrollments.length}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Bajas</div><div class="metric-value">${dropped}</div></div><div class="card"><div class="metric-label">Comunicaciones</div><div class="metric-value">${commRows.length}</div></div></div><div class="trends-grid" style="margin-top:var(--space-lg)">${narrativeCardsHTML(workshopStories)}</div>`;
-  }
-  if (state.detailTab === 'participants') {
-    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || 'Sin nombre')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || '-')}</td><td>${badge(e.status)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin participantes</h3><p>Este taller no tiene inscriptos.</p></div>`;
-  }
-  if (state.detailTab === 'enrollments') {
-    detailBody.innerHTML = enrollments.length ? `<table class="table-compact"><thead><tr><th>Participante</th><th>Estado</th><th>AcciÃƒÂ³n</th></tr></thead><tbody>${enrollments.map((e) => `<tr><td>${escapeHTML(pMap[e.participant_id]?.name || pMap[e.participant_id]?.email || 'Participante')}</td><td>${badge(e.status)}</td><td><select class="form-select quick-select" data-inline-change="updateEnrollmentStatusInline('${e.id}', this.value)"><option value="enrolled" ${e.status === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${e.status === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${e.status === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${e.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>No hay inscriptos para gestionar.</p></div>`;
-  }
-  if (state.detailTab === 'communications') {
-    detailBody.innerHTML = commRows.length ? `<table class="table-compact"><thead><tr><th>Asunto</th><th>Mensaje</th><th>Enviado</th></tr></thead><tbody>${commRows.map((c) => `<tr><td>${escapeHTML(c.subject)}</td><td>${escapeHTML(c.body.slice(0, 90))}${c.body.length > 90 ? '...' : ''}</td><td>${formatDateTime(c.sent_at)}</td></tr>`).join('')}</tbody></table>` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-communications')}</div><h3>Sin comunicaciones</h3><p>TodavÃƒÂ­a no se enviaron correos para este taller.</p></div>`;
-  }
-  if (state.detailTab === 'metrics') {
-    const active = enrollments.filter((e) => e.status === 'active').length;
-    const finished = enrollments.filter((e) => e.status === 'finished').length;
-    const dropped = enrollments.filter((e) => e.status === 'dropped').length;
-    const progress = enrollments.length ? Math.round((finished / enrollments.length) * 100) : 0;
-    const funnelRows = [
-      { label: 'Inscripto', value: enrollments.length },
-      { label: 'Activo', value: active },
-      { label: 'Finalizado', value: finished },
-      { label: 'Baja', value: dropped },
-    ];
-    detailBody.innerHTML = `<div class="summary-grid"><div class="card"><div class="metric-label">Total</div><div class="metric-value">${enrollments.length}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Bajas</div><div class="metric-value">${dropped}</div></div><div class="card"><div class="metric-label">Avance</div><div class="metric-value">${progress}%</div></div></div><div class="trends-grid" style="margin-top:var(--space-lg)">${trendCard('Inscripciones', monthlySeries(enrollments.map((e) => e.created_at)))}${trendCard('Comunicaciones', monthlySeries(commRows.map((c) => c.created_at)))}${trendCard('Camino del taller', funnelRows)}</div>`;
-  }
-  document.getElementById('detail-copy-emails').onclick = async () => {
-    try {
-      const emails = await api.get(`/communications/workshops/${w.id}/emails`);
-      if (!emails.length) { toast('No hay correos para copiar', 'info'); return; }
-      await navigator.clipboard.writeText(emails.join(', '));
-      toast('Correos copiados', 'success');
-    } catch { toast('No se pudieron copiar los correos', 'error'); }
-  };
-  document.getElementById('detail-send-email').onclick = () => openCommunicationWizard(w.id);
-}
-
-window.updateEnrollmentStatusInline = async function (id, status) {
-  try { await api.put(`/enrollments/${id}`, { status }); toast('Estado actualizado', 'success'); await renderWorkshopDetail(); } catch (err) { toast(err.message, 'error'); }
-};
-
-function renderWorkshopsOverview(rows) {
-  const target = document.getElementById('workshops-overview');
-  const storyTarget = document.getElementById('workshops-story');
-  if (!target || !storyTarget) return;
-  const total = rows.length;
-  const planned = rows.filter((w) => w.status === 'planned').length;
-  const active = rows.filter((w) => w.status === 'active').length;
-  const finished = rows.filter((w) => w.status === 'finished').length;
-  const years = new Set(rows.map((w) => w.cohort_year).filter(Boolean)).size;
-  target.innerHTML = `<div class="card"><div class="metric-label">Talleres visibles</div><div class="metric-value">${total}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Planificados</div><div class="metric-value">${planned}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Cohortes</div><div class="metric-value">${years}</div></div>`;
-  const completion = total ? Math.round((finished / total) * 100) : 0;
-  const stories = [
-    { title: 'Panorama', body: `${active} talleres activos sobre ${total} visibles en el filtro actual.` },
-    { title: 'Ritmo de cierre', body: `${finished} talleres finalizaron (${completion}% del total filtrado).` },
-    { title: 'PlanificaciÃƒÂ³n', body: `${planned} talleres estÃƒÂ¡n planificados y listos para activarse.` },
-  ];
-  storyTarget.innerHTML = narrativeCardsHTML(stories);
-}
-
 async function loadWorkshops() {
   try {
-    if (window.WorkshopsPage?.render) {
-      renderViewLoading('workshops', 'Talleres');
-      document.querySelector('#view-workshops .page-header')?.classList.add('hidden');
+    if (!window.WorkshopsPage?.render) {
+      throw new Error('WorkshopsPage no disponible');
     }
+    renderViewLoading('workshops', 'Talleres');
     await fetchWorkshops();
     const q = state.workshopSearch.toLowerCase();
     const rows = state.workshops.filter((w) => !q || w.name.toLowerCase().includes(q));
-    if (window.WorkshopsPage?.render) {
-      const planned = rows.filter((w) => w.status === 'planned').length;
-      const active = rows.filter((w) => w.status === 'active').length;
-      const finished = rows.filter((w) => w.status === 'finished').length;
-      const cohorts = new Set(rows.map((w) => w.cohort_year).filter(Boolean)).size;
-      const pageData = paginateRows(rows, 'workshops', 20);
-      const workshopMetrics = { total: rows.length, active, planned, finished, cohorts };
-      await window.WorkshopsPage.render({
-        root: document.querySelector('#view-workshops .page-body'),
-        filters: { q: state.workshopSearch, density: state.workshopsDensity },
-        rows: pageData.items.map((w) => ({ ...w, start_date: formatDate(w.start_date), end_date: formatDate(w.end_date) })),
-        pagination: tablePaginationHTML('workshops', pageData, 'talleres'),
-        statusCounts: workshopMetrics,
-        kpiDeltas: buildKpiDeltas('workshops', workshopMetrics),
-        onFilterChange: (next) => {
-          state.workshopSearch = next.reset ? '' : (next.q || '');
-          state.workshopsDensity = next.reset ? 'regular' : (next.density || 'regular');
-          resetTablePage('workshops');
-          syncViewParams();
-          loadWorkshops();
-        },
-        onQuickStatus: (id, status) => quickUpdateWorkshopStatus(id, status),
-        onOpenEnrollments: (id) => setHash('enrollments', { workshop: id }),
-        onCommunicate: (id) => openCommunicationWizard(id),
-        onEdit: (id) => openWorkshopForm(id),
-        onDelete: (id) => deleteWorkshop(id),
-        onNew: () => openWorkshopForm(),
-      });
-      return;
-    }
-    document.querySelector('#view-workshops .page-header')?.classList.remove('hidden');
-    document.getElementById('search-workshops').value = state.workshopSearch;
-    document.getElementById('workshops-density').value = state.workshopsDensity;
-    renderWorkshopsOverview(rows);
+    const planned = rows.filter((w) => w.status === 'planned').length;
+    const active = rows.filter((w) => w.status === 'active').length;
+    const finished = rows.filter((w) => w.status === 'finished').length;
+    const cohorts = new Set(rows.map((w) => w.cohort_year).filter(Boolean)).size;
     const pageData = paginateRows(rows, 'workshops', 20);
-    const klass = state.workshopsDensity === 'compact' ? 'table-compact' : 'table-regular';
-    document.getElementById('workshops-table-body').innerHTML = rows.length
-      ? `<table class="${klass}"><thead><tr><th>Nombre</th><th>AÃƒÂ±o</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones rÃƒÂ¡pidas</th><th class="text-right">Editar</th></tr></thead><tbody>${pageData.items.map((w) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(w.name)}</td><td>${w.cohort_year}</td><td><select class="form-select quick-select" data-inline-change="quickUpdateWorkshopStatus('${w.id}', this.value)"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${formatDate(w.start_date)}</td><td>${formatDate(w.end_date)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" data-inline-click="openWorkshopDetail('${w.id}', 'metrics')">MÃƒÂ©tricas</button><button class="btn btn-ghost btn-sm" data-inline-click="openWorkshopDetail('${w.id}', 'participants')">Participantes</button><button class="btn btn-ghost btn-sm" data-inline-click="openCommunicationWizard('${w.id}')">Comunicar</button></div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" data-inline-click="openWorkshopDetail('${w.id}', 'overview')" aria-label="Ver">${icon('eye')}</button><button class="btn btn-ghost btn-sm" data-inline-click="openWorkshopForm('${w.id}')" aria-label="Editar">${icon('edit')}</button><button class="btn btn-ghost btn-sm" data-inline-click="deleteWorkshop('${w.id}')" aria-label="Eliminar">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('workshops', pageData, 'talleres')}`
-      : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin talleres</h3><p>No hay talleres para el filtro actual.</p><button class="btn btn-primary" data-inline-click="openWorkshopForm()">+ Nuevo taller</button></div>`;
-    await renderWorkshopDetail();
+    const workshopMetrics = { total: rows.length, active, planned, finished, cohorts };
+    await window.WorkshopsPage.render({
+      root: document.querySelector('#view-workshops .page-body'),
+      filters: { q: state.workshopSearch, density: state.workshopsDensity },
+      rows: pageData.items.map((w) => ({ ...w, start_date: formatDate(w.start_date), end_date: formatDate(w.end_date) })),
+      pagination: tablePaginationHTML('workshops', pageData, 'talleres'),
+      statusCounts: workshopMetrics,
+      kpiDeltas: buildKpiDeltas('workshops', workshopMetrics),
+      onFilterChange: (next) => {
+        state.workshopSearch = next.reset ? '' : (next.q || '');
+        state.workshopsDensity = next.reset ? 'regular' : (next.density || 'regular');
+        resetTablePage('workshops');
+        syncViewParams();
+        loadWorkshops();
+      },
+      onQuickStatus: (id, status) => quickUpdateWorkshopStatus(id, status),
+      onOpenEnrollments: (id) => setHash('enrollments', { workshop: id }),
+      onCommunicate: (id) => openCommunicationWizard(id),
+      onEdit: (id) => openWorkshopForm(id),
+      onDelete: (id) => deleteWorkshop(id),
+      onNew: () => openWorkshopForm(),
+    });
   } catch { toast('Error al cargar talleres', 'error'); }
 }
 
-if (!window.WorkshopsPage?.render) {
-  document.getElementById('search-workshops')?.addEventListener('input', (e) => { state.workshopSearch = e.target.value; resetTablePage('workshops'); loadWorkshops(); syncViewParams(); });
-  document.getElementById('workshops-density')?.addEventListener('change', (e) => { state.workshopsDensity = e.target.value; resetTablePage('workshops'); loadWorkshops(); syncViewParams(); });
-  document.getElementById('btn-add-workshop')?.addEventListener('click', () => openWorkshopForm());
-  document.getElementById('detail-tabs')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-tab]'); if (!b) return; state.detailTab = b.dataset.tab; syncViewParams(); });
-}
-
 function participantFormHTML(p = null) {
-  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo nÃƒÂºmeros"></div><div class="form-group"><label for="f-phone" class="form-label">TelÃƒÂ©fono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">GÃƒÂ©nero</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrÃƒÂ³nico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;
+  return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo números"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">Género</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;
 }
 window.openParticipantForm = function (id = null) {
   (async () => {
@@ -1968,8 +1984,8 @@ window.openParticipantForm = function (id = null) {
       : modalFooterActions({ primaryLabel: 'Guardar' });
     openModal(p ? 'Editar participante' : 'Nuevo participante', participantFormHTML(p), actions);
     if (p) {
-      document.getElementById('delete-entity-btn').onclick = async () => {
-        if (!(await confirmDialog('Ã‚Â¿Eliminar este participante?'))) return;
+      bindAsyncButtonAction('delete-entity-btn', async () => {
+        if (!(await confirmDialog('¿Eliminar este participante?'))) return;
         try {
           await api.del(`/participants/${p.id}`);
           toast('Participante eliminado', 'success');
@@ -1978,9 +1994,9 @@ window.openParticipantForm = function (id = null) {
         } catch (err) {
           toast(err.message, 'error');
         }
-      };
+      }, 'Eliminando...');
     }
-    document.getElementById('save-entity-btn').onclick = async () => {
+    bindAsyncButtonAction('save-entity-btn', async () => {
       const form = document.getElementById('entity-form');
       if (!form.reportValidity()) return;
       const fd = new FormData(form);
@@ -2001,75 +2017,25 @@ window.openParticipantForm = function (id = null) {
       } catch (err) {
         toast(err.message, 'error');
       }
-    };
+    }, 'Guardando...');
   })();
 };
-window.deleteParticipant = async function (id) { if (!(await confirmDialog('Ã‚Â¿Eliminar este participante?'))) return; try { await api.del(`/participants/${id}`); toast('Participante eliminado', 'success'); await loadParticipants(); } catch (err) { toast(err.message, 'error'); } };
+window.deleteParticipant = async function (id) { if (!(await confirmDialog('¿Eliminar este participante?'))) return; try { await api.del(`/participants/${id}`); toast('Participante eliminado', 'success'); await loadParticipants(); } catch (err) { toast(err.message, 'error'); } };
 
 const genderLabels = { female: 'Femenino', male: 'Masculino', non_binary: 'No binario', other: 'Otro', undisclosed: 'Sin declarar' };
 const ageBracketLabels = { '0_17': '0-17', '18_24': '18-24', '25_34': '25-34', '35_44': '35-44', '45_54': '45-54', '55_64': '55-64', '65_plus': '65+', unknown: 'Sin dato' };
-const populationLabels = { current: 'Actual', graduated: 'PasÃƒÂ³', inactive: 'Inactivo', no_history: 'Sin historial' };
-
-function demographicRowsHTML(map, labels) {
-  const entries = Object.entries(map || {});
-  const max = Math.max(...entries.map(([, v]) => Number(v) || 0), 0);
-  return entries
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => {
-      const label = labels[k] || k;
-      const pct = max ? ((Number(v) || 0) / max) * 100 : 0;
-      return `<div class="trend-row"><span>${escapeHTML(label)}</span><div class="trend-track"><div class="trend-fill" style="width:${pct}%"></div></div><strong>${v}</strong></div>`;
-    }).join('');
-}
+const populationLabels = { current: 'Actual', graduated: 'Pasó', inactive: 'Inactivo', no_history: 'Sin historial' };
 
 function participantFiltersQuery() {
   return toQuery({
     q: (state.participantSearch || '').trim(),
-    workshop_id: state.participantWorkshop,
     enrollment_status: state.participantEnrollmentStatus || 'all',
     population: state.participantPopulation || 'all',
-    engagement: state.participantEngagement,
-    gender: state.participantGender,
-    age_min: state.participantAgeMin,
-    age_max: state.participantAgeMax,
   });
-}
-
-function participantMatchesTerm(profile, term) {
-  const q = (term || '').trim().toLowerCase();
-  if (!q) return true;
-  const haystack = [
-    profile.name || '',
-    profile.email || '',
-    profile.phone || '',
-    profile.dni || '',
-  ].join(' ').toLowerCase();
-  return haystack.includes(q);
-}
-
-function hasParticipantFilters() {
-  return Boolean(
-    (state.participantSearch || '').trim()
-    || state.participantWorkshop
-    || (state.participantPopulation && state.participantPopulation !== 'all')
-    || state.participantEngagement
-    || state.participantGender
-    || state.participantAgeMin
-    || state.participantAgeMax
-    || (state.participantEnrollmentStatus && state.participantEnrollmentStatus !== 'all')
-  );
 }
 
 function renderParticipantsMode() {
-  const advanced = state.participantMode === 'advanced';
-  document.getElementById('participants-advanced')?.classList.toggle('hidden', !advanced);
-  document.querySelectorAll('[data-participants-mode]').forEach((btn) => {
-    const active = btn.dataset.participantsMode === state.participantMode;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
-  });
-  const cta = document.getElementById('btn-open-participants-advanced');
-  if (cta) cta.textContent = advanced ? 'Volver a resumen' : 'Ir a vista avanzada';
+  // No-op: la vista de participantes se renderiza de forma modular.
 }
 
 function setParticipantsMode(mode, sync = true) {
@@ -2092,97 +2058,133 @@ function participantEngagementChip(level) {
   return `<span class="signal-chip has-value ${key}"><span>Nivel de actividad</span><span class="signal-value">${text}</span></span>`;
 }
 
-function renderParticipantsOverview(overview) {
-  document.getElementById('participants-overview').innerHTML = `<div class="card"><div class="metric-label">Personas registradas</div><div class="metric-value">${overview.total_participants}</div></div><div class="card"><div class="metric-label">Con inscripciones</div><div class="metric-value">${overview.with_workshops}</div></div><div class="card"><div class="metric-label">Actualmente activos</div><div class="metric-value">${overview.active_members}</div></div><div class="card"><div class="metric-label">Pasaron/finalizaron</div><div class="metric-value">${overview.certifiable_members}</div></div><div class="card"><div class="metric-label">Inactivos</div><div class="metric-value">${overview.inactive_members}</div></div><div class="card"><div class="metric-label">Sin historial</div><div class="metric-value">${overview.no_history_members}</div></div>`;
-  document.getElementById('participants-demographics').innerHTML = `<div class="trend-card"><h4>DistribuciÃƒÂ³n por gÃƒÂ©nero</h4>${demographicRowsHTML(overview.gender_distribution, genderLabels)}</div><div class="trend-card"><h4>DistribuciÃƒÂ³n por edad</h4>${demographicRowsHTML(overview.age_brackets, ageBracketLabels)}</div>`;
-  const dominantGender = dominantEntry(overview.gender_distribution, genderLabels);
-  const dominantAge = dominantEntry(overview.age_brackets, ageBracketLabels);
-  const participantsStories = [
-    {
-      title: 'ComposiciÃƒÂ³n actual',
-      body: `${overview.active_members} personas activas y ${overview.certifiable_members} con trayecto finalizado para certificaciÃƒÂ³n.`,
-    },
-    {
-      title: 'Perfil demogrÃƒÂ¡fico principal',
-      body: dominantGender ? `${dominantGender.label} representa el grupo mÃƒÂ¡s numeroso (${dominantGender.value}).` : 'Sin datos de gÃƒÂ©nero para destacar.',
-    },
-    {
-      title: 'Edad predominante',
-      body: dominantAge ? `La franja ${dominantAge.label} concentra ${dominantAge.value} personas.` : 'Sin datos de edad para destacar.',
-    },
-  ];
-  document.getElementById('participants-story').innerHTML = narrativeCardsHTML(participantsStories);
-}
-
-function renderParticipantsTable(rows) {
-  const target = document.getElementById('participants-table-body');
-  target.classList.remove('hidden');
-  if (!rows.length) {
-    target.innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-participants')}</div><h3>Sin participantes</h3><p>No hay resultados para los filtros actuales.</p><button class="btn btn-primary" data-inline-click="openParticipantForm()">+ Nuevo participante</button></div>`;
-    return;
-  }
-  const pageData = paginateRows(rows, 'participantsPerson', 18);
-  const term = state.participantSearchMode === 'explore' ? state.participantSearch : '';
-  target.innerHTML = `<table><thead><tr><th>Participante</th><th>DemografÃƒÂ­a</th><th>Trayectoria</th><th>Comunicaciones</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((p) => `<tr><td style="color:var(--text-primary);font-weight:600">${highlightMatch(p.name, term)}<br><span class="muted">DNI ${highlightMatch(p.dni || '-', term)} Ã‚Â· ${highlightMatch(p.email, term)}</span><br><span class="muted">${highlightMatch(p.phone || 'Sin telÃƒÂ©fono', term)} Ã‚Â· ÃƒÅ¡ltima actividad: ${formatDate(p.last_activity)}</span></td><td><div class="participants-signal-list">${signalChip('Edad', p.age ?? '-', p.age ? 'status-active' : '')}${signalChip('GÃƒÂ©nero', genderLabels[p.gender] || 'Sin declarar', p.gender && p.gender !== 'undisclosed' ? 'status-active' : '')}</div></td><td><div class="participants-signal-list">${signalChip('PoblaciÃƒÂ³n', populationLabels[p.population_segment] || '-', p.population_segment === 'current' ? 'status-active' : p.population_segment === 'graduated' ? 'status-finished' : '')}${signalChip('Activo', p.active_workshops, 'status-active')}${signalChip('Finalizado', p.finished_workshops, 'status-finished')}${signalChip('Inscripto', p.enrolled_workshops, 'status-enrolled')}</div></td><td><div class="participants-signal-list">${signalChip('Enviado', p.communications_sent, 'status-sent')}${signalChip('Fallido', p.communications_failed, 'status-failed')}${participantEngagementChip(p.engagement_level)}</div></td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" data-inline-click="openParticipantProfile('${p.id}')">Perfil</button><button class="btn btn-ghost btn-sm" data-inline-click="openParticipantForm('${p.id}')">Editar</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('participantsPerson', pageData, 'participantes')}`;
-}
-
-function renderParticipantsResultsSummary(rows) {
-  const target = document.getElementById('participants-results-summary');
-  if (!rows.length) {
-    target.classList.add('hidden');
-    target.innerHTML = '';
-    return;
-  }
-  const counts = { current: 0, graduated: 0, inactive: 0, no_history: 0 };
-  let withAge = 0;
-  let ageTotal = 0;
-  const term = (state.participantSearch || '').trim();
-  let matches = 0;
-  rows.forEach((p) => {
-    counts[p.population_segment] = (counts[p.population_segment] || 0) + 1;
-    if (term && participantMatchesTerm(p, term)) matches += 1;
-    if (typeof p.age === 'number') {
-      withAge += 1;
-      ageTotal += p.age;
+async function loadParticipants() {
+  try {
+    if (!window.ParticipantsPage?.render) {
+      throw new Error('ParticipantsPage no disponible');
     }
-  });
-  const avgAge = withAge ? Math.round(ageTotal / withAge) : '-';
-  const mainText = state.participantSearchMode === 'explore' && term
-    ? `<strong>${rows.length}</strong> en base Ã‚Â· <strong>${matches}</strong> coincidencias`
-    : `<strong>${rows.length}</strong> resultados`;
-  target.classList.remove('hidden');
-  target.innerHTML = `<div class="participants-query-summary"><div class="participants-query-main">${mainText}</div><div class="participants-signal-list">${signalChip('Actuales', counts.current, 'status-active')}${signalChip('Pasaron', counts.graduated, 'status-finished')}${signalChip('Inactivos', counts.inactive, 'status-dropped')}${signalChip('Edad promedio', avgAge, withAge ? 'status-active' : '')}</div></div>`;
+    if (!state.participantHasLoaded) {
+      renderViewLoading('participants', 'Participantes');
+    }
+    const [overview] = await Promise.all([fetchParticipantsOverview(), fetchWorkshops()]);
+    const qs = participantFiltersQuery();
+    const rows = await api.get(`/participants/profiles${qs ? `?${qs}` : ''}`);
+    state.participantProfiles = rows;
+    state.participantHasLoaded = true;
+    const participantMetrics = {
+      total_participants: overview.total_participants || 0,
+      active_members: overview.active_members || 0,
+      certifiable_members: overview.certifiable_members || 0,
+      inactive_members: overview.inactive_members || 0,
+    };
+    await window.ParticipantsPage.render({
+      root: document.querySelector('#view-participants .page-body'),
+      overview,
+      profiles: rows,
+      kpiDeltas: buildKpiDeltas('participants', participantMetrics),
+      mode: state.participantMode,
+      filters: {
+        q: state.participantSearch,
+        status: state.participantEnrollmentStatus,
+        population: state.participantPopulation,
+      },
+      onModeChange: (mode) => {
+        setParticipantsMode(mode);
+        state.participantHasLoaded = true;
+        loadParticipants();
+      },
+      onNew: () => openParticipantForm(),
+      onExport: () => exportParticipantsCSV(),
+      onImport: (file) => importParticipantsCSV(file),
+      onOpenProfile: (id) => openParticipantProfile(id),
+      onOpenEdit: (id) => openParticipantForm(id),
+      onFilterChange: (next) => {
+        if (next.reset) {
+          state.participantSearch = '';
+          state.participantEnrollmentStatus = 'all';
+          state.participantPopulation = 'all';
+        } else {
+          state.participantSearch = next.q || '';
+          state.participantEnrollmentStatus = next.status || 'all';
+          state.participantPopulation = next.population || 'all';
+        }
+        state.participantHasLoaded = true;
+        syncViewParams();
+        loadParticipants();
+      },
+    });
+  } catch (err) {
+    toast(err.message || 'Error al cargar participantes', 'error');
+  }
 }
 
-function renderParticipantsGrouped(groups) {
-  const target = document.getElementById('participants-grouped-body');
-  target.classList.remove('hidden');
-  if (!groups.length) {
-    target.innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-workshops')}</div><h3>Sin grupos</h3><p>No hay talleres con participantes para los filtros actuales.</p></div>`;
-    return;
+async function exportParticipantsCSV() {
+  try {
+    const qs = participantFiltersQuery();
+    const url = `${API_BASE}/participants/export.csv${qs ? `?${qs}` : ''}`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${api.token}` } });
+    if (!res.ok) throw new Error(`Error ${res.status}`);
+    const blob = await res.blob();
+    const objectURL = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectURL;
+    a.download = 'participants_export.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectURL);
+    toast('CSV exportado', 'success');
+  } catch (err) {
+    toast(err.message || 'No se pudo exportar CSV', 'error');
   }
-  const pageData = paginateRows(groups, 'participantsWorkshop', 6);
-  const term = state.participantSearchMode === 'explore' ? state.participantSearch : '';
-  target.innerHTML = `<div class="participants-groups">${pageData.items.map((g) => `<div class="group-card"><div class="group-card-header"><div><div class="group-card-title">${escapeHTML(g.workshop_name)}</div><div class="muted">Cohorte ${g.cohort_year} Ã‚Â· ${statusLabels[g.workshop_status] || g.workshop_status}</div></div><div class="participants-signal-list">${signalChip('Participantes', g.participants_total, 'status-active')}</div></div><table class="participants-mini-table"><thead><tr><th>Participante</th><th>DNI</th><th>Edad</th><th>GÃƒÂ©nero</th><th>Estado</th><th>Nivel de actividad</th><th class="text-right">Acciones</th></tr></thead><tbody>${g.participants.map((p) => `<tr><td>${highlightMatch(p.name, term)}<br><span class="muted">${highlightMatch(p.email, term)}</span></td><td>${highlightMatch(p.dni || '-', term)}</td><td>${p.age ?? '-'}</td><td>${escapeHTML(genderLabels[p.gender] || 'Sin declarar')}</td><td>${signalChip(statusLabels[p.enrollment_status] || p.enrollment_status, 1, `status-${p.enrollment_status}`)}</td><td>${participantEngagementChip(p.engagement_level)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" data-inline-click="openParticipantProfile('${p.participant_id}')">Ver</button><button class="btn btn-ghost btn-sm" data-inline-click="openParticipantForm('${p.participant_id}')">Editar</button></div></td></tr>`).join('')}</tbody></table></div>`).join('')}</div>${tablePaginationHTML('participantsWorkshop', pageData, 'talleres')}`;
+}
+
+async function importParticipantsCSV(file) {
+  try {
+    const content = await file.text();
+    const result = await api.post('/participants/import.csv', { csv_content: content });
+    const summary = `Filas: ${result.total_rows} - Creados: ${result.created} - Actualizados: ${result.updated} - Omitidos: ${result.skipped}`;
+    if (result.errors?.length) {
+      openModal(
+        'Importación CSV completada',
+        `<p class="muted mb-md">${escapeHTML(summary)}</p><div class="preview-card"><p class="muted mb-md">Errores detectados (máx 50):</p><ul>${result.errors.map((e) => `<li>${escapeHTML(e)}</li>`).join('')}</ul></div>`,
+        `<button class="btn btn-primary" data-inline-click="closeModal()">Cerrar</button>`
+      );
+    } else {
+      toast(`Importación completada. ${summary}`, 'success');
+    }
+    await loadParticipants();
+  } catch (err) {
+    toast(err.message || 'No se pudo importar CSV', 'error');
+  }
 }
 
 window.openParticipantProfile = async function (participantId) {
   try {
     const profile = await api.get(`/participants/profiles/${participantId}`);
-    const finished = profile.workshops.filter((w) => w.enrollment_status === 'finished');
+    const workshops = profile.workshops || [];
+    const finished = workshops.filter((w) => w.enrollment_status === 'finished');
     const population = populationLabels[profile.population_segment] || 'Sin dato';
-    const engagement = profile.engagement_level === 'high' ? 'Alto' : profile.engagement_level === 'medium' ? 'Medio' : 'Bajo';
-    const completionRate = profile.workshops_total ? Math.round((profile.finished_workshops / profile.workshops_total) * 100) : 0;
-    const participantStory = `ParticipÃƒÂ³ en ${profile.workshops_total} talleres, con ${profile.active_workshops} activos y ${profile.finished_workshops} finalizados (${completionRate}% de cierre).`;
-    const workshopsHTML = profile.workshops.length
-      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>AÃƒÂ±o</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${profile.workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" data-inline-click="openCertificateIssueWizard('${profile.id}','${w.workshop_id}')">Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
-      : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin talleres</h3><p>Este participante aÃƒÂºn no tiene inscripciones.</p></div>`;
+    const engagement = profile.engagement_level === 'high'
+      ? 'Alto'
+      : profile.engagement_level === 'medium'
+        ? 'Medio'
+        : 'Bajo';
+    const completionRate = profile.workshops_total
+      ? Math.round((profile.finished_workshops / profile.workshops_total) * 100)
+      : 0;
+    const participantStory = `Participo en ${profile.workshops_total} talleres, con ${profile.active_workshops} activos y ${profile.finished_workshops} finalizados (${completionRate}% de cierre).`;
+    const workshopsHTML = workshops.length
+      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Anio</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" data-inline-click="openCertificateIssueWizard('${profile.id}','${w.workshop_id}')">Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
+      : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin talleres</h3><p>Este participante aun no tiene inscripciones.</p></div>`;
+
     state.activeParticipantProfile = profile;
     openModal(
       `Perfil de ${profile.name}`,
-      `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('PoblaciÃƒÂ³n', population, profile.population_segment === 'current' ? 'status-active' : profile.population_segment === 'graduated' ? 'status-finished' : '')}${participantEngagementChip(profile.engagement_level)}</div></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_total}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Finalizados</span><strong class="profile-kpi-value">${profile.finished_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Nivel de actividad</span><strong class="profile-kpi-value">${engagement}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(participantStory)}</p></section><section class="profile-meta-grid"><div class="profile-meta-item"><span>DNI</span><strong>${escapeHTML(profile.dni || '-')}</strong></div><div class="profile-meta-item"><span>Edad</span><strong>${profile.age ?? '-'}</strong></div><div class="profile-meta-item"><span>GÃƒÂ©nero</span><strong>${escapeHTML(genderLabels[profile.gender] || 'Sin declarar')}</strong></div><div class="profile-meta-item"><span>Correo electrÃƒÂ³nico</span><strong>${escapeHTML(profile.email)}</strong></div><div class="profile-meta-item"><span>TelÃƒÂ©fono</span><strong>${escapeHTML(profile.phone || '-')}</strong></div><div class="profile-meta-item"><span>ÃƒÅ¡ltima actividad</span><strong>${formatDate(profile.last_activity)}</strong></div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4>${workshopsHTML}</section></div>`,
-      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" id="profile-journey-btn" title="Abrir recorrido de inscripciones y comunicaciones">Ver camino</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`
-    , { variant: 'profile' });
+      `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Poblacion', population, profile.population_segment === 'current' ? 'status-active' : profile.population_segment === 'graduated' ? 'status-finished' : '')}${participantEngagementChip(profile.engagement_level)}</div></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_total}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Finalizados</span><strong class="profile-kpi-value">${profile.finished_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Nivel de actividad</span><strong class="profile-kpi-value">${engagement}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(participantStory)}</p></section><section class="profile-meta-grid"><div class="profile-meta-item"><span>DNI</span><strong>${escapeHTML(profile.dni || '-')}</strong></div><div class="profile-meta-item"><span>Edad</span><strong>${profile.age ?? '-'}</strong></div><div class="profile-meta-item"><span>Genero</span><strong>${escapeHTML(genderLabels[profile.gender] || 'Sin declarar')}</strong></div><div class="profile-meta-item"><span>Correo</span><strong>${escapeHTML(profile.email)}</strong></div><div class="profile-meta-item"><span>Telefono</span><strong>${escapeHTML(profile.phone || '-')}</strong></div><div class="profile-meta-item"><span>Ultima actividad</span><strong>${formatDate(profile.last_activity)}</strong></div></section><section class="profile-section"><h4 class="profile-section-title">Historial de talleres</h4>${workshopsHTML}</section></div>`,
+      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" id="profile-journey-btn">Ver camino</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`,
+      { variant: 'profile' }
+    );
     document.getElementById('profile-edit-btn').onclick = () => {
       closeModal();
       openParticipantForm(profile.id);
@@ -2205,7 +2207,12 @@ window.openParticipantProfile = async function (participantId) {
 };
 
 function certificateSignerRowsHTML(signers = []) {
-  const rows = signers.length ? signers : [{ name: '', role_title: '', signature_data_url: '', sort_order: 1 }, { name: '', role_title: '', signature_data_url: '', sort_order: 2 }];
+  const rows = signers.length
+    ? signers
+    : [
+      { name: '', role_title: '', signature_data_url: '', sort_order: 1 },
+      { name: '', role_title: '', signature_data_url: '', sort_order: 2 },
+    ];
   return rows.map((s, idx) => `
     <div class="certificate-signer-row" data-signer-row="${idx}">
       <div class="form-row">
@@ -2233,7 +2240,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
     : await api.get(`/participants/profiles/${participantId}`);
   const workshop = (profile.workshops || []).find((w) => String(w.workshop_id) === String(workshopId));
   if (!workshop) {
-    toast('No se encontrÃƒÂ³ el taller para certificar', 'error');
+    toast('No se encontro el taller para certificar', 'error');
     return;
   }
   try {
@@ -2277,12 +2284,12 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
             <input id="cert-course-name" class="form-input" value="${escapeHTML(workshop.workshop_name)}" required>
           </div>
           <div class="form-group">
-            <label class="form-label" for="cert-issue-date">Fecha de emisiÃƒÂ³n</label>
+            <label class="form-label" for="cert-issue-date">Fecha de emision</label>
             <input id="cert-issue-date" type="date" class="form-input" value="${new Date().toISOString().slice(0, 10)}" required>
           </div>
         </div>
         <div class="form-group">
-          <label class="form-label" for="cert-course-description">DescripciÃƒÂ³n</label>
+          <label class="form-label" for="cert-course-description">Descripcion</label>
           <textarea id="cert-course-description" class="form-textarea" rows="3">${escapeHTML(selectedTemplate.default_description || '')}</textarea>
         </div>
         <details class="certificate-details" open>
@@ -2293,7 +2300,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
               <input id="cert-center-name" class="form-input" value="${escapeHTML(selectedCenter.name || '')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-center-legal-name">RazÃƒÂ³n social</label>
+              <label class="form-label" for="cert-center-legal-name">Razon social</label>
               <input id="cert-center-legal-name" class="form-input" value="${escapeHTML(selectedCenter.legal_name || '')}">
             </div>
           </div>
@@ -2313,7 +2320,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
               <input id="cert-watermark" class="form-input" value="${escapeHTML(selectedCenter.watermark_text || 'CERTIFICADO')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-footer">Pie de pÃƒÂ¡gina</label>
+              <label class="form-label" for="cert-footer">Pie de pagina</label>
               <input id="cert-footer" class="form-input" value="${escapeHTML(selectedCenter.footer_text || '')}">
             </div>
           </div>
@@ -2322,11 +2329,11 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           <summary>Texto y firmantes</summary>
           <div class="form-row mt-md">
             <div class="form-group">
-              <label class="form-label" for="cert-title-text">TÃƒÂ­tulo del certificado</label>
-              <input id="cert-title-text" class="form-input" value="${escapeHTML(selectedTemplate.title_text || 'Certificado de participaciÃƒÂ³n')}">
+              <label class="form-label" for="cert-title-text">Titulo del certificado</label>
+              <input id="cert-title-text" class="form-input" value="${escapeHTML(selectedTemplate.title_text || 'Certificado de participacion')}">
             </div>
             <div class="form-group">
-              <label class="form-label" for="cert-subtitle-text">SubtÃƒÂ­tulo</label>
+              <label class="form-label" for="cert-subtitle-text">Subtitulo</label>
               <input id="cert-subtitle-text" class="form-input" value="${escapeHTML(selectedTemplate.subtitle_text || '')}">
             </div>
           </div>
@@ -2342,9 +2349,9 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
       { variant: 'profile' }
     );
 
-    const centerSelect = document.getElementById('cert-center');
-    const templateSelect = document.getElementById('cert-template');
     const bindDynamic = () => {
+      const centerSelect = document.getElementById('cert-center');
+      const templateSelect = document.getElementById('cert-template');
       document.getElementById('issue-cert-btn').onclick = submitIssue;
       centerSelect?.addEventListener('change', async () => {
         const centerId = centerSelect.value;
@@ -2376,7 +2383,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
         const issueDate = document.getElementById('cert-issue-date').value;
         const courseName = document.getElementById('cert-course-name').value.trim();
         if (!issueDate || !courseName) {
-          toast('CompletÃƒÂ¡ curso y fecha de emisiÃƒÂ³n', 'info');
+          toast('Completa curso y fecha de emision', 'info');
           return;
         }
         const centerPayload = {
@@ -2405,7 +2412,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           signerPayload.push({ name, role_title: role, signature_data_url, sort_order: Number(idx) + 1 });
         }
         if (!signerPayload.length) {
-          toast('AgregÃƒÂ¡ al menos un firmante', 'info');
+          toast('Agrega al menos un firmante', 'info');
           return;
         }
 
@@ -2416,7 +2423,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
           paper_size: selectedTemplate.paper_size || 'A4',
           title_text: document.getElementById('cert-title-text').value.trim() || selectedTemplate.title_text,
           subtitle_text: document.getElementById('cert-subtitle-text').value.trim() || null,
-          body_template: selectedTemplate.body_template || 'Se certifica que {participant_name} participÃƒÂ³ del curso/taller {course_name}.',
+          body_template: selectedTemplate.body_template || 'Se certifica que {participant_name} participo del curso/taller {course_name}.',
           default_description: document.getElementById('cert-course-description').value.trim() || null,
           signers: signerPayload,
         };
@@ -2434,405 +2441,107 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
         });
         await blobDownloadWithAuth(issued.download_url, `certificado_${profile.name.replace(/\s+/g, '_')}.pdf`);
         closeModal();
-        toast(`Certificado emitido. CÃƒÂ³digo: ${issued.verification_code}`, 'success');
+        toast(`Certificado emitido. Codigo: ${issued.verification_code}`, 'success');
       } catch (err) {
         toast(err.message || 'No se pudo emitir el certificado', 'error');
       }
     };
+
     bindDynamic();
   } catch (err) {
-    toast(err.message || 'No se pudo iniciar emisiÃƒÂ³n de certificado', 'error');
+    toast(err.message || 'No se pudo iniciar emision de certificado', 'error');
   }
 };
-
-async function loadParticipants() {
-  try {
-    if (window.ParticipantsPage?.render) {
-      if (!state.participantHasLoaded) {
-        renderViewLoading('participants', 'Participantes');
-      }
-      document.querySelector('#view-participants .page-header')?.classList.add('hidden');
-      const [overview, workshops] = await Promise.all([fetchParticipantsOverview(), fetchWorkshops()]);
-      const qs = participantFiltersQuery();
-      const rows = await api.get(`/participants/profiles${qs ? `?${qs}` : ''}`);
-      state.participantProfiles = rows;
-      state.participantHasLoaded = true;
-      const participantMetrics = {
-        total_participants: overview.total_participants || 0,
-        active_members: overview.active_members || 0,
-        certifiable_members: overview.certifiable_members || 0,
-        inactive_members: overview.inactive_members || 0,
-      };
-      await window.ParticipantsPage.render({
-        root: document.querySelector('#view-participants .page-body'),
-        overview,
-        profiles: rows,
-        kpiDeltas: buildKpiDeltas('participants', participantMetrics),
-        mode: state.participantMode,
-        filters: {
-          q: state.participantSearch,
-          status: state.participantEnrollmentStatus,
-          population: state.participantPopulation,
-        },
-        onModeChange: (mode) => setParticipantsMode(mode),
-        onNew: () => openParticipantForm(),
-        onExport: () => exportParticipantsCSV(),
-        onOpenProfile: (id) => openParticipantProfile(id),
-        onOpenEdit: (id) => openParticipantForm(id),
-        onFilterChange: (next) => {
-          if (next.reset) {
-            state.participantSearch = '';
-            state.participantEnrollmentStatus = 'all';
-            state.participantPopulation = 'all';
-            state.participantWorkshop = '';
-            state.participantEngagement = '';
-            state.participantGender = '';
-            state.participantAgeMin = '';
-            state.participantAgeMax = '';
-          } else {
-            state.participantSearch = next.q || '';
-            state.participantEnrollmentStatus = next.status || 'all';
-            state.participantPopulation = next.population || 'all';
-          }
-          state.participantHasLoaded = true;
-          syncViewParams();
-          loadParticipants();
-        },
-      });
-      return;
-    }
-    document.querySelector('#view-participants .page-header')?.classList.remove('hidden');
-    const [overview] = await Promise.all([fetchParticipantsOverview(), fetchWorkshops()]);
-    renderParticipantsOverview(overview);
-    renderParticipantsMode();
-    document.getElementById('filter-participant-workshop').innerHTML = `<option value="">Todos</option>${state.workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}`;
-    document.getElementById('participants-search-mode').value = state.participantSearchMode;
-    document.getElementById('filter-participant-workshop').value = state.participantWorkshop;
-    document.getElementById('filter-participant-status').value = state.participantEnrollmentStatus;
-    document.getElementById('filter-participant-population').value = state.participantPopulation;
-    document.getElementById('filter-participant-engagement').value = state.participantEngagement;
-    document.getElementById('filter-participant-gender').value = state.participantGender;
-    document.getElementById('filter-participant-age-min').value = state.participantAgeMin;
-    document.getElementById('filter-participant-age-max').value = state.participantAgeMax;
-    document.getElementById('participants-view-mode').value = state.participantAdvancedView;
-    document.getElementById('search-participants').value = state.participantSearch;
-
-    if (state.participantMode !== 'advanced') {
-      document.getElementById('participants-results-gate').classList.remove('hidden');
-      document.getElementById('participants-results-summary').classList.add('hidden');
-      document.getElementById('participants-table-body').classList.add('hidden');
-      document.getElementById('participants-grouped-body').classList.add('hidden');
-      return;
-    }
-
-    if (!state.participantHasLoaded && !hasParticipantFilters()) {
-      document.getElementById('participants-results-gate').classList.remove('hidden');
-      document.getElementById('participants-results-summary').classList.add('hidden');
-      document.getElementById('participants-table-body').classList.add('hidden');
-      document.getElementById('participants-grouped-body').classList.add('hidden');
-      return;
-    }
-
-    document.getElementById('participants-results-gate').classList.add('hidden');
-    if (state.participantAgeMin && state.participantAgeMax && Number(state.participantAgeMin) > Number(state.participantAgeMax)) {
-      toast('Edad mÃƒÂ­nima no puede ser mayor que edad mÃƒÂ¡xima', 'info');
-      return;
-    }
-    const qs = participantFiltersQuery();
-    const rawRows = await api.get(`/participants/profiles${qs ? `?${qs}` : ''}`);
-    const rows = [...rawRows];
-    if (state.participantSearchMode === 'explore' && (state.participantSearch || '').trim()) {
-      const term = state.participantSearch;
-      rows.sort((a, b) => {
-        const am = participantMatchesTerm(a, term) ? 1 : 0;
-        const bm = participantMatchesTerm(b, term) ? 1 : 0;
-        if (am !== bm) return bm - am;
-        return (a.name || '').localeCompare(b.name || '');
-      });
-    }
-    state.participantProfiles = rows;
-    renderParticipantsResultsSummary(rows);
-    renderParticipantsTable(rows);
-
-    if (state.participantAdvancedView === 'workshop') {
-      const groups = await api.get(`/participants/grouped-by-workshop${qs ? `?${qs}` : ''}`);
-      if (state.participantSearchMode === 'explore' && (state.participantSearch || '').trim()) {
-        const term = state.participantSearch;
-        groups.sort((a, b) => {
-          const ac = a.participants.filter((p) => participantMatchesTerm(p, term)).length;
-          const bc = b.participants.filter((p) => participantMatchesTerm(p, term)).length;
-          return bc - ac;
-        });
-      }
-      renderParticipantsGrouped(groups);
-      document.getElementById('participants-table-body').classList.add('hidden');
-      document.getElementById('participants-grouped-body').classList.remove('hidden');
-    } else {
-      document.getElementById('participants-grouped-body').classList.add('hidden');
-      document.getElementById('participants-table-body').classList.remove('hidden');
-    }
-  } catch { toast('Error al cargar participantes', 'error'); }
-}
-
-async function exportParticipantsCSV() {
-  try {
-    const qs = participantFiltersQuery();
-    const url = `${API_BASE}/participants/export.csv${qs ? `?${qs}` : ''}`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${api.token}` } });
-    if (!res.ok) throw new Error(`Error ${res.status}`);
-    const blob = await res.blob();
-    const objectURL = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = objectURL;
-    a.download = 'participants_export.csv';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(objectURL);
-    toast('CSV exportado', 'success');
-  } catch (err) {
-    toast(err.message || 'No se pudo exportar CSV', 'error');
-  }
-}
-
-async function importParticipantsCSV(file) {
-  try {
-    const content = await file.text();
-    const result = await api.post('/participants/import.csv', { csv_content: content });
-    const summary = `Filas: ${result.total_rows} Ã‚Â· Creados: ${result.created} Ã‚Â· Actualizados: ${result.updated} Ã‚Â· Omitidos: ${result.skipped}`;
-    if (result.errors?.length) {
-      openModal(
-        'ImportaciÃƒÂ³n CSV completada',
-        `<p class="muted mb-md">${escapeHTML(summary)}</p><div class="preview-card"><p class="muted mb-md">Errores detectados (mÃƒÂ¡x 50):</p><ul>${result.errors.map((e) => `<li>${escapeHTML(e)}</li>`).join('')}</ul></div>`,
-        `<button class="btn btn-primary" data-inline-click="closeModal()">Cerrar</button>`
-      );
-    } else {
-      toast(`ImportaciÃƒÂ³n completada. ${summary}`, 'success');
-    }
-    await loadParticipants();
-  } catch (err) {
-    toast(err.message || 'No se pudo importar CSV', 'error');
-  }
-}
-
-document.querySelectorAll('[data-participants-mode]').forEach((btn) => btn.addEventListener('click', () => {
-  resetTablePage('participantsPerson');
-  resetTablePage('participantsWorkshop');
-  setParticipantsMode(btn.dataset.participantsMode);
-}));
-document.getElementById('btn-open-participants-advanced')?.addEventListener('click', () => {
-  resetTablePage('participantsPerson');
-  resetTablePage('participantsWorkshop');
-  setParticipantsMode(state.participantMode === 'advanced' ? 'summary' : 'advanced');
-});
-document.getElementById('btn-export-participants-csv')?.addEventListener('click', exportParticipantsCSV);
-document.getElementById('btn-import-participants-csv')?.addEventListener('click', () => {
-  document.getElementById('participants-csv-file')?.click();
-});
-document.getElementById('participants-csv-file')?.addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  await importParticipantsCSV(file);
-  e.target.value = '';
-});
-document.getElementById('btn-participants-clear-filters')?.addEventListener('click', () => {
-  state.participantSearch = '';
-  state.participantSearchMode = 'explore';
-  state.participantWorkshop = '';
-  state.participantEnrollmentStatus = 'all';
-  state.participantPopulation = 'all';
-  state.participantEngagement = '';
-  state.participantGender = '';
-  state.participantAgeMin = '';
-  state.participantAgeMax = '';
-  state.participantAdvancedView = 'person';
-  state.participantHasLoaded = true;
-  resetTablePage('participantsPerson');
-  resetTablePage('participantsWorkshop');
-  loadParticipants();
-  syncViewParams();
-});
-document.getElementById('btn-participants-run-query')?.addEventListener('click', () => {
-  state.participantHasLoaded = true;
-  resetTablePage('participantsPerson');
-  resetTablePage('participantsWorkshop');
-  loadParticipants();
-  syncViewParams();
-});
-let participantsSearchDebounce = null;
-document.getElementById('search-participants')?.addEventListener('input', (e) => {
-  state.participantSearch = e.target.value;
-  syncViewParams();
-  if (state.participantSearchMode === 'explore') {
-    state.participantHasLoaded = true;
-    resetTablePage('participantsPerson');
-    resetTablePage('participantsWorkshop');
-    clearTimeout(participantsSearchDebounce);
-    participantsSearchDebounce = setTimeout(() => loadParticipants(), 180);
-  }
-});
-document.getElementById('search-participants')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); } });
-document.getElementById('participants-search-mode')?.addEventListener('change', (e) => { state.participantSearchMode = e.target.value === 'filter' ? 'filter' : 'explore'; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-workshop')?.addEventListener('change', (e) => { state.participantWorkshop = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-status')?.addEventListener('change', (e) => { state.participantEnrollmentStatus = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-population')?.addEventListener('change', (e) => { state.participantPopulation = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-engagement')?.addEventListener('change', (e) => { state.participantEngagement = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-gender')?.addEventListener('change', (e) => { state.participantGender = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-age-min')?.addEventListener('change', (e) => { state.participantAgeMin = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('filter-participant-age-max')?.addEventListener('change', (e) => { state.participantAgeMax = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('participants-view-mode')?.addEventListener('change', (e) => { state.participantAdvancedView = e.target.value; state.participantHasLoaded = true; resetTablePage('participantsPerson'); resetTablePage('participantsWorkshop'); loadParticipants(); syncViewParams(); });
-document.getElementById('btn-add-participant')?.addEventListener('click', () => openParticipantForm());
 
 let enrollmentsData = [];
 async function loadEnrollments(initialWorkshop = '') {
   try {
-    if (window.EnrollmentsPage?.render) {
-      renderViewLoading('enrollments', 'Inscripciones');
-      document.querySelector('#view-enrollments .page-header')?.classList.add('hidden');
+    if (!window.EnrollmentsPage?.render) {
+      throw new Error('EnrollmentsPage no disponible');
     }
+    renderViewLoading('enrollments', 'Inscripciones');
     const ws = await fetchWorkshops();
     const selected = initialWorkshop || state.enrollmentWorkshop || '';
     state.enrollmentWorkshop = selected;
-    if (window.EnrollmentsPage?.render) {
-      let rows = [];
-      let summary = { total: 0, active: 0, finished: 0, dropped: 0 };
-      if (selected) {
-        enrollmentsData = await api.get(`/workshops/${selected}/enrollments`);
-        const participants = await fetchParticipants();
-        const pMap = Object.fromEntries(participants.map((p) => [p.id, p]));
-        const active = enrollmentsData.filter((e) => e.status === 'active').length;
-        const finished = enrollmentsData.filter((e) => e.status === 'finished').length;
-        const dropped = enrollmentsData.filter((e) => e.status === 'dropped').length;
-        summary = { total: enrollmentsData.length, active, finished, dropped };
-        const pageData = paginateRows(enrollmentsData, 'enrollments', 20);
-        rows = pageData.items.map((e) => ({
-          ...e,
-          participant_name: pMap[e.participant_id]?.name || 'Desconocido',
-          participant_email: pMap[e.participant_id]?.email || '-',
-          status_label: statusLabels[e.status] || e.status,
-          created_at_label: formatDate(e.created_at),
-        }));
-        await window.EnrollmentsPage.render({
-          root: document.querySelector('#view-enrollments .page-body'),
-          workshops: ws,
-          selectedWorkshop: selected,
-          rows,
-          summary,
-          kpiDeltas: buildKpiDeltas('enrollments', summary),
-          pagination: tablePaginationHTML('enrollments', pageData, 'inscripciones'),
-          onSelectWorkshop: (wid) => {
-            state.enrollmentWorkshop = wid || '';
-            resetTablePage('enrollments');
-            setHash('enrollments', { workshop: state.enrollmentWorkshop });
-          },
-          onNew: () => window.openAddEnrollment(),
-          onEdit: (id, currentStatus) => openEnrollmentStatusForm(id, currentStatus),
-          onDelete: (id) => deleteEnrollment(id, state.enrollmentWorkshop),
-        });
-      } else {
-        await window.EnrollmentsPage.render({
-          root: document.querySelector('#view-enrollments .page-body'),
-          workshops: ws,
-          selectedWorkshop: '',
-          rows: [],
-          summary,
-          kpiDeltas: buildKpiDeltas('enrollments', summary),
-          pagination: '',
-          onSelectWorkshop: (wid) => {
-            state.enrollmentWorkshop = wid || '';
-            resetTablePage('enrollments');
-            setHash('enrollments', { workshop: state.enrollmentWorkshop });
-          },
-          onNew: () => window.openAddEnrollment(),
-          onEdit: (id, currentStatus) => openEnrollmentStatusForm(id, currentStatus),
-          onDelete: (id) => deleteEnrollment(id, state.enrollmentWorkshop),
-        });
-      }
-      return;
+
+    let rows = [];
+    let summary = { total: 0, active: 0, finished: 0, dropped: 0 };
+    let pagination = '';
+    if (selected) {
+      enrollmentsData = await api.get(`/workshops/${selected}/enrollments`);
+      const participants = await fetchParticipants();
+      const pMap = Object.fromEntries(participants.map((p) => [p.id, p]));
+      const active = enrollmentsData.filter((e) => e.status === 'active').length;
+      const finished = enrollmentsData.filter((e) => e.status === 'finished').length;
+      const dropped = enrollmentsData.filter((e) => e.status === 'dropped').length;
+      summary = { total: enrollmentsData.length, active, finished, dropped };
+      const pageData = paginateRows(enrollmentsData, 'enrollments', 20);
+      rows = pageData.items.map((e) => ({
+        ...e,
+        participant_name: pMap[e.participant_id]?.name || 'Desconocido',
+        participant_email: pMap[e.participant_id]?.email || '-',
+        status_label: statusLabels[e.status] || e.status,
+        created_at_label: formatDate(e.created_at),
+      }));
+      pagination = tablePaginationHTML('enrollments', pageData, 'inscripciones');
     }
-    document.querySelector('#view-enrollments .page-header')?.classList.remove('hidden');
-    const sel = document.getElementById('enrollment-workshop-select');
-    sel.innerHTML = `<option value="">SeleccionÃƒÂ¡ un taller...</option>${ws.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}`;
-    if (selected) sel.value = selected;
-    if (sel.value) await loadEnrollmentsForWorkshop(sel.value);
-    else {
-      document.getElementById('enrollments-summary').innerHTML = '';
-      document.getElementById('enrollments-story').innerHTML = '';
-      document.getElementById('enrollments-table-body').innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>SeleccionÃƒÂ¡ un taller</h3><p>ElegÃƒÂ­ un taller para ver sus inscripciones.</p></div>`;
-    }
+
+    await window.EnrollmentsPage.render({
+      root: document.querySelector('#view-enrollments .page-body'),
+      workshops: ws,
+      selectedWorkshop: selected,
+      rows,
+      summary,
+      kpiDeltas: buildKpiDeltas('enrollments', summary),
+      pagination,
+      onSelectWorkshop: (wid) => {
+        state.enrollmentWorkshop = wid || '';
+        resetTablePage('enrollments');
+        setHash('enrollments', { workshop: state.enrollmentWorkshop });
+      },
+      onNew: () => window.openAddEnrollment(),
+      onEdit: (id, currentStatus) => openEnrollmentStatusForm(id, currentStatus),
+      onDelete: (id) => deleteEnrollment(id, state.enrollmentWorkshop),
+    });
   } catch { toast('Error al cargar inscripciones', 'error'); }
-}
-if (!window.EnrollmentsPage?.render) {
-  document.getElementById('enrollment-workshop-select')?.addEventListener('change', async (e) => {
-    if (!e.target.value) return;
-    resetTablePage('enrollments');
-    await loadEnrollmentsForWorkshop(e.target.value);
-    syncViewParams();
-  });
-}
-async function loadEnrollmentsForWorkshop(workshopId) {
-  state.enrollmentWorkshop = workshopId || '';
-  enrollmentsData = await api.get(`/workshops/${workshopId}/enrollments`);
-  const participants = await fetchParticipants();
-  const pMap = Object.fromEntries(participants.map((p) => [p.id, p]));
-  const active = enrollmentsData.filter((e) => e.status === 'active').length;
-  const finished = enrollmentsData.filter((e) => e.status === 'finished').length;
-  const dropped = enrollmentsData.filter((e) => e.status === 'dropped').length;
-  const selectedWorkshop = state.workshops.find((w) => String(w.id) === String(workshopId));
-  const completion = enrollmentsData.length ? Math.round((finished / enrollmentsData.length) * 100) : 0;
-  const summary = document.getElementById('enrollments-summary');
-  summary.classList.remove('hidden');
-  summary.innerHTML = `<div class="card"><div class="metric-label">Total</div><div class="metric-value">${enrollmentsData.length}</div></div><div class="card"><div class="metric-label">Activos</div><div class="metric-value">${active}</div></div><div class="card"><div class="metric-label">Finalizados</div><div class="metric-value">${finished}</div></div><div class="card"><div class="metric-label">Bajas</div><div class="metric-value">${dropped}</div></div>`;
-  document.getElementById('enrollments-story').innerHTML = narrativeCardsHTML([
-    { title: 'Cobertura', body: `${selectedWorkshop?.name || 'Taller'} tiene ${enrollmentsData.length} inscripciones registradas.` },
-    { title: 'Estado actual', body: `${active} activas, ${finished} finalizadas y ${dropped} bajas.` },
-    { title: 'Avance', body: `La tasa de finalizaciÃƒÂ³n es de ${completion}%.` },
-  ]);
-  const pageData = paginateRows(enrollmentsData, 'enrollments', 20);
-  document.getElementById('enrollments-table-body').innerHTML = enrollmentsData.length ? `<table><thead><tr><th>Participante</th><th>Correo</th><th>Estado</th><th>Inscripto el</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((e) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(pMap[e.participant_id]?.name || 'Desconocido')}</td><td>${escapeHTML(pMap[e.participant_id]?.email || '-')}</td><td>${badge(e.status)}</td><td>${formatDate(e.created_at)}</td><td class="text-right"><div class="actions-cell" style="justify-content:flex-end"><button class="btn btn-ghost btn-sm" data-inline-click="openEnrollmentStatusForm('${e.id}','${e.status}')" aria-label="Editar estado">${icon('edit')}</button><button class="btn btn-ghost btn-sm" data-inline-click="deleteEnrollment('${e.id}','${workshopId}')" aria-label="Eliminar inscripciÃƒÂ³n">${icon('trash')}</button></div></td></tr>`).join('')}</tbody></table>${tablePaginationHTML('enrollments', pageData, 'inscripciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin inscripciones</h3><p>Nadie estÃƒÂ¡ inscripto en este taller.</p></div>`;
 }
 window.openEnrollmentStatusForm = function (id, currentStatus) {
   openModal('Actualizar estado', `<form id="entity-form"><div class="form-group"><label for="f-status" class="form-label">Estado</label><select id="f-status" class="form-select"><option value="enrolled" ${currentStatus === 'enrolled' ? 'selected' : ''}>Inscripto</option><option value="active" ${currentStatus === 'active' ? 'selected' : ''}>Activo</option><option value="dropped" ${currentStatus === 'dropped' ? 'selected' : ''}>Dado de baja</option><option value="finished" ${currentStatus === 'finished' ? 'selected' : ''}>Finalizado</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Actualizar', dangerLabel: 'Eliminar', dangerId: 'delete-enrollment-btn' }));
-  document.getElementById('delete-enrollment-btn').onclick = async () => {
-    if (!(await confirmDialog('Ã‚Â¿Eliminar esta inscripciÃƒÂ³n?'))) return;
+  bindAsyncButtonAction('delete-enrollment-btn', async () => {
+    if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return;
     try {
       await api.del(`/enrollments/${id}`);
       closeModal();
-      toast('InscripciÃƒÂ³n eliminada', 'success');
+      toast('Inscripción eliminada', 'success');
       resetTablePage('enrollments');
-      const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
+      const wid = state.enrollmentWorkshop;
       if (wid) await loadEnrollments(wid);
     } catch (err) {
       toast(err.message, 'error');
     }
-  };
-  document.getElementById('save-entity-btn').onclick = async () => { try { await api.put(`/enrollments/${id}`, { status: document.getElementById('f-status').value }); closeModal(); toast('Estado actualizado', 'success'); const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value; if (wid) await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
+  }, 'Eliminando...');
+  bindAsyncButtonAction('save-entity-btn', async () => { try { await api.put(`/enrollments/${id}`, { status: document.getElementById('f-status').value }); closeModal(); toast('Estado actualizado', 'success'); const wid = state.enrollmentWorkshop; if (wid) await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } }, 'Guardando...');
 };
-window.deleteEnrollment = async function (id, workshopId) { if (!(await confirmDialog('Ã‚Â¿Eliminar esta inscripciÃƒÂ³n?'))) return; try { await api.del(`/enrollments/${id}`); toast('InscripciÃƒÂ³n eliminada', 'success'); resetTablePage('enrollments'); await loadEnrollments(workshopId || state.enrollmentWorkshop); } catch (err) { toast(err.message, 'error'); } };
+window.deleteEnrollment = async function (id, workshopId) { if (!(await confirmDialog('¿Eliminar esta inscripción?'))) return; try { await api.del(`/enrollments/${id}`); toast('Inscripción eliminada', 'success'); resetTablePage('enrollments'); await loadEnrollments(workshopId || state.enrollmentWorkshop); } catch (err) { toast(err.message, 'error'); } };
 window.openAddEnrollment = async function () {
-  const wid = state.enrollmentWorkshop || document.getElementById('enrollment-workshop-select')?.value;
-  if (!wid) { toast('SeleccionÃƒÂ¡ un taller primero', 'info'); return; }
+  const wid = state.enrollmentWorkshop;
+  if (!wid) { toast('Seleccioná un taller primero', 'info'); return; }
   const participants = await fetchParticipants();
-  if (!participants.length) { toast('No hay participantes. CreÃƒÂ¡ uno primero.', 'info'); return; }
-  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">SeleccionÃƒÂ¡ un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, modalFooterActions({ primaryLabel: 'Inscribir' }));
-  document.getElementById('save-entity-btn').onclick = async () => { const pid = document.getElementById('f-participant').value; if (!pid) return; try { await api.post(`/workshops/${wid}/enrollments`, { workshop_id: wid, participant_id: pid, status: 'enrolled' }); closeModal(); toast('Participante inscripto', 'success'); await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } };
+  if (!participants.length) { toast('No hay participantes. Creá uno primero.', 'info'); return; }
+  openModal('Inscribir participante', `<form id="entity-form"><div class="form-group"><label for="f-participant" class="form-label">Participante</label><select id="f-participant" class="form-select"><option value="">Seleccioná un participante...</option>${participants.map((p) => `<option value="${p.id}">${escapeHTML(p.name)} (${escapeHTML(p.email)})</option>`).join('')}</select></div></form>`, modalFooterActions({ primaryLabel: 'Inscribir' }));
+  bindAsyncButtonAction('save-entity-btn', async () => { const pid = document.getElementById('f-participant').value; if (!pid) return; try { await api.post(`/workshops/${wid}/enrollments`, { workshop_id: wid, participant_id: pid, status: 'enrolled' }); closeModal(); toast('Participante inscripto', 'success'); await loadEnrollments(wid); } catch (err) { toast(err.message, 'error'); } }, 'Inscribiendo...');
 };
-if (!window.EnrollmentsPage?.render) {
-  document.getElementById('btn-add-enrollment')?.addEventListener('click', async () => {
-    await window.openAddEnrollment();
-  });
-}
 
 function templateFor(type, workshopName) {
-  if (type === 'welcome') return { subject: `Bienvenida - ${workshopName}`, body: `Hola,\n\nÃ‚Â¡Bienvenido/a a ${workshopName}!\n\nTe compartiremos novedades por este medio.\n\nSaludos.` };
-  if (type === 'reminder') return { subject: `Recordatorio - ${workshopName}`, body: `Hola,\n\nTe recordamos la prÃƒÂ³xima actividad de ${workshopName}.\n\nSaludos.` };
+  if (type === 'welcome') return { subject: `Bienvenida - ${workshopName}`, body: `Hola,\n\n¡Bienvenido/a a ${workshopName}!\n\nTe compartiremos novedades por este medio.\n\nSaludos.` };
+  if (type === 'reminder') return { subject: `Recordatorio - ${workshopName}`, body: `Hola,\n\nTe recordamos la próxima actividad de ${workshopName}.\n\nSaludos.` };
   return { subject: `Cierre - ${workshopName}`, body: `Hola,\n\nGracias por participar de ${workshopName}.\n\nSaludos.` };
 }
 
 window.openCommunicationWizard = async function (initialWorkshopId = '') {
   try {
     const workshops = await fetchWorkshops();
-    if (!workshops.length) { toast('CreÃƒÂ¡ un taller primero', 'info'); return; }
+    if (!workshops.length) { toast('Creá un taller primero', 'info'); return; }
     const wizard = { step: 1, workshopId: initialWorkshopId || '', recipients: [], subject: '', body: '' };
 
     const loadRecipients = async () => {
@@ -2846,18 +2555,18 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
       let body = '';
       let footer = '';
       if (wizard.step === 1) {
-        body = `<div class="wizard-step"><h4>Paso 1: Seleccionar taller</h4><div class="form-group"><label for="wiz-workshop" class="form-label">Taller</label><select id="wiz-workshop" class="form-select"><option value="">SeleccionÃƒÂ¡ un taller...</option>${workshops.map((w) => `<option value="${w.id}" ${wizard.workshopId === w.id ? 'selected' : ''}>${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="card"><div class="metric-label">Destinatarios detectados</div><div class="metric-value">${wizard.recipients.length}</div><p class="muted">${wizard.recipients.slice(0, 6).join(', ')}${wizard.recipients.length > 6 ? '...' : ''}</p></div></div>`;
+        body = `<div class="wizard-step"><h4>Paso 1: Seleccionar taller</h4><div class="form-group"><label for="wiz-workshop" class="form-label">Taller</label><select id="wiz-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}" ${wizard.workshopId === w.id ? 'selected' : ''}>${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="card"><div class="metric-label">Destinatarios detectados</div><div class="metric-value">${wizard.recipients.length}</div><p class="muted">${wizard.recipients.slice(0, 6).join(', ')}${wizard.recipients.length > 6 ? '...' : ''}</p></div></div>`;
         footer = `<button class="btn btn-secondary" id="wiz-cancel">Cancelar</button><button class="btn btn-primary" id="wiz-next" ${wizard.recipients.length ? '' : 'disabled'}>Siguiente</button>`;
       }
       if (wizard.step === 2) {
         body = `<div class="wizard-step"><h4>Paso 2: Redactar</h4><div class="template-row"><button class="btn btn-secondary btn-sm" id="tpl-welcome" type="button">Plantilla bienvenida</button><button class="btn btn-secondary btn-sm" id="tpl-reminder" type="button">Plantilla recordatorio</button><button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button></div><div class="form-group"><label for="wiz-subject" class="form-label">Asunto</label><input id="wiz-subject" class="form-input" value="${escapeHTML(wizard.subject)}"></div><div class="form-group"><label for="wiz-body" class="form-label">Mensaje</label><textarea id="wiz-body" class="form-textarea">${escapeHTML(wizard.body)}</textarea></div><p class="muted">Destinatarios: ${wizard.recipients.length} del taller ${escapeHTML(workshopName)}.</p></div>`;
-        footer = `<button class="btn btn-secondary" id="wiz-back">AtrÃƒÂ¡s</button><button class="btn btn-primary" id="wiz-next">Vista previa</button>`;
+        footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-next">Vista previa</button>`;
       }
       if (wizard.step === 3) {
-        body = `<div class="wizard-step"><h4>Paso 3: Vista previa</h4><div class="preview-card"><div><strong>Taller:</strong> ${escapeHTML(workshopName)}</div><div><strong>Destinatarios:</strong> ${wizard.recipients.length}</div><div><strong>Asunto:</strong> ${escapeHTML(wizard.subject)}</div><hr><p style="white-space:pre-wrap">${escapeHTML(wizard.body)}</p></div></div>`;
-        footer = `<button class="btn btn-secondary" id="wiz-back">AtrÃƒÂ¡s</button><button class="btn btn-primary" id="wiz-send">Enviar</button>`;
+        body = `<div class="wizard-step"><h4>Paso 3: Vista previa</h4><div class="preview-card"><div><strong>Taller:</strong> ${escapeHTML(workshopName)}</div><div><strong>Destinatarios:</strong> ${wizard.recipients.length}</div><div><strong>Asunto:</strong> ${escapeHTML(wizard.subject)}</div><hr><p class="text-prewrap">${escapeHTML(wizard.body)}</p></div></div>`;
+        footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-send">Enviar</button>`;
       }
-      openModal('Nueva comunicaciÃƒÂ³n', body, footer);
+      openModal('Nueva comunicación', body, footer);
 
       document.getElementById('wiz-cancel')?.addEventListener('click', closeModal);
       document.getElementById('wiz-workshop')?.addEventListener('change', async (e) => { wizard.workshopId = e.target.value; await render(); });
@@ -2869,7 +2578,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         if (wizard.step === 1) { wizard.step = 2; await render(); return; }
         const s = document.getElementById('wiz-subject')?.value.trim() || '';
         const b = document.getElementById('wiz-body')?.value.trim() || '';
-        if (!s || !b) { toast('CompletÃƒÂ¡ asunto y mensaje', 'info'); return; }
+        if (!s || !b) { toast('Completá asunto y mensaje', 'info'); return; }
         wizard.subject = s; wizard.body = b; wizard.step = 3; await render();
       });
       document.getElementById('wiz-back')?.addEventListener('click', async () => { wizard.step -= 1; await render(); });
@@ -2877,9 +2586,8 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         try {
           await api.post(`/communications/workshops/${wizard.workshopId}/emails`, { workshop_id: wizard.workshopId, subject: wizard.subject, body: wizard.body });
           closeModal();
-          toast('ComunicaciÃƒÂ³n enviada', 'success');
+          toast('Comunicación enviada', 'success');
           await loadCommunications();
-          if (state.detailWorkshopId === wizard.workshopId) await renderWorkshopDetail();
         } catch (err) { toast(err.message, 'error'); }
       });
     };
@@ -2890,17 +2598,17 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
 window.resendFailedCommunication = async function (id) {
   try {
     const result = await api.post(`/communications/${id}/resend-failed`, {});
-    toast(result.resent ? `ReenvÃƒÂ­o completado (${result.resent})` : 'No habÃƒÂ­a fallidos para reenviar', result.resent ? 'success' : 'info');
+    toast(result.resent ? `Reenvío completado (${result.resent})` : 'No había fallidos para reenviar', result.resent ? 'success' : 'info');
     await loadCommunications();
   } catch (err) { toast(err.message, 'error'); }
 };
 
 async function loadCommunications() {
   try {
-    if (window.CommunicationsPage?.render) {
-      renderViewLoading('communications', 'Comunicaciones');
-      document.querySelector('#view-communications .page-header')?.classList.add('hidden');
+    if (!window.CommunicationsPage?.render) {
+      throw new Error('CommunicationsPage no disponible');
     }
+    renderViewLoading('communications', 'Comunicaciones');
     await Promise.all([fetchWorkshops(), fetchCommunications(), fetchCommSummary()]);
     const q = state.communicationSearch.toLowerCase();
     const map = Object.fromEntries(state.workshops.map((w) => [w.id, w]));
@@ -2913,64 +2621,46 @@ async function loadCommunications() {
     }, { sent: 0, failed: 0 });
     const deliveryRate = (commTotals.sent + commTotals.failed) ? Math.round((commTotals.sent / (commTotals.sent + commTotals.failed)) * 100) : 0;
     const pageData = paginateRows(rows, 'communications', 20);
-    if (window.CommunicationsPage?.render) {
-      const communicationMetrics = { total: rows.length, sent: commTotals.sent, failed: commTotals.failed, deliveryRate };
-      await window.CommunicationsPage.render({
-        root: document.querySelector('#view-communications .page-body'),
-        workshops: state.workshops,
-        filters: { q: state.communicationSearch, workshop: state.communicationWorkshop },
-        rows: pageData.items.map((c) => {
-          const s = state.communicationSummary.get(c.id) || { sent: 0, failed: 0 };
-          return {
-            ...c,
-            preview: `${c.body.slice(0, 70)}${c.body.length > 70 ? '...' : ''}`,
-            workshop_name: map[c.workshop_id]?.name || 'Taller',
-            sent: s.sent || 0,
-            failed: s.failed || 0,
-            created_at_label: formatDateTime(c.created_at),
-          };
-        }),
-        summary: communicationMetrics,
-        kpiDeltas: buildKpiDeltas('communications', communicationMetrics),
-        pagination: tablePaginationHTML('communications', pageData, 'comunicaciones'),
-        onFilterChange: (next) => {
-          if (next.reset) {
-            state.communicationSearch = '';
-            state.communicationWorkshop = '';
-          } else {
-            state.communicationSearch = next.q || '';
-            state.communicationWorkshop = next.workshop || '';
-          }
-          resetTablePage('communications');
-          syncViewParams();
-          loadCommunications();
-        },
-        onNew: () => openCommunicationWizard(),
-        onResend: (id) => resendFailedCommunication(id),
-      });
-      return;
-    }
-    document.querySelector('#view-communications .page-header')?.classList.remove('hidden');
-    document.getElementById('search-comms').value = state.communicationSearch;
-    document.getElementById('filter-comms-workshop').innerHTML = `<option value="">Todos</option>${state.workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)}</option>`).join('')}`;
-    document.getElementById('filter-comms-workshop').value = state.communicationWorkshop;
-    document.getElementById('communications-overview').innerHTML = `<div class="card"><div class="metric-label">Comunicaciones</div><div class="metric-value">${rows.length}</div></div><div class="card"><div class="metric-label">Enviadas</div><div class="metric-value">${commTotals.sent}</div></div><div class="card"><div class="metric-label">Fallidas</div><div class="metric-value">${commTotals.failed}</div></div><div class="card"><div class="metric-label">Entrega estimada</div><div class="metric-value">${deliveryRate}%</div></div>`;
-    document.getElementById('communications-story').innerHTML = narrativeCardsHTML([
-      { title: 'Trazabilidad', body: `Se observan ${rows.length} comunicaciones para el filtro activo.` },
-      { title: 'Resultado de envÃƒÂ­os', body: `${commTotals.sent} entregadas y ${commTotals.failed} fallidas.` },
-      { title: 'AcciÃƒÂ³n sugerida', body: commTotals.failed > 0 ? 'Priorizar reenvÃƒÂ­o de fallidos para cerrar brechas de comunicaciÃƒÂ³n.' : 'Sin fallidos detectados. Mantener estrategia actual.' },
-    ]);
-    document.getElementById('communications-table-body').innerHTML = rows.length ? `<table><thead><tr><th>Asunto</th><th>Taller</th><th>Historial</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((c) => { const s = state.communicationSummary.get(c.id) || { sent: 0, failed: 0 }; return `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(c.subject)}<br><span class="muted">${escapeHTML(c.body.slice(0, 70))}${c.body.length > 70 ? '...' : ''}</span></td><td>${escapeHTML(map[c.workshop_id]?.name || 'Taller')}</td><td><div class="status-line">${badge('sent')} ${s.sent}</div><div class="status-line">${badge('failed')} ${s.failed}</div></td><td>${formatDateTime(c.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-inline-click="resendFailedCommunication('${c.id}')" ${s.failed > 0 ? '' : 'disabled'}>Reenviar fallidos</button></td></tr>`; }).join('')}</tbody></table>${tablePaginationHTML('communications', pageData, 'comunicaciones')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-communications')}</div><h3>Sin comunicaciones</h3><p>No hay resultados para los filtros actuales.</p></div>`;
-  } catch { toast('Error al cargar comunicaciones', 'error'); }
+    const communicationMetrics = { total: rows.length, sent: commTotals.sent, failed: commTotals.failed, deliveryRate };
+    await window.CommunicationsPage.render({
+      root: document.querySelector('#view-communications .page-body'),
+      workshops: state.workshops,
+      filters: { q: state.communicationSearch, workshop: state.communicationWorkshop },
+      rows: pageData.items.map((c) => {
+        const s = state.communicationSummary.get(c.id) || { sent: 0, failed: 0 };
+        return {
+          ...c,
+          preview: `${c.body.slice(0, 70)}${c.body.length > 70 ? '...' : ''}`,
+          workshop_name: map[c.workshop_id]?.name || 'Taller',
+          sent: s.sent || 0,
+          failed: s.failed || 0,
+          created_at_label: formatDateTime(c.created_at),
+        };
+      }),
+      summary: communicationMetrics,
+      kpiDeltas: buildKpiDeltas('communications', communicationMetrics),
+      pagination: tablePaginationHTML('communications', pageData, 'comunicaciones'),
+      onFilterChange: (next) => {
+        if (next.reset) {
+          state.communicationSearch = '';
+          state.communicationWorkshop = '';
+        } else {
+          state.communicationSearch = next.q || '';
+          state.communicationWorkshop = next.workshop || '';
+        }
+        resetTablePage('communications');
+        syncViewParams();
+        loadCommunications();
+      },
+      onNew: () => openCommunicationWizard(),
+      onResend: (id) => resendFailedCommunication(id),
+    });
+  } catch {
+    toast('Error al cargar comunicaciones', 'error');
+  }
 }
 
-if (!window.CommunicationsPage?.render) {
-  document.getElementById('search-comms')?.addEventListener('input', (e) => { state.communicationSearch = e.target.value; resetTablePage('communications'); loadCommunications(); syncViewParams(); });
-  document.getElementById('filter-comms-workshop')?.addEventListener('change', (e) => { state.communicationWorkshop = e.target.value; resetTablePage('communications'); loadCommunications(); syncViewParams(); });
-  document.getElementById('btn-send-comm')?.addEventListener('click', () => openCommunicationWizard());
-}
-
-const teamRoleLabels = { teacher: 'Docente', coordinator: 'CoordinaciÃƒÂ³n' };
+const teamRoleLabels = { teacher: 'Docente', coordinator: 'Coordinación' };
 
 function teamFiltersQuery() {
   return toQuery({
@@ -2981,61 +2671,16 @@ function teamFiltersQuery() {
   });
 }
 
-function renderTeamOverview(overview) {
-  document.getElementById('team-overview-metrics').innerHTML = `<div class="card team-metric-card"><div class="metric-label">Equipo total</div><div class="metric-value">${overview.team_total}</div></div><div class="card team-metric-card"><div class="metric-label">Docentes</div><div class="metric-value">${overview.teachers_total}</div></div><div class="card team-metric-card"><div class="metric-label">CoordinaciÃƒÂ³n</div><div class="metric-value">${overview.coordinators_total}</div></div><div class="card team-metric-card"><div class="metric-label">Perfiles activos</div><div class="metric-value">${overview.active_staff}</div></div><div class="card team-metric-card"><div class="metric-label">Talleres con equipo</div><div class="metric-value">${overview.workshops_with_staff}</div></div>`;
-  const staffRows = overview.top_active_staff.length
-    ? overview.top_active_staff.map((s) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(s.name)}</strong><span class="muted">${teamRoleLabels[s.role] || s.role}</span></div><div class="team-rank-metrics">${signalChip('Talleres', s.workshops_count, 'status-enrolled')}${signalChip('Asistentes', s.attendees_reached, 'status-active')}</div></div>`).join('')
-    : '<div class="muted">Sin datos</div>';
-  const enrollRows = overview.top_workshops_by_enrollments.length
-    ? overview.top_workshops_by_enrollments.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">AÃƒÂ±o ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Inscripciones', w.total_enrollments, 'status-enrolled')}${signalChip('Asistentes', w.attendees_estimated, 'status-active')}</div></div>`).join('')
-    : '<div class="muted">Sin datos</div>';
-  const attendeeRows = overview.top_workshops_by_attendees.length
-    ? overview.top_workshops_by_attendees.map((w) => `<div class="team-rank-item"><div class="team-rank-main"><strong>${escapeHTML(w.workshop_name)}</strong><span class="muted">AÃƒÂ±o ${w.cohort_year}</span></div><div class="team-rank-metrics">${signalChip('Asistentes', w.attendees_estimated, 'status-active')}${signalChip('Equipo', w.staff_count, 'status-enrolled')}</div></div>`).join('')
-    : '<div class="muted">Sin datos</div>';
-  document.getElementById('team-overview-rankings').innerHTML = `<article class="trend-card team-rank-card"><h4>Profes mÃƒÂ¡s activos</h4><div class="team-rank-list">${staffRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con mÃƒÂ¡s convocatoria</h4><div class="team-rank-list">${enrollRows}</div></article><article class="trend-card team-rank-card"><h4>Talleres con mÃƒÂ¡s asistentes</h4><div class="team-rank-list">${attendeeRows}</div></article>`;
-  const topStaff = overview.top_active_staff?.[0];
-  const topEnrollWorkshop = overview.top_workshops_by_enrollments?.[0];
-  const topAttendWorkshop = overview.top_workshops_by_attendees?.[0];
-  const teamStories = [
-    {
-      title: 'Estado del equipo',
-      body: `${overview.active_staff} perfiles estÃƒÂ¡n activos sobre un total de ${overview.team_total}.`,
-    },
-    {
-      title: 'Perfil con mayor actividad',
-      body: topStaff ? `${topStaff.name} lidera con ${topStaff.workshops_count} talleres y ${topStaff.attendees_reached} asistentes alcanzados.` : 'No hay perfiles destacados para este filtro.',
-    },
-    {
-      title: 'Talleres de mayor impacto',
-      body: topEnrollWorkshop
-        ? `${topEnrollWorkshop.workshop_name} lidera en convocatoria (${topEnrollWorkshop.total_enrollments} inscripciones). ${topAttendWorkshop ? `${topAttendWorkshop.workshop_name} lidera en asistentes (${topAttendWorkshop.attendees_estimated}).` : ''}`
-        : 'No hay talleres con impacto destacado en este corte.',
-    },
-  ];
-  const staffTrendRows = (overview.top_active_staff || []).slice(0, 5).map((s) => ({ label: s.name.split(' ')[0], value: s.workshops_count }));
-  document.getElementById('team-story').innerHTML = `${narrativeCardsHTML(teamStories)}${trendCard('Actividad por perfil (top 5)', staffTrendRows.length ? staffTrendRows : [{ label: 'Sin datos', value: 0 }])}`;
-}
-
-function renderTeamTable(rows) {
-  const target = document.getElementById('team-table-body');
-  if (!rows.length) {
-    target.innerHTML = `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-team')}</div><h3>Sin perfiles de equipo</h3><p>No hay resultados para el filtro actual.</p><button class="btn btn-primary" data-inline-click="openTeamMemberForm()">+ Nuevo perfil</button></div>`;
-    return;
-  }
-  const pageData = paginateRows(rows, 'team', 16);
-  target.innerHTML = `<table class="team-table"><thead><tr><th>Perfil</th><th>Rol</th><th>Actividad</th><th>Talleres</th><th>Tendencia</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((r) => { const trend = Object.entries(r.trend_by_month || {}).slice(-3).map(([k, v]) => `${k}: ${v}`).join(' Ã‚Â· ') || 'Sin datos'; return `<tr><td class="team-profile-cell">${escapeHTML(r.name)}<br><span class="muted">${escapeHTML(r.email || 'Sin correo')} Ã‚Â· ${escapeHTML(r.phone || 'Sin telÃƒÂ©fono')}</span></td><td>${signalChip('Rol', teamRoleLabels[r.role] || r.role, 'status-active')}</td><td><div class="participants-signal-list">${signalChip('Alcance', r.participants_reached, 'status-enrolled')}${signalChip('Asistentes', r.attendees_reached, 'status-active')}</div></td><td><div class="participants-signal-list">${signalChip('Total', r.workshops_count, 'status-enrolled')}${signalChip('Activos', r.active_workshops_count, 'status-active')}</div></td><td><span class="muted">${escapeHTML(trend)}</span></td><td class="text-right"><div class="actions-cell team-actions"><button class="btn btn-ghost btn-sm" data-inline-click="openTeamProfile('${r.id}')">Perfil</button><button class="btn btn-ghost btn-sm" data-inline-click="openTeamAssignmentForm('${r.id}')">Asignar</button><button class="btn btn-ghost btn-sm" data-inline-click="openTeamMemberForm('${r.id}')">Editar</button><button class="btn btn-ghost btn-sm" data-inline-click="deleteTeamMember('${r.id}')" aria-label="Eliminar perfil">${icon('trash')}</button></div></td></tr>`; }).join('')}</tbody></table>${tablePaginationHTML('team', pageData, 'perfiles')}`;
-}
-
 window.openTeamMemberForm = async function (id = null) {
   const existing = id ? await api.get(`/team-members/${id}`).catch(() => null) : null;
   const actions = modalFooterActions({
     primaryLabel: 'Guardar',
     dangerLabel: existing ? 'Eliminar' : '',
   });
-  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrÃƒÂ³nico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">TelÃƒÂ©fono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>CoordinaciÃƒÂ³n</option></select></div></form>`, actions);
+  openModal(existing ? 'Editar perfil de equipo' : 'Nuevo perfil de equipo', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(existing?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input id="f-email" name="email" class="form-input" type="email" value="${escapeHTML(existing?.email || '')}"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(existing?.phone || '')}"></div></div><div class="form-group"><label for="f-role" class="form-label">Rol</label><select id="f-role" name="role" class="form-select"><option value="teacher" ${existing?.role === 'teacher' ? 'selected' : ''}>Docente</option><option value="coordinator" ${existing?.role === 'coordinator' ? 'selected' : ''}>Coordinación</option></select></div></form>`, actions);
   if (existing) {
-    document.getElementById('delete-entity-btn').onclick = async () => {
-      if (!(await confirmDialog('Ã‚Â¿Eliminar este perfil del equipo?'))) return;
+    bindAsyncButtonAction('delete-entity-btn', async () => {
+      if (!(await confirmDialog('¿Eliminar este perfil del equipo?'))) return;
       try {
         await api.del(`/team-members/${existing.id}`);
         closeModal();
@@ -3044,9 +2689,9 @@ window.openTeamMemberForm = async function (id = null) {
       } catch (err) {
         toast(err.message, 'error');
       }
-    };
+    }, 'Eliminando...');
   }
-  document.getElementById('save-entity-btn').onclick = async () => {
+  bindAsyncButtonAction('save-entity-btn', async () => {
     const form = document.getElementById('entity-form');
     if (!form.reportValidity()) return;
     const fd = new FormData(form);
@@ -3060,11 +2705,11 @@ window.openTeamMemberForm = async function (id = null) {
     } catch (err) {
       toast(err.message, 'error');
     }
-  };
+  }, 'Guardando...');
 };
 
 window.deleteTeamMember = async function (id) {
-  if (!(await confirmDialog('Ã‚Â¿Eliminar este perfil del equipo?'))) return;
+  if (!(await confirmDialog('¿Eliminar este perfil del equipo?'))) return;
   try {
     await api.del(`/team-members/${id}`);
     toast('Perfil eliminado', 'success');
@@ -3076,8 +2721,8 @@ window.deleteTeamMember = async function (id) {
 
 window.openTeamAssignmentForm = async function (memberId) {
   const [member, workshops] = await Promise.all([api.get(`/team-members/${memberId}`), fetchWorkshops()]);
-  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">SeleccionÃƒÂ¡ un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">CoordinaciÃƒÂ³n</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Asignar' }));
-  document.getElementById('save-entity-btn').onclick = async () => {
+  openModal(`Asignar taller a ${member.name}`, `<form id="entity-form"><div class="form-group"><label for="f-workshop" class="form-label">Taller</label><select id="f-workshop" class="form-select"><option value="">Seleccioná un taller...</option>${workshops.map((w) => `<option value="${w.id}">${escapeHTML(w.name)} (${w.cohort_year})</option>`).join('')}</select></div><div class="form-group"><label for="f-assignment-role" class="form-label">Rol en taller</label><select id="f-assignment-role" class="form-select"><option value="teacher">Docente</option><option value="coordinator">Coordinación</option></select></div></form>`, modalFooterActions({ primaryLabel: 'Asignar' }));
+  bindAsyncButtonAction('save-entity-btn', async () => {
     const workshopId = document.getElementById('f-workshop').value;
     if (!workshopId) return;
     try {
@@ -3088,7 +2733,7 @@ window.openTeamAssignmentForm = async function (memberId) {
     } catch (err) {
       toast(err.message, 'error');
     }
-  };
+  }, 'Asignando...');
 };
 
 window.openTeamProfile = async function (memberId) {
@@ -3098,22 +2743,22 @@ window.openTeamProfile = async function (memberId) {
     const recentTrend = Object.entries(profile.trend_by_month || {}).slice(-6)
       .map(([k, v]) => `<span class="signal-chip has-value"><span>${k}</span><span class="signal-value">${v}</span></span>`).join('');
     const avgAttendees = profile.workshops_count ? Math.round(profile.attendees_reached / profile.workshops_count) : 0;
-    const teamStory = `En ${profile.workshops_count} talleres asignados, alcanzÃƒÂ³ ${profile.participants_reached} inscripciones y ${profile.attendees_reached} asistentes (${avgAttendees} asistentes promedio por taller).`;
+    const teamStory = `En ${profile.workshops_count} talleres asignados, alcanzó ${profile.participants_reached} inscripciones y ${profile.attendees_reached} asistentes (${avgAttendees} asistentes promedio por taller).`;
     const rows = profile.assignments.length
       ? profile.assignments.map((a) => `<tr><td>${escapeHTML(a.workshop_name)}</td><td>${a.cohort_year}</td><td>${statusLabels[a.workshop_status] || a.workshop_status}</td><td>${teamRoleLabels[a.assignment_role] || a.assignment_role}</td><td>${formatDate(a.start_date || a.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-inline-click="deleteTeamAssignment('${a.id}')">Quitar</button></td></tr>`).join('')
       : '<tr><td colspan="6" class="muted">Sin asignaciones</td></tr>';
-    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('ÃƒÅ¡ltimo taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} Ã‚Â· ${escapeHTML(profile.phone || 'Sin telÃƒÂ©fono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>AÃƒÂ±o</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">AcciÃƒÂ³n</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" data-inline-click="openTeamMemberForm('${profile.id}')">Editar perfil</button><button class="btn btn-primary" data-inline-click="openTeamAssignmentForm('${profile.id}')">Asignar taller</button>`, { variant: 'profile' });
+    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('Último taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} · ${escapeHTML(profile.phone || 'Sin teléfono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">Acción</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" data-inline-click="openTeamMemberForm('${profile.id}')">Editar perfil</button><button class="btn btn-primary" data-inline-click="openTeamAssignmentForm('${profile.id}')">Asignar taller</button>`, { variant: 'profile' });
   } catch (err) {
     toast(err.message, 'error');
   }
 };
 
 window.deleteTeamAssignment = async function (assignmentId) {
-  if (!(await confirmDialog('Ã‚Â¿Quitar esta asignaciÃƒÂ³n de taller?'))) return;
+  if (!(await confirmDialog('¿Quitar esta asignación de taller?'))) return;
   try {
     await api.del(`/team-members/assignments/${assignmentId}`);
     closeModal();
-    toast('AsignaciÃƒÂ³n removida', 'success');
+    toast('Asignación removida', 'success');
     await loadTeam();
   } catch (err) {
     toast(err.message, 'error');
@@ -3122,114 +2767,97 @@ window.deleteTeamAssignment = async function (assignmentId) {
 
 async function loadTeam() {
   try {
-    if (window.TeamPage?.render) {
-      if (!state.teamHasLoaded) {
-        renderViewLoading('team', 'Equipo');
-      }
-      document.querySelector('#view-team .page-header')?.classList.add('hidden');
-      await fetchWorkshops();
-      const years = [...new Set(state.workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
-      const [overview, profiles] = await Promise.all([
-        fetchTeamOverview(),
-        api.get(`/team-members/profiles${teamFiltersQuery() ? `?${teamFiltersQuery()}` : ''}`),
-      ]);
-      state.teamOverview = overview;
-      state.teamProfiles = profiles;
-      state.teamHasLoaded = true;
-      const teamMetrics = {
-        team_total: overview.team_total || 0,
-        active_staff: overview.active_staff || 0,
-        teachers_total: overview.teachers_total || 0,
-        coordinators_total: overview.coordinators_total || 0,
-      };
-      await window.TeamPage.render({
-        root: document.querySelector('#view-team .page-body'),
-        overview,
-        profiles,
-        kpiDeltas: buildKpiDeltas('team', teamMetrics),
-        years,
-        mode: state.teamMode,
-        filters: {
-          q: state.teamSearch,
-          role: state.teamRole,
-          year: state.teamYear,
-          wstatus: state.teamWorkshopStatus,
-        },
-        onModeChange: (mode) => {
-          state.teamMode = mode;
-          state.teamHasLoaded = true;
-          syncViewParams();
-          loadTeam();
-        },
-        onFilterChange: (next) => {
-          if (next.reset) {
-            state.teamSearch = '';
-            state.teamRole = 'all';
-            state.teamYear = '';
-            state.teamWorkshopStatus = 'all';
-          } else {
-            state.teamSearch = next.q || '';
-            state.teamRole = next.role || 'all';
-            state.teamYear = next.year || '';
-            state.teamWorkshopStatus = next.wstatus || 'all';
-          }
-          resetTablePage('team');
-          state.teamHasLoaded = true;
-          syncViewParams();
-          loadTeam();
-        },
-        onNew: () => openTeamMemberForm(),
-        onOpenProfile: (id) => openTeamProfile(id),
-      });
-      return;
+    if (!window.TeamPage?.render) {
+      throw new Error('TeamPage no disponible');
     }
-    document.querySelector('#view-team .page-header')?.classList.remove('hidden');
+    if (!state.teamHasLoaded) {
+      renderViewLoading('team', 'Equipo');
+    }
     await fetchWorkshops();
     const years = [...new Set(state.workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
-    document.getElementById('search-team').value = state.teamSearch;
-    document.getElementById('filter-team-role').value = state.teamRole;
-    document.getElementById('filter-team-workshop-status').value = state.teamWorkshopStatus;
-    document.getElementById('filter-team-year').innerHTML = `<option value="">Todos</option>${years.map((y) => `<option value="${y}">${y}</option>`).join('')}`;
-    document.getElementById('filter-team-year').value = state.teamYear;
     const [overview, profiles] = await Promise.all([
       fetchTeamOverview(),
       api.get(`/team-members/profiles${teamFiltersQuery() ? `?${teamFiltersQuery()}` : ''}`),
     ]);
     state.teamOverview = overview;
     state.teamProfiles = profiles;
-    renderTeamOverview(overview);
-    renderTeamTable(profiles);
+    state.teamHasLoaded = true;
+    const teamMetrics = {
+      team_total: overview.team_total || 0,
+      active_staff: overview.active_staff || 0,
+      teachers_total: overview.teachers_total || 0,
+      coordinators_total: overview.coordinators_total || 0,
+    };
+    await window.TeamPage.render({
+      root: document.querySelector('#view-team .page-body'),
+      overview,
+      profiles,
+      kpiDeltas: buildKpiDeltas('team', teamMetrics),
+      years,
+      mode: state.teamMode,
+      filters: {
+        q: state.teamSearch,
+        role: state.teamRole,
+        year: state.teamYear,
+        wstatus: state.teamWorkshopStatus,
+      },
+      onModeChange: (mode) => {
+        state.teamMode = mode;
+        state.teamHasLoaded = true;
+        syncViewParams();
+        loadTeam();
+      },
+      onFilterChange: (next) => {
+        if (next.reset) {
+          state.teamSearch = '';
+          state.teamRole = 'all';
+          state.teamYear = '';
+          state.teamWorkshopStatus = 'all';
+        } else {
+          state.teamSearch = next.q || '';
+          state.teamRole = next.role || 'all';
+          state.teamYear = next.year || '';
+          state.teamWorkshopStatus = next.wstatus || 'all';
+        }
+        resetTablePage('team');
+        state.teamHasLoaded = true;
+        syncViewParams();
+        loadTeam();
+      },
+      onNew: () => openTeamMemberForm(),
+      onOpenProfile: (id) => openTeamProfile(id),
+    });
   } catch (err) {
     toast(err.message || 'Error al cargar equipo', 'error');
   }
 }
 
-document.getElementById('btn-team-refresh')?.addEventListener('click', () => loadTeam());
-document.getElementById('btn-add-team-member')?.addEventListener('click', () => openTeamMemberForm());
-document.getElementById('btn-team-apply')?.addEventListener('click', () => { resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
-let teamSearchDebounce = null;
-document.getElementById('search-team')?.addEventListener('input', (e) => {
-  state.teamSearch = e.target.value;
-  syncViewParams();
-  clearTimeout(teamSearchDebounce);
-  teamSearchDebounce = setTimeout(() => {
-    resetTablePage('team');
-    state.teamHasLoaded = true;
-    loadTeam();
-  }, 180);
-});
-document.getElementById('search-team')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(teamSearchDebounce); resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); } });
-document.getElementById('filter-team-role')?.addEventListener('change', (e) => { state.teamRole = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
-document.getElementById('filter-team-year')?.addEventListener('change', (e) => { state.teamYear = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
-document.getElementById('filter-team-workshop-status')?.addEventListener('change', (e) => { state.teamWorkshopStatus = e.target.value; resetTablePage('team'); state.teamHasLoaded = true; loadTeam(); syncViewParams(); });
-
 let adminsData = [];
+
+function openAdminForm() {
+  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">Contraseña</label><input type="password" id="f-password" name="password" minlength="8" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
+  bindAsyncButtonAction('save-entity-btn', async () => {
+    const form = document.getElementById('entity-form');
+    if (!form.reportValidity()) return;
+    const fd = new FormData(form);
+    try {
+      await api.post('/admins/', { email: fd.get('email'), password: fd.get('password') });
+      closeModal();
+      toast('Administrador creado', 'success');
+      resetTablePage('admins');
+      await loadAdmins();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }, 'Creando...');
+}
+
 async function loadAdmins() {
   try {
-    if (window.AdminsPage?.render) {
-      renderViewLoading('admins', 'Administradores');
-      document.querySelector('#view-admins .page-header')?.classList.add('hidden');
+    if (!window.AdminsPage?.render) {
+      throw new Error('AdminsPage no disponible');
     }
+    renderViewLoading('admins', 'Administradores');
     adminsData = await api.get('/admins/');
     const me = localStorage.getItem('tc_email');
     const createdThisMonth = adminsData.filter((a) => {
@@ -3239,35 +2867,36 @@ async function loadAdmins() {
       return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
     }).length;
     const pageData = paginateRows(adminsData, 'admins', 20);
-    if (window.AdminsPage?.render) {
-      const adminSummary = { total: adminsData.length, createdThisMonth, me: me ? 1 : 0 };
-      await window.AdminsPage.render({
-        root: document.querySelector('#view-admins .page-body'),
-        rows: pageData.items.map((a) => ({ ...a, created_at_label: formatDate(a.created_at), isMe: a.email === me })),
-        pagination: tablePaginationHTML('admins', pageData, 'administradores'),
-        summary: adminSummary,
-        kpiDeltas: buildKpiDeltas('admins', adminSummary),
-        onNew: () => document.getElementById('btn-add-admin')?.click(),
-        onDelete: (id) => deleteAdmin(id),
-      });
-      return;
-    }
-    document.querySelector('#view-admins .page-header')?.classList.remove('hidden');
-    document.getElementById('admins-overview').innerHTML = `<div class="card"><div class="metric-label">Administradores</div><div class="metric-value">${adminsData.length}</div></div><div class="card"><div class="metric-label">Altas del mes</div><div class="metric-value">${createdThisMonth}</div></div><div class="card"><div class="metric-label">Cuenta actual</div><div class="metric-value">${me ? 1 : 0}</div></div>`;
-    document.getElementById('admins-story').innerHTML = narrativeCardsHTML([
-      { title: 'Control de acceso', body: `Hay ${adminsData.length} cuentas con permisos administrativos activas.` },
-      { title: 'Movimiento reciente', body: `${createdThisMonth} alta${createdThisMonth === 1 ? '' : 's'} durante el mes en curso.` },
-      { title: 'RecomendaciÃƒÂ³n', body: 'Revisar periÃƒÂ³dicamente cuentas sin uso y aplicar principio de mÃƒÂ­nimo privilegio.' },
-    ]);
-    document.getElementById('admins-table-body').innerHTML = adminsData.length ? `<table><thead><tr><th>Correo</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((a) => `<tr><td style="color:var(--text-primary);font-weight:600">${escapeHTML(a.email)}${a.email === me ? ' <span class="badge badge-active">Vos</span>' : ''}</td><td>${formatDate(a.created_at)}</td><td class="text-right">${a.email === me ? '<span class="muted">SesiÃƒÂ³n actual</span>' : `<button class="btn btn-ghost btn-sm" data-inline-click="deleteAdmin('${a.id}')" aria-label="Eliminar administrador">${icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table>${tablePaginationHTML('admins', pageData, 'administradores')}` : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-admins')}</div><h3>Sin administradores</h3><p>AgregÃƒÂ¡ un nuevo admin.</p></div>`;
-  } catch { toast('Error al cargar administradores', 'error'); }
+    const adminSummary = { total: adminsData.length, createdThisMonth, me: me ? 1 : 0 };
+    await window.AdminsPage.render({
+      root: document.querySelector('#view-admins .page-body'),
+      rows: pageData.items.map((a) => ({
+        ...a,
+        created_at_label: formatDate(a.created_at),
+        isMe: a.email === me,
+      })),
+      pagination: tablePaginationHTML('admins', pageData, 'administradores'),
+      summary: adminSummary,
+      kpiDeltas: buildKpiDeltas('admins', adminSummary),
+      onNew: () => openAdminForm(),
+      onDelete: (id) => deleteAdmin(id),
+    });
+  } catch {
+    toast('Error al cargar administradores', 'error');
+  }
 }
 
-document.getElementById('btn-add-admin')?.addEventListener('click', () => {
-  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrÃƒÂ³nico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">ContraseÃƒÂ±a</label><input type="password" id="f-password" name="password" minlength="8" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
-  document.getElementById('save-entity-btn').onclick = async () => { const form = document.getElementById('entity-form'); if (!form.reportValidity()) return; const fd = new FormData(form); try { await api.post('/admins/', { email: fd.get('email'), password: fd.get('password') }); closeModal(); toast('Administrador creado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
-});
-window.deleteAdmin = async function (id) { if (!(await confirmDialog('Ã‚Â¿Eliminar este administrador?'))) return; try { await api.del(`/admins/${id}`); toast('Administrador eliminado', 'success'); resetTablePage('admins'); await loadAdmins(); } catch (err) { toast(err.message, 'error'); } };
+window.deleteAdmin = async function (id) {
+  if (!(await confirmDialog('¿Eliminar este administrador?'))) return;
+  try {
+    await api.del(`/admins/${id}`);
+    toast('Administrador eliminado', 'success');
+    resetTablePage('admins');
+    await loadAdmins();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+};
 
 const routeLoaders = {
   dashboard: () => loadDashboard(),
@@ -3304,9 +2933,6 @@ async function applyRoute() {
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('app-layout').classList.add('hidden');
 })();
-
-
-
 
 
 

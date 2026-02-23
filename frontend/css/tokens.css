@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   /* Aliases: styles.css es la fuente de verdad visual */
   --space-4: var(--space-xs);
   --space-8: var(--space-sm);
@@ -32,12 +32,16 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
 
-  /* Paleta categorica (colorblind-friendly) para charts */
-  --chart-1: #4c72b0;
-  --chart-2: #dd8452;
-  --chart-3: #55a868;
-  --chart-4: #c44e52;
-  --chart-5: #8172b3;
-  --chart-6: #937860;
+  /* Paleta unificada del sistema (alineada a tema + estados semanticos) */
+  --chart-1: #60a5fa;
+  --chart-2: #38bdf8;
+  --chart-3: #34d399;
+  --chart-4: #fbbf24;
+  --chart-5: #f87171;
+  --chart-6: #94a3b8;
+  --chart-7: #22d3ee;
+  --chart-8: #f59e0b;
+  --chart-9: #10b981;
+  --chart-10: #ef4444;
 }
 

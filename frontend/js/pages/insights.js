@@ -36,6 +36,13 @@
     return 'Estable';
   }
 
+  function metricSparkline(compMap, metricId, fallbackCurrent = 0) {
+    const row = compMap.get(metricId);
+    const current = Number(row?.current ?? fallbackCurrent ?? 0);
+    const previous = Number(row?.previous ?? current);
+    return [previous, current];
+  }
+
   function sortRows(rows, sortKey, sortDir) {
     const safeRows = [...(rows || [])];
     safeRows.sort((a, b) => {
@@ -55,6 +62,11 @@
   function sortArrow(active, dir) {
     if (!active) return '';
     return dir === 'asc' ? ' ^' : ' v';
+  }
+
+  function sortAria(active, dir) {
+    if (!active) return 'none';
+    return dir === 'asc' ? 'ascending' : 'descending';
   }
 
   async function render(opts) {
@@ -78,9 +90,9 @@
     const enrollments = mapSeries(data.series || [], 'enrollments');
     const comms = mapSeries(data.series || [], 'communications');
     const statusRows = [
-      { label: 'Activos', value: Number(k.active_enrollments_total || 0) },
-      { label: 'Finalizados', value: Number(k.finished_enrollments_total || 0) },
-      { label: 'Bajas', value: Number(k.dropped_enrollments_total || 0) },
+      { label: 'Activos', value: Number(k.active_enrollments_total || 0), semantic: 'info', colorKey: 'status-active' },
+      { label: 'Finalizados', value: Number(k.finished_enrollments_total || 0), semantic: 'success', colorKey: 'status-finished' },
+      { label: 'Bajas', value: Number(k.dropped_enrollments_total || 0), semantic: 'danger', colorKey: 'status-dropped' },
     ];
 
     const workshopsStartedNow = Number(cmpMap.get('workshops_started')?.current ?? k.workshops_total ?? 0);
@@ -91,6 +103,7 @@
         value: String(workshopsStartedNow),
         delta: metricDelta(cmpMap, 'workshops_started'),
         trend: metricTrend(cmpMap, 'workshops_started', 'Oferta'),
+        sparkline: metricSparkline(cmpMap, 'workshops_started', workshopsStartedNow),
       },
       {
         id: 'ie',
@@ -98,6 +111,7 @@
         value: String(k.enrollments_total || 0),
         delta: metricDelta(cmpMap, 'enrollments'),
         trend: metricTrend(cmpMap, 'enrollments', 'Flujo'),
+        sparkline: metricSparkline(cmpMap, 'enrollments', k.enrollments_total || 0),
       },
       {
         id: 'ia',
@@ -105,6 +119,7 @@
         value: String(k.active_enrollments_total || 0),
         delta: metricDelta(cmpMap, 'active_enrollments'),
         trend: metricTrend(cmpMap, 'active_enrollments', 'Curso'),
+        sparkline: metricSparkline(cmpMap, 'active_enrollments', k.active_enrollments_total || 0),
       },
       {
         id: 'if',
@@ -112,6 +127,7 @@
         value: String(k.finished_enrollments_total || 0),
         delta: metricDelta(cmpMap, 'finished_enrollments'),
         trend: metricTrend(cmpMap, 'finished_enrollments', 'Cierre'),
+        sparkline: metricSparkline(cmpMap, 'finished_enrollments', k.finished_enrollments_total || 0),
       },
       {
         id: 'ic',
@@ -119,6 +135,7 @@
         value: String(k.communications_total || 0),
         delta: metricDelta(cmpMap, 'communications'),
         trend: metricTrend(cmpMap, 'communications', 'Seguimiento'),
+        sparkline: metricSparkline(cmpMap, 'communications', k.communications_total || 0),
       },
       {
         id: 'it',
@@ -126,6 +143,7 @@
         value: String(k.active_team_members || 0),
         delta: metricDelta(cmpMap, 'active_team_members'),
         trend: metricTrend(cmpMap, 'active_team_members', 'Capacidad'),
+        sparkline: metricSparkline(cmpMap, 'active_team_members', k.active_team_members || 0),
       },
     ];
 
@@ -144,17 +162,22 @@
         </div>
       `
       : '';
-    const topWsChartRows = sortRows(topWs, 'enrollments_total', 'desc').slice(0, 10);
+    const topWsChartRows = sortRows(topWs, 'enrollments_total', 'desc').slice(0, 10).map((w) => ({
+      id: String(w.workshop_id || w.workshop_name || ''),
+      colorKey: String(w.workshop_id || w.workshop_name || ''),
+      label: w.workshop_name,
+      value: Number(w.enrollments_total || 0),
+    }));
     const tableWs = sortedTopWs.length
       ? `
         <div class="dash-table-wrap">
           <table class="dash-table">
             <thead>
               <tr>
-                <th><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="workshop_name">Taller${sortArrow(viewState.rankingSortKey === 'workshop_name', viewState.rankingSortDir)}</button></th>
-                <th><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="cohort_year">Año${sortArrow(viewState.rankingSortKey === 'cohort_year', viewState.rankingSortDir)}</button></th>
-                <th><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="workshop_status">Estado${sortArrow(viewState.rankingSortKey === 'workshop_status', viewState.rankingSortDir)}</button></th>
-                <th><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="enrollments_total">Inscripciones${sortArrow(viewState.rankingSortKey === 'enrollments_total', viewState.rankingSortDir)}</button></th>
+                <th scope="col" aria-sort="${sortAria(viewState.rankingSortKey === 'workshop_name', viewState.rankingSortDir)}"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="workshop_name">Taller${sortArrow(viewState.rankingSortKey === 'workshop_name', viewState.rankingSortDir)}</button></th>
+                <th scope="col" aria-sort="${sortAria(viewState.rankingSortKey === 'cohort_year', viewState.rankingSortDir)}"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="cohort_year">Año${sortArrow(viewState.rankingSortKey === 'cohort_year', viewState.rankingSortDir)}</button></th>
+                <th scope="col" aria-sort="${sortAria(viewState.rankingSortKey === 'workshop_status', viewState.rankingSortDir)}"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="workshop_status">Estado${sortArrow(viewState.rankingSortKey === 'workshop_status', viewState.rankingSortDir)}</button></th>
+                <th scope="col" aria-sort="${sortAria(viewState.rankingSortKey === 'enrollments_total', viewState.rankingSortDir)}"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-i-sort="enrollments_total">Inscripciones${sortArrow(viewState.rankingSortKey === 'enrollments_total', viewState.rankingSortDir)}</button></th>
               </tr>
             </thead>
             <tbody>
@@ -165,7 +188,39 @@
       `
       : UI.EmptyState({ title: 'Sin ranking', message: 'No hay talleres en el período.' });
 
-    const chartCard = UI.ChartCanvasCard || UI.ChartCard;
+    const useCanvasCharts = Boolean(UI.ChartCanvasCard && charts?.isAvailable?.());
+    const chartCard = useCanvasCharts ? UI.ChartCanvasCard : UI.ChartCard;
+    const hasChartData = (rows, allowZero = true) => (
+      charts?.hasRenderableData?.(rows, { allowZero })
+      ?? (Array.isArray(rows) && (allowZero ? rows.length > 0 : rows.some((row) => Number(row?.value) > 0)))
+    );
+    const rankingChartHeight = `${Math.min(500, Math.max(260, (topWsChartRows.length * 32) + 120))}px`;
+    const renderChartOrEmpty = ({
+      title,
+      subtitle,
+      chartId,
+      chartType,
+      chartHeight = '260px',
+      ariaLabel,
+      rows,
+      valueLabel,
+      emptyTitle = 'Sin datos para graficar',
+      emptyMessage = 'No hay datos suficientes con el filtro actual.',
+    }) => {
+      if (!hasChartData(rows)) {
+        return UI.Card({ title, body: UI.EmptyState({ title: emptyTitle, message: emptyMessage }) });
+      }
+      return chartCard({
+        title,
+        subtitle,
+        chartId,
+        chartType,
+        chartHeight,
+        ariaLabel,
+        rows,
+        valueLabel,
+      });
+    };
 
     renderHost.innerHTML = `
       <div class="dashboard-v2 insights-v2">
@@ -178,12 +233,12 @@
             <div class="dash-actions">
               ${UI.Button({ variant: 'secondary', size: 'md', label: 'Camino de persona', attrs: 'type="button" data-i-journey="1"' })}
               <div class="dash-export-menu" data-i-export-menu="1">
-                ${UI.Button({ variant: 'secondary', size: 'md', label: 'Exportar', attrs: 'type="button" data-i-export-toggle="1" aria-haspopup="menu" aria-expanded="false"' })}
-                <div class="dash-export-menu-list hidden" role="menu" data-i-export-list="1">
-                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'CSV', attrs: 'type="button" role="menuitem" data-i-export-csv="1"' })}
-                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Excel', attrs: 'type="button" role="menuitem" data-i-export-excel="1"' })}
-                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'JSON', attrs: 'type="button" role="menuitem" data-i-export-json="1"' })}
-                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Imprimir reporte', attrs: 'type="button" role="menuitem" data-i-print="1"' })}
+                ${UI.Button({ variant: 'secondary', size: 'md', label: 'Exportar', attrs: 'type="button" data-i-export-toggle="1" aria-haspopup="true" aria-expanded="false" aria-controls="i-export-list"' })}
+                <div class="dash-export-menu-list hidden" id="i-export-list" aria-hidden="true" data-i-export-list="1">
+                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'CSV', attrs: 'type="button" data-i-export-csv="1"' })}
+                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Excel', attrs: 'type="button" data-i-export-excel="1"' })}
+                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'JSON', attrs: 'type="button" data-i-export-json="1"' })}
+                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Imprimir reporte', attrs: 'type="button" data-i-print="1"' })}
                 </div>
               </div>
               ${UI.Button({ variant: 'primary', size: 'md', label: mode === 'advanced' ? 'Volver a resumen' : 'Ir a vista avanzada', attrs: 'type="button" data-i-mode="1"' })}
@@ -249,34 +304,39 @@
     collapsed: Boolean(store.state.collapsed.insights_trends),
     content: `
               <div class="dash-grid">
-                <div class="dash-col-6">${chartCard({
+                <div class="dash-col-6">${renderChartOrEmpty({
                   title: 'Inscripciones',
                   subtitle: 'Serie temporal',
                   chartId: 'i-chart-enrollments',
+                  chartType: 'line',
                   ariaLabel: 'Serie temporal de inscripciones',
                   rows: enrollments,
                   valueLabel: 'Inscripciones',
                 })}</div>
-                <div class="dash-col-6">${chartCard({
+                <div class="dash-col-6">${renderChartOrEmpty({
                   title: 'Comunicaciones',
                   subtitle: 'Serie temporal',
                   chartId: 'i-chart-communications',
+                  chartType: 'line',
                   ariaLabel: 'Serie temporal de comunicaciones',
                   rows: comms,
                   valueLabel: 'Comunicaciones',
                 })}</div>
-                <div class="dash-col-6">${chartCard({
+                <div class="dash-col-6">${renderChartOrEmpty({
                   title: 'Talleres iniciados',
                   subtitle: 'Serie temporal',
                   chartId: 'i-chart-workshops',
+                  chartType: 'line',
                   ariaLabel: 'Serie temporal de talleres iniciados',
                   rows: workshopsSeries,
                   valueLabel: 'Talleres',
                 })}</div>
-                <div class="dash-col-6">${chartCard({
+                <div class="dash-col-6">${renderChartOrEmpty({
                   title: 'Estado de inscripciones',
                   subtitle: 'Composicion',
                   chartId: 'i-chart-status',
+                  chartType: 'doughnut',
+                  chartHeight: '320px',
                   ariaLabel: 'Distribución por estado de inscripciones',
                   rows: statusRows,
                   valueLabel: 'Total',
@@ -293,12 +353,14 @@
     collapsed: Boolean(store.state.collapsed.insights_detail),
     content: `
               <div class="dash-grid">
-                <div class="dash-col-6">${chartCard({
+                <div class="dash-col-6">${renderChartOrEmpty({
                   title: 'Top talleres por inscripciones',
                   subtitle: 'Ranking del período activo',
                   chartId: 'i-chart-top-workshops',
+                  chartType: 'bar',
+                  chartHeight: rankingChartHeight,
                   ariaLabel: 'Ranking de talleres por inscripciones',
-                  rows: topWsChartRows.map((w) => ({ label: w.workshop_name, value: w.enrollments_total })),
+                  rows: topWsChartRows,
                   valueLabel: 'Inscripciones',
                 })}</div>
                 <div class="dash-col-6">${tableWs}</div>
@@ -309,46 +371,58 @@
       </div>
     `;
 
-    const chartSpecs = [
-      charts?.makeLineSpec?.({
-        key: 'i-enrollments-line',
-        selector: '#i-chart-enrollments',
-        rows: enrollments,
-        datasetLabel: 'Inscripciones',
-        yLabel: 'Cantidad',
-      }),
-      charts?.makeLineSpec?.({
-        key: 'i-communications-line',
-        selector: '#i-chart-communications',
-        rows: comms,
-        datasetLabel: 'Comunicaciones',
-        yLabel: 'Cantidad',
-      }),
-      charts?.makeLineSpec?.({
-        key: 'i-workshops-line',
-        selector: '#i-chart-workshops',
-        rows: workshopsSeries,
-        datasetLabel: 'Talleres iniciados',
-        yLabel: 'Cantidad',
-      }),
-      charts?.makeDoughnutSpec?.({
-        key: 'i-status-doughnut',
-        selector: '#i-chart-status',
-        rows: statusRows,
-      }),
-    ];
+    const chartSpecs = [];
+    if (useCanvasCharts) {
+      if (hasChartData(enrollments)) {
+        chartSpecs.push(charts?.makeLineSpec?.({
+          key: 'i-enrollments-line',
+          selector: '#i-chart-enrollments',
+          rows: enrollments,
+          datasetLabel: 'Inscripciones',
+          yLabel: 'Cantidad',
+        }));
+      }
+      if (hasChartData(comms)) {
+        chartSpecs.push(charts?.makeLineSpec?.({
+          key: 'i-communications-line',
+          selector: '#i-chart-communications',
+          rows: comms,
+          datasetLabel: 'Comunicaciones',
+          yLabel: 'Cantidad',
+        }));
+      }
+      if (hasChartData(workshopsSeries)) {
+        chartSpecs.push(charts?.makeLineSpec?.({
+          key: 'i-workshops-line',
+          selector: '#i-chart-workshops',
+          rows: workshopsSeries,
+          datasetLabel: 'Talleres iniciados',
+          yLabel: 'Cantidad',
+        }));
+      }
+      if (hasChartData(statusRows)) {
+        chartSpecs.push(charts?.makeDoughnutSpec?.({
+          key: 'i-status-doughnut',
+          selector: '#i-chart-status',
+          rows: statusRows,
+          rowColorMode: 'semantic',
+        }));
+      }
 
-    if (mode === 'advanced') {
-      chartSpecs.push(charts?.makeBarSpec?.({
-        key: 'i-top-workshops-bar',
-        selector: '#i-chart-top-workshops',
-        rows: topWsChartRows.map((w) => ({ label: w.workshop_name, value: w.enrollments_total })),
-        datasetLabel: 'Inscripciones',
-        horizontal: true,
-      }));
+      if (mode === 'advanced' && hasChartData(topWsChartRows)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 'i-top-workshops-bar',
+          selector: '#i-chart-top-workshops',
+          rows: topWsChartRows,
+          datasetLabel: 'Inscripciones',
+          horizontal: true,
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('primary'),
+          yLabel: 'Inscripciones',
+        }));
+      }
+      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
     }
-
-    charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
 
     renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-section-toggle');
@@ -383,19 +457,54 @@
     const exportMenu = renderHost.querySelector('[data-i-export-menu="1"]');
     const exportToggle = renderHost.querySelector('[data-i-export-toggle="1"]');
     const exportList = renderHost.querySelector('[data-i-export-list="1"]');
-    const closeExportMenu = () => {
+    const exportActions = () => Array.from(exportList?.querySelectorAll('button') || []);
+    const closeExportMenu = (focusToggle = false) => {
       exportList?.classList.add('hidden');
       exportToggle?.setAttribute('aria-expanded', 'false');
+      exportList?.setAttribute('aria-hidden', 'true');
+      if (focusToggle) exportToggle?.focus();
     };
     const openExportMenu = () => {
       exportList?.classList.remove('hidden');
       exportToggle?.setAttribute('aria-expanded', 'true');
+      exportList?.setAttribute('aria-hidden', 'false');
     };
     exportToggle?.addEventListener('click', (e) => {
       e.preventDefault();
       const isOpen = !(exportList?.classList.contains('hidden'));
       if (isOpen) closeExportMenu();
       else openExportMenu();
+    });
+    exportToggle?.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openExportMenu();
+        exportActions()[0]?.focus();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeExportMenu();
+      }
+    });
+    exportList?.addEventListener('keydown', (e) => {
+      const actions = exportActions();
+      const currentIndex = actions.indexOf(document.activeElement);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closeExportMenu(true);
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!actions.length) return;
+        const next = currentIndex >= 0 ? (currentIndex + 1) % actions.length : 0;
+        actions[next]?.focus();
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!actions.length) return;
+        const prev = currentIndex > 0 ? currentIndex - 1 : actions.length - 1;
+        actions[prev]?.focus();
+      }
     });
     if (!renderHost.dataset.exportCloseBound) {
       renderHost.dataset.exportCloseBound = '1';
@@ -407,12 +516,14 @@
         if (menu.contains(e.target)) return;
         list.classList.add('hidden');
         toggle.setAttribute('aria-expanded', 'false');
+        list.setAttribute('aria-hidden', 'true');
       });
       renderHost.addEventListener('keydown', (e) => {
         if (e.key !== 'Escape') return;
         const list = renderHost.querySelector('[data-i-export-list="1"]');
         const toggle = renderHost.querySelector('[data-i-export-toggle="1"]');
         list?.classList.add('hidden');
+        list?.setAttribute('aria-hidden', 'true');
         toggle?.setAttribute('aria-expanded', 'false');
       });
     }

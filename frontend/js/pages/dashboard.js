@@ -134,6 +134,8 @@
     });
     return Array.from(totals.entries())
       .map(([workshopId, total]) => ({
+        id: workshopId,
+        colorKey: workshopId,
         label: names.get(workshopId) || 'Taller',
         value: total,
       }))
@@ -153,6 +155,38 @@
     return dict[kpiId] || 'Indicador del panel.';
   }
 
+  function sparklinePath(values = []) {
+    const points = (Array.isArray(values) ? values : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value));
+    if (points.length < 2) return '';
+
+    const width = 180;
+    const height = 46;
+    const pad = 4;
+    const min = Math.min(...points);
+    const max = Math.max(...points);
+    const span = max - min || 1;
+    const step = (width - (pad * 2)) / Math.max(1, points.length - 1);
+    return points.map((value, index) => {
+      const x = pad + (step * index);
+      const y = height - pad - (((value - min) / span) * (height - (pad * 2)));
+      return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
+    }).join(' ');
+  }
+
+  function drawerSparkline(values = []) {
+    const path = sparklinePath(values);
+    if (!path) return '';
+    return `
+      <div class="dash-drawer-spark" aria-hidden="true">
+        <svg viewBox="0 0 180 46" focusable="false" aria-hidden="true">
+          <path d="${path}" class="dash-drawer-spark-line"></path>
+        </svg>
+      </div>
+    `;
+  }
+
   function buildDrawer(detail) {
     return `
       <div class="dash-drawer-backdrop" data-drawer-close="1"></div>
@@ -164,9 +198,10 @@
           </div>
           <button class="dash-drawer-close" type="button" data-drawer-close="1">Cerrar</button>
         </header>
+        ${drawerSparkline(detail.sparkline)}
         <p>${detail.explanation}</p>
         ${detail.table}
-        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+        <div class="dash-row-actions section-stack-top">
           ${Button({ variant: 'secondary', size: 'md', label: 'Ir a vista filtrada', attrs: 'type="button" data-kpi-cta="1"' })}
           ${Button({ variant: 'ghost', size: 'md', label: 'Cerrar', attrs: 'type="button" data-drawer-close="1"' })}
         </div>
@@ -256,6 +291,7 @@
       },
     ].map((kpi) => ({
       ...kpi,
+      sparkline: [kpi.previous, kpi.value],
       delta: delta(kpi.value, kpi.previous, comparablePeriod),
     }));
 
@@ -317,13 +353,48 @@
     const enrollmentTrendRows = monthlyBars(computed.currentEnrollments, 'created_at');
     const communicationTrendRows = monthlyBars(computed.currentCommunications, 'created_at');
     const statusRows = [
-      { label: 'Activos', value: active },
-      { label: 'Finalizados', value: finished },
-      { label: 'Bajas', value: dropped },
+      { label: 'Activos', value: active, semantic: 'info', colorKey: 'status-active' },
+      { label: 'Finalizados', value: finished, semantic: 'success', colorKey: 'status-finished' },
+      { label: 'Bajas', value: dropped, semantic: 'danger', colorKey: 'status-dropped' },
     ];
     const rankingRows = topWorkshopBars(computed.baseWorkshops, computed.currentEnrollments, 8);
-
-    const chartCard = ChartCanvasCard || ChartCard;
+    const rankingChartHeight = `${Math.min(460, Math.max(260, (rankingRows.length * 34) + 110))}px`;
+    const useCanvasCharts = Boolean(ChartCanvasCard && charts?.isAvailable?.());
+    const chartCard = useCanvasCharts ? ChartCanvasCard : ChartCard;
+    const hasChartData = (rows, allowZero = true) => (
+      charts?.hasRenderableData?.(rows, { allowZero })
+      ?? (Array.isArray(rows) && (allowZero ? rows.length > 0 : rows.some((row) => Number(row?.value) > 0)))
+    );
+    const hasEnrollmentData = hasChartData(enrollmentTrendRows);
+    const hasStatusData = hasChartData(statusRows);
+    const hasCommunicationData = hasChartData(communicationTrendRows);
+    const hasRankingData = hasChartData(rankingRows);
+    const renderChartOrEmpty = ({
+      title,
+      subtitle,
+      chartId,
+      chartType,
+      ariaLabel,
+      rows,
+      valueLabel,
+      chartHeight = '260px',
+      emptyTitle = 'Sin datos para graficar',
+      emptyMessage = 'No hay datos suficientes con el filtro actual.',
+    }) => {
+      if (!hasChartData(rows)) {
+        return Card({ title, body: EmptyState({ title: emptyTitle, message: emptyMessage }) });
+      }
+      return chartCard({
+        title,
+        subtitle,
+        chartId,
+        chartType,
+        chartHeight,
+        ariaLabel,
+        rows,
+        valueLabel,
+      });
+    };
 
     const summarySection = Section({
       key: 'summary',
@@ -331,7 +402,14 @@
       description: 'KPIs comparados contra el período inmediato anterior.',
       collapsible: true,
       collapsed: store.state.collapsed.summary,
-      content: `<div class="dash-kpis">${kpis.map((k) => KpiCard({ id: k.id, label: k.label, value: String(k.value), delta: k.delta, trend: k.trend })).join('')}</div>`,
+      content: `<div class="dash-kpis">${kpis.map((k) => KpiCard({
+        id: k.id,
+        label: k.label,
+        value: String(k.value),
+        delta: k.delta,
+        trend: k.trend,
+        sparkline: k.sparkline,
+      })).join('')}</div>`,
     });
 
     const operationsSection = Section({
@@ -342,34 +420,40 @@
       collapsed: store.state.collapsed.operations,
       content: `
         <div class="dash-grid">
-          <div class="dash-col-6">${chartCard({
+          <div class="dash-col-6">${renderChartOrEmpty({
             title: 'Tendencia de inscripciones',
             subtitle: 'Últimos 6 meses',
             chartId: 'dash-chart-enrollments',
+            chartType: 'line',
             ariaLabel: 'Serie temporal de inscripciones de los últimos 6 meses',
             rows: enrollmentTrendRows,
             valueLabel: 'Inscripciones',
           })}</div>
-          <div class="dash-col-6">${chartCard({
+          <div class="dash-col-6">${renderChartOrEmpty({
             title: 'Estado de inscripciones',
             subtitle: 'Distribución del período activo',
             chartId: 'dash-chart-status',
+            chartType: 'doughnut',
+            chartHeight: '320px',
             ariaLabel: 'Distribución de estados de inscripciones',
             rows: statusRows,
             valueLabel: 'Total',
           })}</div>
-          ${isAdvanced ? `<div class="dash-col-6">${chartCard({
+          ${isAdvanced ? `<div class="dash-col-6">${renderChartOrEmpty({
     title: 'Tendencia de comunicaciones',
     subtitle: 'Últimos 6 meses',
     chartId: 'dash-chart-communications',
+    chartType: 'line',
     ariaLabel: 'Serie temporal de comunicaciones de los últimos 6 meses',
     rows: communicationTrendRows,
     valueLabel: 'Comunicaciones',
   })}</div>` : ''}
-          ${isAdvanced ? `<div class="dash-col-6">${chartCard({
+          ${isAdvanced ? `<div class="dash-col-6">${renderChartOrEmpty({
     title: 'Top talleres por inscripciones',
     subtitle: 'Ranking del período activo',
     chartId: 'dash-chart-top-workshops',
+    chartType: 'bar',
+    chartHeight: rankingChartHeight,
     ariaLabel: 'Ranking de talleres por cantidad de inscripciones',
     rows: rankingRows,
     valueLabel: 'Inscripciones',
@@ -396,7 +480,7 @@
             { key: 'created', label: 'Creado' },
           ],
           rows: recentPageRows,
-          rowActions: (row) => Button({ variant: 'ghost', size: 'sm', label: 'Ver detalle', attrs: `type="button" data-workshop-detail="${esc(row.id)}"` }),
+          rowActions: (row) => Button({ variant: 'ghost', size: 'sm', label: 'Ir a talleres', attrs: `type="button" data-workshop-detail="${esc(row.id)}"` }),
         })}${recentPagination}`
         : EmptyState({ title: 'Sin talleres en el período', message: 'Ajusta filtros para ver detalle.' }),
     });
@@ -463,41 +547,49 @@
       </div>
     `;
 
-    const chartSpecs = [
-      charts?.makeLineSpec?.({
-        key: 'dash-enroll-line',
-        selector: '#dash-chart-enrollments',
-        rows: enrollmentTrendRows,
-        datasetLabel: 'Inscripciones',
-        yLabel: 'Cantidad',
-      }),
-      charts?.makeDoughnutSpec?.({
-        key: 'dash-status-doughnut',
-        selector: '#dash-chart-status',
-        rows: statusRows,
-      }),
-    ];
+    const chartSpecs = [];
+    if (useCanvasCharts) {
+      if (hasEnrollmentData) {
+        chartSpecs.push(charts?.makeLineSpec?.({
+          key: 'dash-enroll-line',
+          selector: '#dash-chart-enrollments',
+          rows: enrollmentTrendRows,
+          datasetLabel: 'Inscripciones',
+          yLabel: 'Cantidad',
+        }));
+      }
+      if (hasStatusData) {
+        chartSpecs.push(charts?.makeDoughnutSpec?.({
+          key: 'dash-status-doughnut',
+          selector: '#dash-chart-status',
+          rows: statusRows,
+          rowColorMode: 'semantic',
+        }));
+      }
 
-    if (isAdvanced) {
-      chartSpecs.push(
-        charts?.makeLineSpec?.({
+      if (isAdvanced && hasCommunicationData) {
+        chartSpecs.push(charts?.makeLineSpec?.({
           key: 'dash-communications-line',
           selector: '#dash-chart-communications',
           rows: communicationTrendRows,
           datasetLabel: 'Comunicaciones',
           yLabel: 'Cantidad',
-        }),
-        charts?.makeBarSpec?.({
+        }));
+      }
+      if (isAdvanced && hasRankingData) {
+        chartSpecs.push(charts?.makeBarSpec?.({
           key: 'dash-top-workshops',
           selector: '#dash-chart-top-workshops',
           rows: rankingRows,
           datasetLabel: 'Inscripciones',
           horizontal: true,
-        }),
-      );
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('primary'),
+          yLabel: 'Inscripciones',
+        }));
+      }
+      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
     }
-
-    charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
 
     renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -566,6 +658,7 @@
         drawerRoot.innerHTML = buildDrawer({
           title: `Detalle KPI: ${currentKpi?.label || 'Métrica'}`,
           subtitle: `Actual: ${currentKpi?.value || 0} | Anterior: ${currentKpi?.previous || 0}`,
+          sparkline: currentKpi?.sparkline || [],
           explanation: explainKpi(kpiId),
           table,
         });

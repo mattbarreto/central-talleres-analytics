@@ -22,7 +22,7 @@
 
   --text-primary: #f0f0f5;
   --text-secondary: #8b8b9e;
-  --text-tertiary: #5a5a6e;
+  --text-tertiary: #818199;
   --text-accent: #a78bfa;
 
   --accent: #8b5cf6;
@@ -50,7 +50,7 @@
   --font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-size-xs: 0.75rem;
   --font-size-sm: 0.8125rem;
-  --font-size-base: 0.875rem;
+  --font-size-base: 1rem;
   --font-size-lg: 1rem;
   --font-size-xl: 1.25rem;
   --font-size-2xl: 1.5rem;
@@ -140,6 +140,17 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   overflow-x: hidden;
+}
+
+.icon-sprite {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.btn-block {
+  width: 100%;
 }
 
 a {
@@ -299,7 +310,7 @@ a:hover {
 .nav-section-title {
   font-size: var(--font-size-xs);
   font-weight: 600;
-  color: rgba(240, 240, 245, 0.42);
+  color: rgba(240, 240, 245, 0.58);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   padding: var(--space-sm) var(--space-md);
@@ -404,6 +415,19 @@ a:hover {
   justify-content: space-between;
   gap: var(--space-sm);
   padding: 0 var(--space-sm);
+}
+
+.sidebar-quick-actions {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+}
+
+.sidebar-quick-action {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0.45rem;
 }
 
 .project-meta-badge {
@@ -547,6 +571,10 @@ a:hover {
 
 .app-layout.sidebar-collapsed .user-info > div:last-child {
   display: none;
+}
+
+.app-layout.sidebar-collapsed .sidebar-quick-actions {
+  display: flex;
 }
 
 .page-header {
@@ -785,6 +813,12 @@ a:hover {
   cursor: pointer;
   font-size: var(--font-size-sm);
   border-bottom: 2px solid transparent;
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .tab.active {
@@ -1064,6 +1098,7 @@ tr:hover td {
   transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast), box-shadow var(--transition-fast);
   touch-action: manipulation;
   white-space: nowrap;
+  min-height: 38px;
 }
 
 .btn:focus-visible {
@@ -1138,6 +1173,7 @@ tr:hover td {
 .btn-sm {
   padding: 0.25rem 0.625rem;
   font-size: var(--font-size-xs);
+  min-height: 32px;
 }
 
 .btn .spinner {
@@ -1689,6 +1725,12 @@ tr:hover td {
   touch-action: manipulation;
 }
 
+.mobile-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .mobile-toggle .ui-icon {
   width: 1.2rem;
   height: 1.2rem;
@@ -1836,7 +1878,8 @@ tr:hover td {
   }
 
   table {
-    min-width: 600px;
+    min-width: 0;
+    table-layout: fixed;
   }
 
   .table-toolbar > * {
@@ -1904,6 +1947,40 @@ tr:hover td {
 .flex { display: flex; }
 .items-center { align-items: center; }
 .justify-between { justify-content: space-between; }
+.text-primary-strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.actions-end {
+  justify-content: flex-end;
+}
+.section-stack-top {
+  margin-top: var(--space-lg);
+}
+.text-prewrap {
+  white-space: pre-wrap;
+}
+
+@media (pointer: coarse) {
+  .btn,
+  .dash-btn,
+  .nav-item,
+  .switch-btn,
+  .advanced-tab,
+  .sidebar-collapse-btn,
+  .mobile-toggle,
+  .modal-close,
+  .tab,
+  .dash-collapse-btn {
+    min-height: 44px;
+  }
+
+  .btn-sm,
+  .dash-btn-sm {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
 
 /* --- Page Fade-in --- */
 .view-section {
@@ -2065,8 +2142,8 @@ tr:hover td {
 }
 
 .signal-chip.status-finished.has-value {
-  border-color: rgba(167, 139, 250, 0.4);
-  background: rgba(167, 139, 250, 0.11);
+  border-color: color-mix(in srgb, var(--chart-3), transparent 58%);
+  background: color-mix(in srgb, var(--chart-3), transparent 88%);
 }
 
 .signal-chip.status-enrolled.has-value,
@@ -2627,7 +2704,7 @@ tr:hover td {
 
 .trend-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), #c084fc);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--chart-1), white 30%), var(--chart-2));
 }
 
 .wizard-step h4 {

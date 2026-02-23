@@ -1,6 +1,7 @@
 ﻿(function () {
   const UI = window.DashboardUI || {};
   const store = window.DashboardState;
+  const charts = window.DashboardCharts;
   const esc = UI.esc;
 
   function demoRows(map, labels) {
@@ -10,6 +11,17 @@
       const value = Number(v) || 0;
       const pct = value <= 0 || max <= 0 ? 0 : Math.max(6, (value / max) * 100);
       return { label: labels[k] || k, value, pct };
+    });
+  }
+
+  function orderedRows(rows, preferredLabels = []) {
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const order = new Map(preferredLabels.map((label, idx) => [label, idx]));
+    return [...rows].sort((a, b) => {
+      const ai = order.has(a.label) ? order.get(a.label) : Number.MAX_SAFE_INTEGER;
+      const bi = order.has(b.label) ? order.get(b.label) : Number.MAX_SAFE_INTEGER;
+      if (ai !== bi) return ai - bi;
+      return String(a.label || '').localeCompare(String(b.label || ''), 'es', { sensitivity: 'base' });
     });
   }
 
@@ -46,6 +58,13 @@
   async function render(opts) {
     if (!UI.Card || !store || !esc || !opts?.root) return false;
     const root = opts.root;
+    let renderHost = root.querySelector('[data-participants-render-host="1"]');
+    if (!renderHost) {
+      root.innerHTML = '<div data-participants-render-host="1"></div>';
+      renderHost = root.querySelector('[data-participants-render-host="1"]');
+    }
+    charts?.destroyRootCharts?.(renderHost);
+
     const overview = opts.overview || {};
     const profiles = opts.profiles || [];
     const kpiDeltas = opts.kpiDeltas || {};
@@ -55,11 +74,48 @@
 
     const genderLabels = { female: 'Femenino', male: 'Masculino', non_binary: 'No binario', other: 'Otro', undisclosed: 'Sin declarar' };
     const ageLabels = { '0_17': '0-17', '18_24': '18-24', '25_34': '25-34', '35_44': '35-44', '45_54': '45-54', '55_64': '55-64', '65_plus': '65+', unknown: 'Sin dato' };
-    const genders = demoRows(overview.gender_distribution, genderLabels);
-    const ages = demoRows(overview.age_brackets, ageLabels);
+    const genders = orderedRows(demoRows(overview.gender_distribution, genderLabels), [
+      'Femenino', 'Masculino', 'No binario', 'Otro', 'Sin declarar',
+    ]);
+    const ages = orderedRows(demoRows(overview.age_brackets, ageLabels), [
+      '0-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+', 'Sin dato',
+    ]);
     const filters = opts.filters || {};
 
-    root.innerHTML = `
+    const useCanvasCharts = Boolean(UI.ChartCanvasCard && charts?.isAvailable?.());
+    const chartCard = useCanvasCharts ? UI.ChartCanvasCard : UI.ChartCard;
+    const hasChartData = (rows, allowZero = true) => (
+      charts?.hasRenderableData?.(rows, { allowZero })
+      ?? (Array.isArray(rows) && (allowZero ? rows.length > 0 : rows.some((row) => Number(row?.value) > 0)))
+    );
+    const renderChartOrEmpty = ({
+      title,
+      subtitle,
+      chartId,
+      chartType,
+      chartHeight = '260px',
+      ariaLabel,
+      rows,
+      valueLabel,
+      emptyTitle = 'Sin datos para graficar',
+      emptyMessage = 'No hay datos suficientes con el filtro actual.',
+    }) => {
+      if (!hasChartData(rows)) {
+        return UI.Card({ title, body: UI.EmptyState({ title: emptyTitle, message: emptyMessage }) });
+      }
+      return chartCard({
+        title,
+        subtitle,
+        chartId,
+        chartType,
+        chartHeight,
+        ariaLabel,
+        rows,
+        valueLabel,
+      });
+    };
+
+    renderHost.innerHTML = `
       <div class="dashboard-v2">
         <div class="dash-container">
           <header class="dash-page-header">
@@ -70,6 +126,7 @@
             <div class="dash-actions">
               ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo participante', attrs: 'type="button" data-p-new="1"' })}
               ${UI.Button({ variant: 'secondary', size: 'md', label: 'Exportar CSV', attrs: 'type="button" data-p-export="1"' })}
+              ${UI.Button({ variant: 'secondary', size: 'md', label: 'Importar CSV', attrs: 'type="button" data-p-import="1"' })}
               ${UI.Button({ variant: 'primary', size: 'md', label: mode === 'advanced' ? 'Volver a resumen' : 'Ir a vista avanzada', attrs: 'type="button" data-p-mode="1"' })}
             </div>
           </header>
@@ -126,8 +183,25 @@
             collapsible: true,
             collapsed: Boolean(store.state.collapsed.participants_demo),
             content: `<div class="dash-grid">
-              <div class="dash-col-6">${UI.ChartCard({ title: 'Género', subtitle: 'Composición actual', rows: genders })}</div>
-              <div class="dash-col-6">${UI.ChartCard({ title: 'Edad', subtitle: 'Composición por franjas', rows: ages })}</div>
+              <div class="dash-col-6">${renderChartOrEmpty({
+                title: 'Género',
+                subtitle: 'Composición actual',
+                chartId: 'p-chart-gender',
+                chartType: 'doughnut',
+                chartHeight: '320px',
+                ariaLabel: 'Distribución de participantes por género',
+                rows: genders,
+                valueLabel: 'Participantes',
+              })}</div>
+              <div class="dash-col-6">${renderChartOrEmpty({
+                title: 'Edad',
+                subtitle: 'Composición por franjas',
+                chartId: 'p-chart-age',
+                chartType: 'bar',
+                ariaLabel: 'Distribución de participantes por rango etario',
+                rows: ages,
+                valueLabel: 'Participantes',
+              })}</div>
             </div>`
           })}
 
@@ -139,29 +213,62 @@
             collapsed: Boolean(store.state.collapsed.participants_table),
             content: rowTable(slice),
           })}
+          <input type="file" accept=".csv,text/csv" data-p-import-file hidden />
         </div>
       </div>
     `;
 
-    root.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
+    if (useCanvasCharts) {
+      const chartSpecs = [];
+      if (hasChartData(genders)) {
+        chartSpecs.push(charts?.makeDoughnutSpec?.({
+          key: 'p-gender-doughnut',
+          selector: '#p-chart-gender',
+          rows: genders,
+        }));
+      }
+      if (hasChartData(ages)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 'p-age-bar',
+          selector: '#p-chart-age',
+          rows: ages,
+          datasetLabel: 'Participantes',
+          horizontal: false,
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('primary'),
+          yLabel: 'Participantes',
+        }));
+      }
+      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
+    }
+
+    renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-section-toggle');
       const collapsed = store.toggleCollapsed(key);
-      root.querySelector(`[data-section-content="${key}"]`)?.classList.toggle('is-collapsed', collapsed);
+      renderHost.querySelector(`[data-section-content="${key}"]`)?.classList.toggle('is-collapsed', collapsed);
       btn.textContent = collapsed ? 'Expandir' : 'Colapsar';
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     }));
 
-    root.querySelector('[data-p-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
-    root.querySelector('[data-p-new="1"]')?.addEventListener('click', () => opts.onNew?.());
-    root.querySelector('[data-p-export="1"]')?.addEventListener('click', () => opts.onExport?.());
-    const triggerFilter = (extra = {}) => opts.onFilterChange?.({ ...collectFilters(root), ...extra });
-    root.querySelector('[data-p-apply="1"]')?.addEventListener('click', () => triggerFilter());
-    root.querySelector('[data-p-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', status: 'all', population: 'all', reset: true }));
-    root.querySelector('#p-status')?.addEventListener('change', () => triggerFilter());
-    root.querySelector('#p-pop')?.addEventListener('change', () => triggerFilter());
+    renderHost.querySelector('[data-p-mode="1"]')?.addEventListener('click', () => opts.onModeChange?.(mode === 'advanced' ? 'summary' : 'advanced'));
+    renderHost.querySelector('[data-p-new="1"]')?.addEventListener('click', () => opts.onNew?.());
+    renderHost.querySelector('[data-p-export="1"]')?.addEventListener('click', () => opts.onExport?.());
+    const importInput = renderHost.querySelector('[data-p-import-file]');
+    renderHost.querySelector('[data-p-import="1"]')?.addEventListener('click', () => importInput?.click());
+    importInput?.addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      await opts.onImport?.(file);
+      e.target.value = '';
+    });
+    const triggerFilter = (extra = {}) => opts.onFilterChange?.({ ...collectFilters(renderHost), ...extra });
+    renderHost.querySelector('[data-p-apply="1"]')?.addEventListener('click', () => triggerFilter());
+    renderHost.querySelector('[data-p-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', status: 'all', population: 'all', reset: true }));
+    renderHost.querySelector('#p-status')?.addEventListener('change', () => triggerFilter());
+    renderHost.querySelector('#p-pop')?.addEventListener('change', () => triggerFilter());
 
     let qTimer = null;
-    const queryInput = root.querySelector('#p-q');
+    const queryInput = renderHost.querySelector('#p-q');
     queryInput?.addEventListener('input', () => {
       if (qTimer) clearTimeout(qTimer);
       qTimer = setTimeout(() => triggerFilter(), 250);
@@ -178,11 +285,10 @@
       triggerFilter();
     });
 
-    root.querySelectorAll('[data-p-action="profile"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-p-id'))));
-    root.querySelectorAll('[data-p-action="edit"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenEdit?.(btn.getAttribute('data-p-id'))));
+    renderHost.querySelectorAll('[data-p-action="profile"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-p-id'))));
+    renderHost.querySelectorAll('[data-p-action="edit"]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenEdit?.(btn.getAttribute('data-p-id'))));
     return true;
   }
 
   window.ParticipantsPage = { render };
 })();
-

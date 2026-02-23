@@ -1,20 +1,59 @@
 (function () {
   const rootChartMap = new WeakMap();
+  let defaultsConfigured = false;
+  let valueLabelPluginRegistered = false;
+  const tooltipNodeId = 'dash-chart-tooltip';
 
   function cssVar(name, fallback) {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-    return value || fallback;
+    let val = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    while (val.startsWith('var(')) {
+      const match = val.match(/^var\(([^),]+)/);
+      if (!match) break;
+      val = getComputedStyle(document.documentElement).getPropertyValue(match[1].trim()).trim();
+    }
+    return val || fallback;
+  }
+
+  function isAvailable() {
+    return Boolean(window.Chart);
+  }
+
+  function ensureChartDefaults() {
+    if (!isAvailable() || defaultsConfigured) return;
+    const family = cssVar('--font-family', 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif');
+    const sizeRaw = parseFloat(cssVar('--font-14', '14'));
+    const size = Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : 14;
+    window.Chart.defaults.font.family = family;
+    window.Chart.defaults.font.size = size;
+    window.Chart.defaults.color = cssVar('--color-text', '#f3f4f6');
+    window.Chart.defaults.locale = 'es-AR';
+    defaultsConfigured = true;
   }
 
   function chartColors() {
     return [
-      cssVar('--chart-1', '#4c72b0'),
-      cssVar('--chart-2', '#dd8452'),
-      cssVar('--chart-3', '#55a868'),
-      cssVar('--chart-4', '#c44e52'),
-      cssVar('--chart-5', '#8172b3'),
-      cssVar('--chart-6', '#937860'),
+      cssVar('--chart-1', '#60a5fa'),
+      cssVar('--chart-2', '#38bdf8'),
+      cssVar('--chart-3', '#34d399'),
+      cssVar('--chart-4', '#fbbf24'),
+      cssVar('--chart-5', '#f87171'),
+      cssVar('--chart-6', '#94a3b8'),
+      cssVar('--chart-7', '#22d3ee'),
+      cssVar('--chart-8', '#f59e0b'),
+      cssVar('--chart-9', '#10b981'),
+      cssVar('--chart-10', '#ef4444'),
     ];
+  }
+
+  function semanticColor(semantic) {
+    const key = String(semantic || '').toLowerCase();
+    if (key === 'info') return cssVar('--chart-1', '#60a5fa');
+    if (key === 'primary') return cssVar('--chart-2', '#38bdf8');
+    if (key === 'success') return cssVar('--chart-3', '#34d399');
+    if (key === 'warning') return cssVar('--chart-4', '#fbbf24');
+    if (key === 'danger') return cssVar('--chart-5', '#f87171');
+    if (key === 'muted') return cssVar('--chart-6', '#94a3b8');
+    return cssVar('--chart-2', '#38bdf8');
   }
 
   function toNumber(value) {
@@ -22,20 +61,290 @@
     return Number.isFinite(n) ? n : 0;
   }
 
-  function withAlpha(hexColor, alpha) {
-    const c = (hexColor || '').replace('#', '');
-    if (!/^[0-9a-fA-F]{6}$/.test(c)) return `rgba(76, 114, 176, ${alpha})`;
-    const r = parseInt(c.slice(0, 2), 16);
-    const g = parseInt(c.slice(2, 4), 16);
-    const b = parseInt(c.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+  function normalizeMetric(value, valueType = 'count') {
+    const n = toNumber(value);
+    return valueType === 'count' ? Math.round(n) : n;
   }
 
-  function basePlugins(labelType = 'number', horizontal = false) {
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  function withAlpha(color, alpha) {
+    const a = clamp(Number(alpha), 0, 1);
+    const source = String(color || '').trim();
+    if (!source) return `rgba(76, 114, 176, ${a})`;
+
+    const hex = source.match(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/);
+    if (hex) {
+      let value = hex[1];
+      if (value.length === 3) value = value.split('').map((ch) => ch + ch).join('');
+      const r = parseInt(value.slice(0, 2), 16);
+      const g = parseInt(value.slice(2, 4), 16);
+      const b = parseInt(value.slice(4, 6), 16);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    const rgb = source.match(/^rgba?\(\s*([0-9]{1,3})\s*[, ]\s*([0-9]{1,3})\s*[, ]\s*([0-9]{1,3})(?:\s*[,/ ]\s*([0-9.]+))?\s*\)$/i);
+    if (rgb) {
+      const r = clamp(parseInt(rgb[1], 10), 0, 255);
+      const g = clamp(parseInt(rgb[2], 10), 0, 255);
+      const b = clamp(parseInt(rgb[3], 10), 0, 255);
+      return `rgba(${r}, ${g}, ${b}, ${a})`;
+    }
+
+    const hsl = source.match(/^hsla?\(\s*([0-9.]+)\s*[, ]\s*([0-9.]+)%\s*[, ]\s*([0-9.]+)%(?:\s*[,/ ]\s*([0-9.]+))?\s*\)$/i);
+    if (hsl) {
+      const h = Number(hsl[1]) || 0;
+      const s = clamp(Number(hsl[2]) || 0, 0, 100);
+      const l = clamp(Number(hsl[3]) || 0, 0, 100);
+      return `hsla(${h}, ${s}%, ${l}%, ${a})`;
+    }
+
+    return `rgba(76, 114, 176, ${a})`;
+  }
+
+  function hashString(value) {
+    const text = String(value || '');
+    let hash = 0;
+    for (let i = 0; i < text.length; i += 1) {
+      hash = ((hash << 5) - hash) + text.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  }
+
+  function colorForRow(row, index, palette, alpha = null, rowColorMode = 'categorical', singleColor = '') {
+    let baseColor = '';
+    if (rowColorMode === 'single') {
+      baseColor = singleColor || palette[0];
+    } else if (rowColorMode === 'semantic' && row?.semantic) {
+      baseColor = semanticColor(row.semantic);
+    } else if (row?.color) {
+      baseColor = row.color;
+    } else if (row?.colorToken) {
+      baseColor = cssVar(row.colorToken, palette[index % palette.length]);
+    } else {
+      const colorKey = row?.colorKey ?? row?.id ?? row?.label;
+      const stableIndex = colorKey ? hashString(colorKey) % palette.length : (index % palette.length);
+      baseColor = palette[stableIndex];
+    }
+
+    if (alpha === null || alpha === undefined) return baseColor;
+    return withAlpha(baseColor, alpha);
+  }
+
+  function resolveRowColor(row, index, { rowColorMode = 'categorical', singleColor = '' } = {}) {
+    return colorForRow(row, index, chartColors(), null, rowColorMode, singleColor);
+  }
+
+  function escapeHtml(value) {
+    const node = document.createElement('div');
+    node.textContent = String(value ?? '');
+    return node.innerHTML;
+  }
+
+  function prefersReducedMotion() {
+    return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+
+  function chartAnimationOptions() {
+    if (prefersReducedMotion()) return false;
+    return {
+      duration: 520,
+      easing: 'easeOutQuart',
+    };
+  }
+
+  function ensureTooltipNode() {
+    let node = document.getElementById(tooltipNodeId);
+    if (node) return node;
+    node = document.createElement('div');
+    node.id = tooltipNodeId;
+    node.className = 'dash-chart-tooltip';
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(node);
+    return node;
+  }
+
+  function pointValue(point, horizontal = false) {
+    if (!point) return 0;
+    const type = String(point.chart?.config?.type || point.dataset?.type || '').toLowerCase();
+    if (type === 'doughnut' || type === 'pie') return toNumber(point.parsed);
+    if (horizontal) return toNumber(point.parsed?.x);
+    return toNumber(point.parsed?.y);
+  }
+
+  function pointColor(point) {
+    if (!point?.dataset) return semanticColor('primary');
+    const bg = point.dataset.backgroundColor;
+    const border = point.dataset.borderColor;
+    if (Array.isArray(bg) && bg.length) return bg[point.dataIndex % bg.length] || bg[0];
+    if (typeof bg === 'string' && bg) return bg;
+    if (Array.isArray(border) && border.length) return border[point.dataIndex % border.length] || border[0];
+    if (typeof border === 'string' && border) return border;
+    return semanticColor('primary');
+  }
+
+  function renderExternalTooltip(context, {
+    valueType = 'count',
+    horizontal = false,
+    showPercent = false,
+  } = {}) {
+    const { chart, tooltip } = context || {};
+    if (!chart) return;
+    const node = ensureTooltipNode();
+    if (!tooltip || tooltip.opacity === 0) {
+      node.style.opacity = '0';
+      node.setAttribute('aria-hidden', 'true');
+      return;
+    }
+
+    const title = (tooltip.title || []).map((line) => `<div class="dash-chart-tooltip-title">${escapeHtml(line)}</div>`).join('');
+    const rows = (tooltip.dataPoints || []).map((point) => {
+      const value = pointValue(point, horizontal);
+      let valueLabel = valueType === 'percent'
+        ? `${formatMetricValue(value, 'percent')}%`
+        : formatMetricValue(value, 'count');
+      if (showPercent) {
+        const values = Array.isArray(point?.dataset?.data) ? point.dataset.data : [];
+        const total = values.reduce((acc, item) => acc + toNumber(item), 0);
+        const share = total > 0 ? `${formatMetricValue((value / total) * 100, 'percent')}%` : '0,0%';
+        valueLabel = `${formatMetricValue(value, 'count')} (${share})`;
+      }
+      const label = point.label || point.dataset?.label || 'Valor';
+      const color = pointColor(point);
+      return `
+        <div class="dash-chart-tooltip-row">
+          <span class="dash-chart-tooltip-key"><span class="dash-chart-tooltip-swatch" style="background:${escapeHtml(color)}"></span>${escapeHtml(label)}</span>
+          <strong class="dash-chart-tooltip-value">${escapeHtml(valueLabel)}</strong>
+        </div>
+      `;
+    }).join('');
+
+    node.innerHTML = `${title}${rows}`;
+    const rect = chart.canvas.getBoundingClientRect();
+    node.style.opacity = '1';
+    node.setAttribute('aria-hidden', 'false');
+    node.style.left = `${rect.left + window.pageXOffset + tooltip.caretX}px`;
+    node.style.top = `${rect.top + window.pageYOffset + tooltip.caretY}px`;
+  }
+
+  function hasRenderableData(rows = [], { allowZero = true } = {}) {
+    if (!Array.isArray(rows) || !rows.length) return false;
+    const values = rows.map((row) => toNumber(row?.value)).filter((n) => Number.isFinite(n));
+    if (!values.length) return false;
+    if (allowZero) return true;
+    return values.some((value) => value > 0);
+  }
+
+  function maxRowValue(rows = []) {
+    if (!Array.isArray(rows) || !rows.length) return 0;
+    return rows.reduce((max, row) => Math.max(max, toNumber(row?.value)), 0);
+  }
+
+  function formatMetricValue(rawValue, valueType = 'count') {
+    const value = toNumber(rawValue);
+    if (valueType === 'percent') {
+      return value.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    }
+    return Math.round(value).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+  }
+
+  function valueStepSize(maxValue, valueType = 'count') {
+    if (valueType !== 'count') return undefined;
+    if (maxValue <= 0) return 1;
+    if (maxValue <= 10) return 1;
+    if (maxValue <= 25) return 5;
+    return undefined;
+  }
+
+  function buildValueTickOptions({ valueType = 'count', maxValue = 0 } = {}) {
+    const stepSize = valueStepSize(maxValue, valueType);
+    const options = {
+      color: axisColor(),
+      maxTicksLimit: valueType === 'count' ? 10 : 8,
+      callback(value) {
+        const formatted = formatMetricValue(value, valueType);
+        return valueType === 'percent' ? `${formatted}%` : formatted;
+      },
+    };
+    if (valueType === 'count') options.precision = 0;
+    if (stepSize) options.stepSize = stepSize;
+    return options;
+  }
+
+  const valueLabelPlugin = {
+    id: 'tcValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx, chartArea } = chart;
+      if (!ctx || !chartArea) return;
+      const canvasFont = cssVar('--font-family', 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif');
+      const textColor = cssVar('--color-text', '#f3f4f6');
+      const strokeColor = cssVar('--color-bg', '#0f172a');
+      const isHorizontal = chart.options?.indexAxis === 'y';
+
+      ctx.save();
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        if (dataset?.showValueLabels === false) return;
+        const meta = chart.getDatasetMeta(datasetIndex);
+        if (!meta || meta.hidden) return;
+        if (meta.type !== 'bar' && meta.type !== 'line' && meta.type !== 'doughnut') return;
+
+        const maxLabels = Number(dataset?.maxValueLabels) || 14;
+        if ((meta.data?.length || 0) > maxLabels) return;
+
+        ctx.font = `600 10px ${canvasFont}`;
+        ctx.fillStyle = textColor;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = strokeColor;
+
+        meta.data.forEach((element, index) => {
+          const rawValue = toNumber(dataset?.data?.[index]);
+          if (!Number.isFinite(rawValue)) return;
+
+          const valueType = dataset?.valueType || 'count';
+          const label = valueType === 'percent'
+            ? `${formatMetricValue(rawValue, 'percent')}%`
+            : formatMetricValue(rawValue, 'count');
+
+          let x = element?.x;
+          let y = element?.y;
+          if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+          if (meta.type === 'doughnut') {
+            const total = (dataset?.data || []).reduce((acc, v) => acc + toNumber(v), 0);
+            if (total > 0 && (rawValue / total) < 0.08) return;
+            const pos = element?.tooltipPosition?.() || { x: element.x, y: element.y };
+            x = pos.x;
+            y = pos.y;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+          } else if (meta.type === 'bar' && isHorizontal) {
+            x = Math.min(chartArea.right - 4, x + 8);
+            y = Math.max(chartArea.top + 8, Math.min(chartArea.bottom - 8, y));
+            ctx.textAlign = x >= chartArea.right - 28 ? 'right' : 'left';
+            ctx.textBaseline = 'middle';
+          } else {
+            y = Math.max(chartArea.top + 10, y - 6);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+          }
+
+          ctx.strokeText(label, x, y);
+          ctx.fillText(label, x, y);
+        });
+      });
+      ctx.restore();
+    },
+  };
+
+  function basePlugins({ valueType = 'count', horizontal = false, legendPosition = 'top' } = {}) {
     return {
       legend: {
         display: true,
-        position: 'top',
+        position: legendPosition,
         labels: {
           usePointStyle: true,
           color: cssVar('--color-text', '#f3f4f6'),
@@ -43,160 +352,217 @@
         },
       },
       tooltip: {
-        callbacks: {
-          label(context) {
-            const parsed = horizontal ? context.parsed.x : context.parsed.y;
-            const value = toNumber(parsed).toLocaleString('es-AR');
-            if (labelType === 'percent') return `${context.dataset.label}: ${value}%`;
-            return `${context.dataset.label}: ${value}`;
-          },
+        enabled: false,
+        external(context) {
+          renderExternalTooltip(context, { valueType, horizontal });
         },
       },
     };
   }
 
   function axisColor() {
-    return cssVar('--color-muted', '#94a3b8');
+    return cssVar('--color-text', '#f3f4f6');
   }
 
   function gridColor() {
-    return withAlpha(cssVar('--color-border', '#334155'), 0.5);
+    return withAlpha(cssVar('--color-border', 'rgba(255,255,255,0.2)'), 0.5);
   }
 
-  function makeLineSpec({ key, selector, rows = [], datasetLabel = 'Serie', yLabel = 'Valor' } = {}) {
-    const colors = chartColors();
+  function makeLineSpec({
+    key,
+    selector,
+    rows = [],
+    datasetLabel = 'Serie',
+    xLabel = 'Periodo',
+    yLabel = 'Valor',
+    allowZero = true,
+    valueType = 'count',
+    singleColor = '',
+  } = {}) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const metricValues = safeRows.map((row) => normalizeMetric(row?.value, valueType));
+    const palette = chartColors();
+    const lineColor = safeRows[0]?.color
+      || (safeRows[0]?.colorToken ? cssVar(safeRows[0].colorToken, semanticColor('primary')) : '')
+      || (safeRows[0]?.semantic ? semanticColor(safeRows[0].semantic) : '')
+      || singleColor
+      || semanticColor('primary');
+    const maxValue = Math.max(...metricValues, 0);
+    const yTickOptions = buildValueTickOptions({ valueType, maxValue });
+
     return {
       key,
       selector,
       type: 'line',
+      hasData: hasRenderableData(safeRows, { allowZero }),
       data: {
-        labels: rows.map((r) => String(r.label || '')),
+        labels: safeRows.map((row) => String(row.label || '')),
         datasets: [{
           label: datasetLabel,
-          data: rows.map((r) => toNumber(r.value)),
-          borderColor: colors[0],
-          backgroundColor: withAlpha(colors[0], 0.2),
+          data: metricValues,
+          borderColor: lineColor,
+          backgroundColor: withAlpha(lineColor, 0.2),
           fill: true,
           borderWidth: 2,
           pointRadius: 3,
           pointHoverRadius: 5,
           tension: 0.3,
+          valueType,
+          showValueLabels: true,
+          maxValueLabels: 12,
         }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: chartAnimationOptions(),
         interaction: {
           mode: 'index',
           intersect: false,
         },
-        plugins: basePlugins('number', false),
+        plugins: basePlugins({ valueType, horizontal: false, legendPosition: 'top' }),
         scales: {
           x: {
+            title: {
+              display: Boolean(xLabel),
+              text: xLabel,
+              color: axisColor(),
+            },
             grid: { display: false },
             ticks: {
               color: axisColor(),
-              maxRotation: 0,
             },
           },
           y: {
             beginAtZero: true,
+            grace: valueType === 'count' ? 1 : '5%',
             title: {
               display: Boolean(yLabel),
               text: yLabel,
               color: axisColor(),
             },
             grid: { color: gridColor() },
-            ticks: {
-              color: axisColor(),
-              callback(value) { return toNumber(value).toLocaleString('es-AR'); },
-            },
+            ticks: yTickOptions,
           },
         },
       },
     };
   }
 
-  function makeBarSpec({ key, selector, rows = [], datasetLabel = 'Valor', horizontal = true } = {}) {
-    const colors = chartColors();
+  function makeBarSpec({
+    key,
+    selector,
+    rows = [],
+    datasetLabel = 'Valor',
+    horizontal = true,
+    rowColorMode = 'categorical',
+    singleColor = '',
+    yLabel = '',
+    valueType = 'count',
+  } = {}) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const metricValues = safeRows.map((row) => normalizeMetric(row?.value, valueType));
+    const palette = chartColors();
+    const backgroundColors = safeRows.map((row, index) => colorForRow(row, index, palette, 0.75, rowColorMode, singleColor));
+    const borderColors = safeRows.map((row, index) => colorForRow(row, index, palette, null, rowColorMode, singleColor));
+    const maxValue = Math.max(...metricValues, 0);
+    const valueTickOptions = buildValueTickOptions({ valueType, maxValue });
+
     return {
       key,
       selector,
       type: 'bar',
+      hasData: hasRenderableData(safeRows),
       data: {
-        labels: rows.map((r) => String(r.label || '')),
+        labels: safeRows.map((row) => String(row.label || '')),
         datasets: [{
           label: datasetLabel,
-          data: rows.map((r) => toNumber(r.value)),
+          data: metricValues,
           borderWidth: 1,
           borderRadius: 6,
-          backgroundColor: rows.map((_, idx) => withAlpha(colors[idx % colors.length], 0.75)),
-          borderColor: rows.map((_, idx) => colors[idx % colors.length]),
+          backgroundColor: backgroundColors,
+          borderColor: borderColors,
+          valueType,
+          showValueLabels: true,
+          maxValueLabels: horizontal ? 12 : 16,
         }],
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: false,
+        animation: chartAnimationOptions(),
         indexAxis: horizontal ? 'y' : 'x',
-        plugins: basePlugins('number', horizontal),
+        plugins: basePlugins({ valueType, horizontal, legendPosition: 'top' }),
         scales: {
           x: {
             beginAtZero: true,
-            grid: { color: horizontal ? gridColor() : 'transparent' },
-            ticks: {
+            grace: horizontal ? (valueType === 'count' ? 1 : '5%') : 0,
+            title: {
+              display: Boolean(horizontal && yLabel),
+              text: yLabel,
               color: axisColor(),
-              callback(value) { return toNumber(value).toLocaleString('es-AR'); },
             },
+            grid: { color: horizontal ? gridColor() : 'transparent' },
+            ticks: horizontal ? valueTickOptions : { color: axisColor() },
           },
           y: {
             beginAtZero: !horizontal,
+            grace: !horizontal ? (valueType === 'count' ? 1 : '5%') : 0,
+            title: {
+              display: Boolean(!horizontal && yLabel),
+              text: yLabel,
+              color: axisColor(),
+            },
             grid: { color: horizontal ? 'transparent' : gridColor() },
-            ticks: { color: axisColor() },
+            ticks: horizontal ? { color: axisColor() } : valueTickOptions,
           },
         },
       },
     };
   }
 
-  function makeDoughnutSpec({ key, selector, rows = [] } = {}) {
-    const colors = chartColors();
+  function makeDoughnutSpec({ key, selector, rows = [], rowColorMode = 'categorical', singleColor = '' } = {}) {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const metricValues = safeRows.map((row) => normalizeMetric(row?.value, 'count'));
+    const palette = chartColors();
+    const isMobile = window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false;
+    const legendPosition = (isMobile || safeRows.length > 5) ? 'bottom' : 'right';
+
     return {
       key,
       selector,
       type: 'doughnut',
+      hasData: hasRenderableData(safeRows),
       data: {
-        labels: rows.map((r) => String(r.label || '')),
+        labels: safeRows.map((row) => String(row.label || '')),
         datasets: [{
-          data: rows.map((r) => toNumber(r.value)),
-          backgroundColor: rows.map((_, idx) => withAlpha(colors[idx % colors.length], 0.85)),
+          data: metricValues,
+          backgroundColor: safeRows.map((row, index) => colorForRow(row, index, palette, 0.85, rowColorMode, singleColor)),
           borderColor: cssVar('--color-bg', '#0f172a'),
           borderWidth: 2,
+          valueType: 'count',
+          showValueLabels: true,
+          maxValueLabels: 8,
         }],
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
+        maintainAspectRatio: true,
+        aspectRatio: 1,
+        animation: chartAnimationOptions(),
         cutout: '58%',
         plugins: {
           legend: {
-            position: 'right',
-            labels: {
-              usePointStyle: true,
-              color: cssVar('--color-text', '#f3f4f6'),
-            },
+            display: false,
           },
           tooltip: {
-            callbacks: {
-              label(context) {
-                const values = context.dataset.data || [];
-                const total = values.reduce((acc, v) => acc + toNumber(v), 0);
-                const current = toNumber(context.parsed);
-                const pct = total > 0 ? ((current / total) * 100).toFixed(1) : '0.0';
-                return `${context.label}: ${current.toLocaleString('es-AR')} (${pct}%)`;
-              },
+            enabled: false,
+            external(context) {
+              renderExternalTooltip(context, {
+                valueType: 'count',
+                horizontal: false,
+                showPercent: true,
+              });
             },
           },
         },
@@ -211,27 +577,36 @@
 
   function destroyRootCharts(root) {
     if (!root || !rootChartMap.has(root)) return;
-    const reg = rootChartMap.get(root);
-    reg.forEach((chart) => {
-      try { chart.destroy(); } catch (_) {}
+    const registry = rootChartMap.get(root);
+    registry.forEach((chart) => {
+      try { chart.destroy(); } catch (_) { }
     });
-    reg.clear();
+    registry.clear();
   }
 
   function mount(root, specs = []) {
-    if (!root || !Array.isArray(specs) || !window.Chart) return false;
+    if (!root || !Array.isArray(specs) || !isAvailable()) return false;
+    ensureChartDefaults();
+    if (!valueLabelPluginRegistered) {
+      try {
+        window.Chart.register(valueLabelPlugin);
+        valueLabelPluginRegistered = true;
+      } catch (_) { }
+    }
     const registry = getRootRegistry(root);
     const active = new Set();
 
-    specs.forEach((spec, idx) => {
-      const key = spec?.key || `chart-${idx}`;
-      const selector = spec?.selector;
+    specs.forEach((spec, index) => {
+      if (!spec || spec.hasData === false) return;
+
+      const key = spec.key || `chart-${index}`;
+      const selector = spec.selector;
       if (!selector) return;
 
       const canvas = root.querySelector(selector);
       if (!canvas) return;
-
       active.add(key);
+
       const existing = registry.get(key);
       if (existing) {
         existing.config.type = spec.type;
@@ -253,7 +628,7 @@
 
     Array.from(registry.keys()).forEach((key) => {
       if (active.has(key)) return;
-      try { registry.get(key)?.destroy(); } catch (_) {}
+      try { registry.get(key)?.destroy(); } catch (_) { }
       registry.delete(key);
     });
 
@@ -270,12 +645,16 @@
 
   window.DashboardCharts = {
     chartColors,
+    semanticColor,
+    resolveRowColor,
+    withAlpha,
+    hasRenderableData,
     makeLineSpec,
     makeBarSpec,
     makeDoughnutSpec,
     mount,
     destroyRootCharts,
     formatDelta,
+    isAvailable,
   };
 })();
-

@@ -86,7 +86,9 @@
       });
 
       document.getElementById('logout-btn')?.addEventListener('click', logout);
+      document.getElementById('logout-icon-btn')?.addEventListener('click', logout);
       document.getElementById('btn-about-system')?.addEventListener('click', openAboutSystem);
+      document.getElementById('about-icon-btn')?.addEventListener('click', openAboutSystem);
       hashRouter?.start?.();
 
       document.getElementById('mobile-toggle')?.addEventListener('click', () => {

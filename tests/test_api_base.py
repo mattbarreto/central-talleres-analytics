@@ -59,16 +59,15 @@ class APITestCase(unittest.TestCase):
         return {"email": email, "password": password}
 
     def login(self, email: str, password: str) -> dict:
+        """POST /auth/login. TestClient stores the HttpOnly cookies in its cookie jar.
+        Returns the response JSON (LoginResponse: {email}).
+        """
         response = self.client.post(
             "/api/v1/auth/login",
             json={"email": email, "password": password},
         )
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
-
-    def auth_headers(self, email: str = "admin@example.com", password: str = "strong-password-123") -> dict[str, str]:
-        token_data = self.login(email, password)
-        return {"Authorization": f"Bearer {token_data['access_token']}"}
 
     def seed_insights_data(self) -> Participant:
         workshop = Workshop(

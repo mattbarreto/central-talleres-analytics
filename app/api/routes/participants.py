@@ -63,6 +63,7 @@ def list_participant_profiles(
     q: str | None = Query(default=None, description="Busca por nombre, apellido, email, DNI o telefono"),
     workshop_id: UUID | None = Query(default=None),
     enrollment_status: Literal["all", "enrolled", "active", "dropped", "finished"] = Query(default="all"),
+    active_days: int | None = Query(default=None, ge=1, le=365, description="Filtro de ventana temporal para enrollments"),
     engagement: Literal["high", "medium", "low"] | None = Query(default=None),
     gender: Literal["female", "male", "non_binary", "other", "undisclosed"] | None = Query(default=None),
     age_min: int | None = Query(default=None, ge=0, le=120),
@@ -75,7 +76,7 @@ def list_participant_profiles(
         raise HTTPException(status_code=422, detail="age_min no puede ser mayor que age_max")
     profiles = build_profiles(db)
     filtered = apply_profile_filters(
-        profiles, q, workshop_id, enrollment_status, engagement, gender, age_min, age_max, population
+        profiles, q, workshop_id, enrollment_status, engagement, gender, age_min, age_max, population, active_days
     )
     return [serialize_profile(p, include_workshops=False) for p in filtered]
 
@@ -97,6 +98,7 @@ def participants_grouped_by_workshop(
     q: str | None = Query(default=None),
     workshop_id: UUID | None = Query(default=None),
     enrollment_status: Literal["all", "enrolled", "active", "dropped", "finished"] = Query(default="all"),
+    active_days: int | None = Query(default=None, ge=1, le=365, description="Filtro de ventana temporal para enrollments"),
     engagement: Literal["high", "medium", "low"] | None = Query(default=None),
     gender: Literal["female", "male", "non_binary", "other", "undisclosed"] | None = Query(default=None),
     age_min: int | None = Query(default=None, ge=0, le=120),
@@ -109,7 +111,7 @@ def participants_grouped_by_workshop(
         raise HTTPException(status_code=422, detail="age_min no puede ser mayor que age_max")
     profiles = build_profiles(db)
     filtered = apply_profile_filters(
-        profiles, q, workshop_id, enrollment_status, engagement, gender, age_min, age_max, population
+        profiles, q, workshop_id, enrollment_status, engagement, gender, age_min, age_max, population, active_days
     )
     return group_profiles_by_workshop(filtered, workshop_id=workshop_id, enrollment_status=enrollment_status)
 

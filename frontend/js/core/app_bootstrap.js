@@ -10,9 +10,9 @@ const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
 const metaSource = document.documentElement?.dataset || {};
 const APP_META = {
   author: metaSource.appAuthor || 'No definido',
-    website: metaSource.appWebsite || '',
-    repo: metaSource.appRepo || '',
-    version: metaSource.appVersion || 'v0.0.0',
+  website: metaSource.appWebsite || '',
+  repo: metaSource.appRepo || '',
+  version: metaSource.appVersion || 'v0.0.0',
   release: metaSource.appRelease || 'Sin release',
   stack: metaSource.appStack || 'N/A',
 };
@@ -153,6 +153,12 @@ if (!window.__TC_INLINE_ACTIONS_BOUND__) {
   window.__TC_INLINE_ACTIONS_BOUND__ = true;
 }
 
+/**
+ * Session state flag: replaces the old api.token in-memory check.
+ * Set to true by showApp(), cleared by logout().
+ */
+let isAuthenticated = false;
+
 const state = {
   workshops: [],
   participants: [],
@@ -164,6 +170,7 @@ const state = {
   participantEnrollmentStatus: 'all',
   participantPopulation: 'all',
   participantMode: 'summary',
+  participantActiveDays: '',
   participantHasLoaded: false,
   participantProfiles: [],
   activeParticipantProfile: null,
@@ -203,36 +210,30 @@ const state = {
 };
 
 const api = {
-  token: localStorage.getItem('tc_token'),
-  refreshToken: localStorage.getItem('tc_refresh_token'),
+  /**
+   * Cookies-only auth: tokens live in HttpOnly cookies managed by the browser.
+   * No tokens are stored in JS memory or localStorage.
+   * All requests use credentials: 'include' so the browser sends cookies automatically.
+   */
   headers(json = true) {
     const h = {};
-    if (this.token) h.Authorization = `Bearer ${this.token}`;
     if (json) h['Content-Type'] = 'application/json';
     return h;
   },
   async refreshAccessToken() {
-    if (!this.refreshToken) return false;
     const res = await fetch(`${API_BASE}/auth/refresh`, {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refresh_token: this.refreshToken }),
     });
-    if (!res.ok) return false;
-    const data = await res.json().catch(() => null);
-    if (!data?.access_token || !data?.refresh_token) return false;
-    this.token = data.access_token;
-    this.refreshToken = data.refresh_token;
-    localStorage.setItem('tc_token', data.access_token);
-    localStorage.setItem('tc_refresh_token', data.refresh_token);
-    return true;
+    return res.ok;
   },
   async request(method, path, body = null, allowRefresh = true) {
-    const opts = { method, headers: this.headers() };
+    const opts = { method, headers: this.headers(), credentials: 'include' };
     if (body) opts.body = JSON.stringify(body);
     const res = await fetch(`${API_BASE}${path}`, opts);
     if (res.status === 401) {
-      const shouldTryRefresh = allowRefresh && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh');
+      const shouldTryRefresh = allowRefresh && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/me');
       if (shouldTryRefresh) {
         const refreshed = await this.refreshAccessToken().catch(() => false);
         if (refreshed) return this.request(method, path, body, false);
@@ -686,6 +687,7 @@ function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
 }
 
 function showApp(email) {
+  isAuthenticated = true;
   document.getElementById('login-page').classList.add('hidden');
   document.getElementById('app-layout').classList.remove('hidden');
   document.getElementById('user-email').textContent = email;
@@ -694,29 +696,19 @@ function showApp(email) {
   applyRoute();
 }
 
-function logout() {
-  const wasAuthenticated = Boolean(api.token);
-  const token = api.token;
-  const refreshToken = api.refreshToken;
-  if (token) {
-    fetch(`${API_BASE}/auth/logout`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ refresh_token: refreshToken || null }),
-    }).catch(() => {});
-  }
-  api.token = null;
-  api.refreshToken = null;
-  localStorage.removeItem('tc_token');
-  localStorage.removeItem('tc_refresh_token');
+function logout(redirected = false) {
+  isAuthenticated = false;
+  // Ask the backend to revoke tokens and clear HttpOnly cookies.
+  fetch(`${API_BASE}/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+  }).catch(() => { });
   localStorage.removeItem('tc_email');
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('app-layout').classList.add('hidden');
   document.getElementById('login-form').reset();
-  if (wasAuthenticated) {
+  if (!redirected) {
     history.replaceState(null, '', `${window.location.pathname}${window.location.search}#dashboard`);
   }
 }
@@ -729,15 +721,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   btn.innerHTML = '<span class="spinner"></span> Ingresando...';
   error.classList.remove('show');
   try {
-    const email = document.getElementById('login-email').value.trim();
+    const emailInput = document.getElementById('login-email').value.trim();
     const password = document.getElementById('login-password').value;
-    const data = await api.post('/auth/login', { email, password });
-    api.token = data.access_token;
-    api.refreshToken = data.refresh_token;
-    localStorage.setItem('tc_token', data.access_token);
-    localStorage.setItem('tc_refresh_token', data.refresh_token);
-    localStorage.setItem('tc_email', email);
-    showApp(email);
+    // Backend sets HttpOnly cookies; response body has only { email }.
+    const data = await api.post('/auth/login', { email: emailInput, password });
+    localStorage.setItem('tc_email', data.email);
+    showApp(data.email);
     toast('Bienvenido de nuevo', 'success');
   } catch {
     error.textContent = 'Correo o contraseña incorrectos. Intentá de nuevo.';
@@ -787,6 +776,10 @@ async function fetchParticipantsOverview() { return api.get('/participants/overv
 async function fetchTeamMembers() { return api.get('/team-members/'); }
 async function fetchTeamOverview() { return api.get('/team-members/overview'); }
 async function fetchCommunications() { state.communications = await api.get('/communications/'); return state.communications; }
+async function fetchDashboardMetrics(params = {}) {
+  const q = toQuery(params);
+  return api.get(`/dashboard/metrics${q ? `?${q}` : ''}`);
+}
 async function fetchInsights(params = {}) {
   const q = toQuery(params);
   return api.get(`/insights/overview${q ? `?${q}` : ''}`);
@@ -974,58 +967,127 @@ async function loadDashboard() {
     }
     renderViewLoading('dashboard', 'Panel');
     const root = document.querySelector('#view-dashboard .page-body');
-    const workshops = await fetchWorkshops();
-    const participants = await fetchParticipants();
-    const communications = await fetchCommunications();
-    const enrollments = await fetchEnrollmentsByWorkshops(workshops.map((w) => w.id));
-    const renderDashboardV2 = async () => window.DashboardPage.render({
-      root,
-      workshops,
-      participants,
-      communications,
-      enrollments,
-      dashboardMode: state.dashboardMode,
-      dashboardFilters: {
-        year: state.dashboardYear,
-        status: state.dashboardStatus,
-        workshop: state.dashboardWorkshop,
-      },
-      onFilterChange: (next) => {
-        state.dashboardYear = next.year || '';
-        state.dashboardStatus = next.status || '';
-        state.dashboardWorkshop = next.workshop || '';
-        syncViewParamsSilent();
-        renderDashboardV2();
-      },
-      onExport: () => {
-        const payload = getDashboardFilteredData(workshops, communications, enrollments);
-        downloadDashboardCSV(payload);
-        toast('CSV del panel descargado', 'success');
-      },
-      onReport: () => {
-        printDashboardExecutiveReport();
-      },
-      onNewActivity: () => setHash('workshops', {}),
-      onWorkshopDetail: (workshopId) => {
-        const workshop = workshops.find((row) => row.id === workshopId);
-        setHash('workshops', { q: workshop?.name || '' });
-      },
-      onKpiDrilldown: (kpiId) => {
-        if (kpiId === 'communications') {
-          setHash('communications', { workshop: state.dashboardWorkshop || '' });
-          return;
-        }
-        if (kpiId === 'participants') {
-          setHash('participants', { mode: 'advanced', workshop: state.dashboardWorkshop || '' });
-          return;
-        }
-        setHash('participants', {
-          mode: 'advanced',
-          workshop: state.dashboardWorkshop || '',
-          status: kpiId === 'active' ? 'active' : kpiId === 'finished' ? 'finished' : 'all',
+
+    // For filters we still want the basic list of workshops, but not all participants or enrollments
+    // In a fully optimized future, even the workshop filter list might be a dedicated lean endpoint.
+    let filterWorkshops = [];
+    try {
+      filterWorkshops = await fetchWorkshops();
+    } catch {
+      // Soft fail on filter setup
+    }
+
+    const renderDashboardV2 = async () => {
+      let metrics = null;
+      let dashboardError = false;
+      let dashboardLoading = true;
+
+      const renderOpts = {
+        root,
+        workshops: filterWorkshops,
+        dashboardMode: state.dashboardMode,
+        dashboardFilters: {
+          year: state.dashboardYear,
+          status: state.dashboardStatus,
+          workshop: state.dashboardWorkshop,
+        },
+        onFilterChange: (next) => {
+          state.dashboardYear = next.year || '';
+          state.dashboardStatus = next.status || '';
+          state.dashboardWorkshop = next.workshop || '';
+          state.filters = state.filters || {};
+          state.filters.range = next.range || state.filters.range || '30d';
+          syncViewParamsSilent();
+          renderDashboardV2();
+        },
+        onExport: async () => {
+          // Ideally backend will generate this CSV, using old mock logic in the meantime. 
+          // In a full implementation, you'd add an export endpoint.
+          toast('En proceso de migración de descargas al backend', 'info');
+        },
+        onReport: () => {
+          printDashboardExecutiveReport();
+        },
+        onNewActivity: () => setHash('workshops', {}),
+        onWorkshopDetail: (workshopId) => {
+          const workshop = filterWorkshops.find((row) => row.id === workshopId);
+          setHash('workshops', { q: workshop?.name || '' });
+        },
+        onKpiDrilldown: (kpiId) => {
+          if (kpiId === 'communications') {
+            setHash('communications', { workshop: state.dashboardWorkshop || '' });
+            return;
+          }
+
+          let rangeDays = 30; // default for dashboard 30d
+          const rangeKey = state.filters?.range || '30d';
+          if (rangeKey === '7d') rangeDays = 7;
+          else if (rangeKey === '90d') rangeDays = 90;
+          else if (rangeKey === '180d') rangeDays = 180;
+          else if (rangeKey === '365d') rangeDays = 365;
+
+          if (kpiId === 'participants') {
+            setHash('participants', {
+              mode: 'advanced',
+              workshop: state.dashboardWorkshop || '',
+              active_days: rangeKey === 'all' ? '' : rangeDays
+            });
+            return;
+          }
+          setHash('participants', {
+            mode: 'advanced',
+            workshop: state.dashboardWorkshop || '',
+            status: kpiId === 'active' ? 'active' : kpiId === 'finished' ? 'finished' : 'all',
+            active_days: rangeKey === 'all' ? '' : rangeDays
+          });
+        },
+        onStatusDrilldown: (enrollmentStatus) => {
+          let rangeDays = 30;
+          const rangeKey = state.filters?.range || '30d';
+          if (rangeKey === '7d') rangeDays = 7;
+          else if (rangeKey === '90d') rangeDays = 90;
+          else if (rangeKey === '180d') rangeDays = 180;
+          else if (rangeKey === '365d') rangeDays = 365;
+          setHash('participants', {
+            mode: 'advanced',
+            status: enrollmentStatus || 'all',
+            active_days: rangeKey === 'all' ? '' : rangeDays
+          });
+        },
+      };
+
+      // Show skeleton state
+      await window.DashboardPage.render({ ...renderOpts, dashboardLoading: true });
+
+      try {
+        const rangeKey = state.filters?.range || '30d';
+        let rangeDays = 30;
+        if (rangeKey === '7d') rangeDays = 7;
+        else if (rangeKey === '90d') rangeDays = 90;
+        else if (rangeKey === '180d') rangeDays = 180;
+        else if (rangeKey === '365d') rangeDays = 365;
+
+        metrics = await fetchDashboardMetrics({
+          range_days: rangeDays,
+          cohort_year: state.dashboardYear || '',
+          status: state.dashboardStatus || '',
+          workshop_id: state.dashboardWorkshop || ''
         });
-      },
-    });
+        dashboardLoading = false;
+      } catch (err) {
+        dashboardLoading = false;
+        dashboardError = true;
+        console.error('Failed to fetch dashboard metrics:', err);
+      }
+
+      await window.DashboardPage.render({
+        ...renderOpts,
+        metrics,
+        dashboardError,
+        dashboardLoading
+      });
+    };
+
     await renderDashboardV2();
   } catch (err) {
     toast(err.message || 'Error al cargar el panel', 'error');
@@ -1641,10 +1703,10 @@ function renderJourneyPickerBody(candidates, query = '') {
         <label class="form-label" for="journey-picker-select">Resultados</label>
         <select id="journey-picker-select" class="form-select" size="10">
           ${shortQuery
-            ? '<option value="">Escribí al menos 2 caracteres para buscar</option>'
-            : candidates.length
-            ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` · DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` · ${escapeHTML(p.email)}` : ''}</option>`).join('')
-            : '<option value="">Sin resultados</option>'}
+      ? '<option value="">Escribí al menos 2 caracteres para buscar</option>'
+      : candidates.length
+        ? candidates.map((p) => `<option value="${p.id}" ${String(p.id) === String(state.insightsJourneyParticipant || '') ? 'selected' : ''}>${escapeHTML(p.name)}${p.dni ? ` · DNI ${escapeHTML(p.dni)}` : ''}${p.email ? ` · ${escapeHTML(p.email)}` : ''}</option>`).join('')
+        : '<option value="">Sin resultados</option>'}
         </select>
       </div>
       <p class="muted">${shortQuery ? 'Usá apellido, nombre o DNI.' : `Mostrando hasta ${candidates.length} resultados.`}</p>
@@ -2031,6 +2093,7 @@ function participantFiltersQuery() {
     q: (state.participantSearch || '').trim(),
     enrollment_status: state.participantEnrollmentStatus || 'all',
     population: state.participantPopulation || 'all',
+    active_days: state.participantActiveDays || '',
   });
 }
 
@@ -2077,6 +2140,10 @@ async function loadParticipants() {
       certifiable_members: overview.certifiable_members || 0,
       inactive_members: overview.inactive_members || 0,
     };
+    // Capture active search input state before re-render
+    const activeSearchId = document.activeElement?.id;
+    const cursorPos = (activeSearchId === 'p-q') ? document.activeElement.selectionStart : null;
+
     await window.ParticipantsPage.render({
       root: document.querySelector('#view-participants .page-body'),
       overview,
@@ -2103,16 +2170,34 @@ async function loadParticipants() {
           state.participantSearch = '';
           state.participantEnrollmentStatus = 'all';
           state.participantPopulation = 'all';
+          state.participantActiveDays = '';
         } else {
           state.participantSearch = next.q || '';
           state.participantEnrollmentStatus = next.status || 'all';
           state.participantPopulation = next.population || 'all';
+          // we don't clear active_days on manual filter UI usage if we want it preserved, 
+          // or we clear it if they hit search. Usually UI filters override url.
+          // let's preserve it since there is no UI input for it, 
+          // so it remains active until "reset" is explicitly clicked.
         }
         state.participantHasLoaded = true;
         syncViewParams();
         loadParticipants();
       },
     });
+
+    // Restore focus to search input after re-render
+    if (activeSearchId === 'p-q') {
+      requestAnimationFrame(() => {
+        const restored = document.getElementById('p-q');
+        if (restored) {
+          restored.focus();
+          if (typeof cursorPos === 'number') {
+            restored.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      });
+    }
   } catch (err) {
     toast(err.message || 'Error al cargar participantes', 'error');
   }
@@ -2788,6 +2873,10 @@ async function loadTeam() {
       teachers_total: overview.teachers_total || 0,
       coordinators_total: overview.coordinators_total || 0,
     };
+    // Capture active search input state before re-render
+    const activeSearchId = document.activeElement?.id;
+    const cursorPos = (activeSearchId === 't-q') ? document.activeElement.selectionStart : null;
+
     await window.TeamPage.render({
       root: document.querySelector('#view-team .page-body'),
       overview,
@@ -2827,6 +2916,19 @@ async function loadTeam() {
       onNew: () => openTeamMemberForm(),
       onOpenProfile: (id) => openTeamProfile(id),
     });
+
+    // Restore focus to search input after re-render
+    if (activeSearchId === 't-q') {
+      requestAnimationFrame(() => {
+        const restored = document.getElementById('t-q');
+        if (restored) {
+          restored.focus();
+          if (typeof cursorPos === 'number') {
+            restored.setSelectionRange(cursorPos, cursorPos);
+          }
+        }
+      });
+    }
   } catch (err) {
     toast(err.message || 'Error al cargar equipo', 'error');
   }
@@ -2910,7 +3012,7 @@ const routeLoaders = {
 };
 
 async function applyRoute() {
-  if (!api.token) {
+  if (!isAuthenticated) {
     document.getElementById('login-page').classList.remove('hidden');
     document.getElementById('app-layout').classList.add('hidden');
     return;
@@ -2925,11 +3027,28 @@ async function applyRoute() {
   await window.AppViewLoader?.load?.(view, params, routeLoaders);
 }
 
-(function init() {
+/**
+ * A11y utility (UX-01): generate a unique ID for dynamically-created form fields.
+ * Use in component templates: const id = generateFieldId('campo'); => "campo-x4k9f2"
+ */
+function generateFieldId(prefix = 'f') {
+  return `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
+}
+window.generateFieldId = generateFieldId;
+
+(async function init() {
   hydrateAppMeta();
-  const token = localStorage.getItem('tc_token');
-  const email = localStorage.getItem('tc_email');
-  if (token && email) { api.token = token; showApp(email); return; }
+  try {
+    // Restore session via HttpOnly cookie — no token reading from localStorage.
+    const data = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+    if (data.ok) {
+      const { email } = await data.json();
+      showApp(email);
+      return;
+    }
+  } catch {
+    // network error — fall through to login screen
+  }
   document.getElementById('login-page').classList.remove('hidden');
   document.getElementById('app-layout').classList.add('hidden');
 })();

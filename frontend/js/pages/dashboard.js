@@ -30,47 +30,6 @@
     return 0;
   }
 
-  function periodWindow(rangeKey, offset = 0) {
-    const days = rangeDays(rangeKey);
-    if (!days) return null;
-    const now = new Date();
-    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const to = new Date(endOfToday.getTime() - (offset * days * 24 * 60 * 60 * 1000));
-    const from = new Date(to.getTime() - (days * 24 * 60 * 60 * 1000));
-    return { from, to };
-  }
-
-  function inWindow(dateValue, windowDef) {
-    if (!windowDef) return true;
-    const d = toDate(dateValue);
-    if (!d) return false;
-    return d >= windowDef.from && d < windowDef.to;
-  }
-
-  function monthlyBars(rows, dateKey = 'created_at') {
-    const now = new Date();
-    const keys = [];
-    for (let i = 5; i >= 0; i -= 1) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      keys.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
-    }
-    const map = Object.fromEntries(keys.map((k) => [k, 0]));
-    rows.forEach((r) => {
-      const d = toDate(r[dateKey]);
-      if (!d) return;
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      if (map[key] !== undefined) map[key] += 1;
-    });
-    return keys.map((k) => {
-      const [y, m] = k.split('-').map(Number);
-      return { label: new Intl.DateTimeFormat('es-AR', { month: 'short' }).format(new Date(y, m - 1, 1)), value: map[k] };
-    });
-  }
-
-  function uniqCount(items) {
-    return new Set(items).size;
-  }
-
   function delta(current, previous, comparable = true) {
     if (!comparable) return '0%';
     const cur = Number(current) || 0;
@@ -80,67 +39,6 @@
     if (charts?.formatDelta) return charts.formatDelta(pct);
     const rounded = Math.round(pct * 10) / 10;
     return `${rounded > 0 ? '+' : ''}${rounded}%`;
-  }
-
-  function mockData() {
-    const now = new Date().toISOString();
-    return {
-      workshops: [{ id: 'm1', name: 'Taller demo', cohort_year: new Date().getFullYear(), status: 'active', created_at: now }],
-      participants: [{ id: 'p1', name: 'Participante demo', email: 'demo@local' }],
-      communications: [{ id: 'c1', workshop_id: 'm1', subject: 'Bienvenida', body: 'Demo', created_at: now }],
-      enrollments: [{ id: 'e1', workshop_id: 'm1', participant_id: 'p1', status: 'active', created_at: now }],
-    };
-  }
-
-  function filterData(allData, dashboardFilters, rangeKey) {
-    const { workshops, communications, enrollments } = allData;
-    const currentWindow = periodWindow(rangeKey, 0);
-    const previousWindow = periodWindow(rangeKey, 1);
-
-    const baseWorkshops = workshops.filter((w) => {
-      if (dashboardFilters.year && String(w.cohort_year) !== String(dashboardFilters.year)) return false;
-      if (dashboardFilters.status && w.status !== dashboardFilters.status) return false;
-      if (dashboardFilters.workshop && String(w.id) !== String(dashboardFilters.workshop)) return false;
-      return true;
-    });
-
-    const baseWorkshopIds = new Set(baseWorkshops.map((w) => w.id));
-    const currentWorkshops = baseWorkshops.filter((w) => inWindow(w.created_at, currentWindow));
-    const previousWorkshops = baseWorkshops.filter((w) => inWindow(w.created_at, previousWindow));
-
-    const currentEnrollments = enrollments.filter((e) => baseWorkshopIds.has(e.workshop_id) && inWindow(e.created_at, currentWindow));
-    const previousEnrollments = enrollments.filter((e) => baseWorkshopIds.has(e.workshop_id) && inWindow(e.created_at, previousWindow));
-
-    const currentCommunications = communications.filter((c) => baseWorkshopIds.has(c.workshop_id) && inWindow(c.created_at, currentWindow));
-    const previousCommunications = communications.filter((c) => baseWorkshopIds.has(c.workshop_id) && inWindow(c.created_at, previousWindow));
-
-    return {
-      baseWorkshops,
-      currentWorkshops,
-      previousWorkshops,
-      currentEnrollments,
-      previousEnrollments,
-      currentCommunications,
-      previousCommunications,
-    };
-  }
-
-  function topWorkshopBars(workshops, enrollments, limit = 8) {
-    const names = new Map(workshops.map((w) => [String(w.id), w.name]));
-    const totals = new Map();
-    enrollments.forEach((e) => {
-      const key = String(e.workshop_id || '');
-      totals.set(key, (totals.get(key) || 0) + 1);
-    });
-    return Array.from(totals.entries())
-      .map(([workshopId, total]) => ({
-        id: workshopId,
-        colorKey: workshopId,
-        label: names.get(workshopId) || 'Taller',
-        value: total,
-      }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, limit);
   }
 
   function explainKpi(kpiId) {
@@ -219,74 +117,78 @@
     }
 
     charts?.destroyRootCharts?.(renderHost);
-    renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${Skeleton({ lines: 6 })}</div></div>`;
 
-    let data = {
-      workshops: opts.workshops || [],
-      participants: opts.participants || [],
-      communications: opts.communications || [],
-      enrollments: opts.enrollments || [],
-    };
-    if (!data.workshops.length && !data.participants.length && !data.communications.length) data = mockData();
-
-    const years = [...new Set(data.workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
+    const isError = !!opts.dashboardError;
+    const isLoading = !!opts.dashboardLoading;
     const isAdvanced = opts.dashboardMode === 'advanced';
     const filters = opts.dashboardFilters || { year: '', status: '', workshop: '' };
     const activeRange = store.state.filters.range || '30d';
+
+    if (isLoading) {
+      renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${Skeleton({ lines: 6 })}</div></div>`;
+      return true;
+    }
+
+    if (isError || !opts.metrics) {
+      renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${EmptyState({
+        title: 'Error cargando panel',
+        message: 'Ocurrió un error al consultar las métricas. Intente recargar.',
+        actionLabel: 'Reintentar',
+        actionAttrs: 'onclick="window.location.reload()"'
+      })}</div></div>`;
+      return true;
+    }
+
+    const { kpis: beKpis, top_workshops: beTopWorkshops, recent_activity: beRecentActivity, trends_enrollments: beTrendsEnrollments, trends_communications: beTrendsCommunications, status_distribution: beStatusDistribution } = opts.metrics;
+
+    // We optionally keep available unaggregated lists for filters UI if provided, 
+    // otherwise the backend gives us purely aggregated numbers.
+    const filterWorkshops = opts.workshops || [];
+    const years = [...new Set(filterWorkshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
+
     const comparablePeriod = rangeDays(activeRange) > 0;
-    const computed = filterData(data, filters, activeRange);
-
-    const active = computed.currentEnrollments.filter((e) => e.status === 'active').length;
-    const finished = computed.currentEnrollments.filter((e) => e.status === 'finished').length;
-    const dropped = computed.currentEnrollments.filter((e) => e.status === 'dropped').length;
-    const prevActive = computed.previousEnrollments.filter((e) => e.status === 'active').length;
-    const prevFinished = computed.previousEnrollments.filter((e) => e.status === 'finished').length;
-    const prevDropped = computed.previousEnrollments.filter((e) => e.status === 'dropped').length;
-
-    const participantIds = computed.currentEnrollments.map((e) => e.participant_id);
-    const prevParticipantIds = computed.previousEnrollments.map((e) => e.participant_id);
 
     const kpis = [
       {
         id: 'workshops',
         label: 'Talleres',
-        value: computed.currentWorkshops.length,
-        previous: computed.previousWorkshops.length,
+        value: beKpis.workshops.current,
+        previous: beKpis.workshops.previous,
         trend: 'Oferta activa',
       },
       {
         id: 'participants',
-        label: 'Participantes unicos',
-        value: uniqCount(participantIds),
-        previous: uniqCount(prevParticipantIds),
+        label: 'Participantes únicos',
+        value: beKpis.participants_unique.current,
+        previous: beKpis.participants_unique.previous,
         trend: 'Base activa',
       },
       {
         id: 'enrollments',
         label: 'Inscripciones',
-        value: computed.currentEnrollments.length,
-        previous: computed.previousEnrollments.length,
+        value: beKpis.enrollments.current,
+        previous: beKpis.enrollments.previous,
         trend: 'Flujo operativo',
       },
       {
         id: 'active',
         label: 'Activos',
-        value: active,
-        previous: prevActive,
+        value: beKpis.active_enrollments.current,
+        previous: beKpis.active_enrollments.previous,
         trend: 'En curso',
       },
       {
         id: 'finished',
         label: 'Finalizados',
-        value: finished,
-        previous: prevFinished,
+        value: beKpis.finished_enrollments.current,
+        previous: beKpis.finished_enrollments.previous,
         trend: 'Cierre',
       },
       {
         id: 'communications',
         label: 'Comunicaciones',
-        value: computed.currentCommunications.length,
-        previous: computed.previousCommunications.length,
+        value: beKpis.communications.current,
+        previous: beKpis.communications.previous,
         trend: 'Seguimiento',
       },
     ].map((kpi) => ({
@@ -302,40 +204,42 @@
       filters.workshop ? '<span class="dash-chip">Taller específico</span>' : '',
     ].filter(Boolean).join('');
 
-    const movements = [...computed.currentWorkshops.map((w) => ({
-      label: `Taller: ${esc(w.name)}`,
-      date: w.created_at,
-      meta: `${w.cohort_year} - ${w.status}`,
-    })), ...computed.currentCommunications.map((c) => ({
-      label: `Comunicación: ${esc(c.subject)}`,
-      date: c.created_at,
-      meta: 'Envio registrado',
-    }))].sort((a, b) => (toDate(b.date)?.getTime() || 0) - (toDate(a.date)?.getTime() || 0));
-
-    const movementsToShow = movements.slice(0, store.state.rowsToShow);
+    const movementsToShow = (beRecentActivity || []).slice(0, store.state.rowsToShow);
     const movementList = movementsToShow.length
-      ? `<ul class="dash-bars">${movementsToShow.map((m) => `<li><span>${m.label}</span><div class="dash-bar-track"><span style="width:100%"></span></div><strong>${dateLabel(m.date)}</strong></li>`).join('')}</ul>`
+      ? `<ul class="dash-bars">${movementsToShow.map((m) => `<li><span>${esc(m.label)}</span><div class="dash-bar-track"><span style="width:100%"></span></div><strong>${dateLabel(m.date)}</strong></li>`).join('')}</ul>`
       : EmptyState({ title: 'Sin actividad reciente', message: 'No hubo movimientos en el rango actual.' });
 
     const alerts = [];
-    if (computed.currentWorkshops.some((w) => w.status === 'planned')) alerts.push('Hay talleres planificados pendientes de inicio.');
-    if (!computed.currentCommunications.length) alerts.push('No hay comunicaciones enviadas en el período.');
-    if (finished < active) alerts.push('Hay más activos que finalizados: revisar cierres.');
-    if (dropped > prevDropped && comparablePeriod) alerts.push('Las bajas subieron respecto al período anterior.');
+    if (beKpis.finished_enrollments.current < beKpis.active_enrollments.current) {
+      alerts.push({ text: 'Hay más activos que finalizados: revisar cierres si es fin de período.', kpi: 'active' });
+    }
+    const droppedCount = beStatusDistribution.find(s => s.label === 'Bajas')?.value || 0;
+    if (droppedCount > 0) {
+      alerts.push({ text: `Se registraron ${droppedCount} bajas en el período actual.`, status: 'dropped' });
+    }
 
     const alertsHtml = alerts.length
-      ? `<div class="dash-helper-note">${alerts.map((a) => `<div>${icon('insights')} ${esc(a)}</div>`).join('')}</div>`
+      ? `<div class="dash-helper-note">${alerts.map((a, i) => {
+        const btn = a.status
+          ? `<button type="button" class="dash-link-btn" data-alert-status="${esc(a.status)}">${esc(a.text)}</button>`
+          : a.kpi
+            ? `<button type="button" class="dash-link-btn" data-alert-kpi="${esc(a.kpi)}">${esc(a.text)}</button>`
+            : esc(a.text);
+        return `<div>${icon('insights')} ${btn}</div>`;
+      }).join('')}</div>`
       : '<div class="dash-helper-note">Sin alertas críticas para este período.</div>';
 
-    const recentRows = computed.currentWorkshops
-      .sort((a, b) => (toDate(b.created_at)?.getTime() || 0) - (toDate(a.created_at)?.getTime() || 0))
+    // Recent workflows are now just the recent_activity of type workshop mapped to the table format
+    const recentRows = (beRecentActivity || [])
+      .filter(w => w.type === 'workshop')
       .map((w) => ({
-        id: w.id,
-        name: esc(w.name),
-        year: esc(w.cohort_year),
-        status: esc(w.status),
-        created: dateLabel(w.created_at),
+        id: w.id || '', // we don't have id in recent activity row currently, would need backend extension to be clickable
+        name: esc(w.label),
+        year: '-', // meta holds "2024 - status" string
+        status: esc(w.meta),
+        created: dateLabel(w.date),
       }));
+
     const recentTotalPages = Math.max(1, Math.ceil(recentRows.length / viewState.recentPageSize));
     if (viewState.recentPage > recentTotalPages) viewState.recentPage = recentTotalPages;
     const recentStart = (viewState.recentPage - 1) * viewState.recentPageSize;
@@ -350,14 +254,23 @@
       `
       : '';
 
-    const enrollmentTrendRows = monthlyBars(computed.currentEnrollments, 'created_at');
-    const communicationTrendRows = monthlyBars(computed.currentCommunications, 'created_at');
-    const statusRows = [
-      { label: 'Activos', value: active, semantic: 'info', colorKey: 'status-active' },
-      { label: 'Finalizados', value: finished, semantic: 'success', colorKey: 'status-finished' },
-      { label: 'Bajas', value: dropped, semantic: 'danger', colorKey: 'status-dropped' },
-    ];
-    const rankingRows = topWorkshopBars(computed.baseWorkshops, computed.currentEnrollments, 8);
+    const enrollmentTrendRows = beTrendsEnrollments || [];
+    const communicationTrendRows = beTrendsCommunications || [];
+
+    // Status rows require the semantic property to retain the colors in UI
+    const statusMap = { 'Activos': 'info', 'Finalizados': 'success', 'Bajas': 'danger' };
+    const statusKeyMap = { 'Activos': 'status-active', 'Finalizados': 'status-finished', 'Bajas': 'status-dropped' };
+    const statusLinkMap = { 'Activos': 'active', 'Finalizados': 'finished', 'Bajas': 'dropped' };
+    const statusRows = (beStatusDistribution || []).map(r => ({
+      ...r,
+      semantic: statusMap[r.label] || 'info',
+      colorKey: statusKeyMap[r.label] || 'status-other',
+      linkId: statusLinkMap[r.label] || '',
+    }));
+
+    const rankingRows = (beTopWorkshops || []).map(r => ({
+      id: r.id, linkId: r.id, colorKey: r.id, label: r.label, value: r.value
+    }));
     const rankingChartHeight = `${Math.min(460, Math.max(260, (rankingRows.length * 34) + 110))}px`;
     const useCanvasCharts = Boolean(ChartCanvasCard && charts?.isAvailable?.());
     const chartCard = useCanvasCharts ? ChartCanvasCard : ChartCard;
@@ -421,43 +334,43 @@
       content: `
         <div class="dash-grid">
           <div class="dash-col-6">${renderChartOrEmpty({
-            title: 'Tendencia de inscripciones',
-            subtitle: 'Últimos 6 meses',
-            chartId: 'dash-chart-enrollments',
-            chartType: 'line',
-            ariaLabel: 'Serie temporal de inscripciones de los últimos 6 meses',
-            rows: enrollmentTrendRows,
-            valueLabel: 'Inscripciones',
-          })}</div>
+        title: 'Tendencia de inscripciones',
+        subtitle: 'Últimos 6 meses',
+        chartId: 'dash-chart-enrollments',
+        chartType: 'line',
+        ariaLabel: 'Serie temporal de inscripciones de los últimos 6 meses',
+        rows: enrollmentTrendRows,
+        valueLabel: 'Inscripciones',
+      })}</div>
           <div class="dash-col-6">${renderChartOrEmpty({
-            title: 'Estado de inscripciones',
-            subtitle: 'Distribución del período activo',
-            chartId: 'dash-chart-status',
-            chartType: 'doughnut',
-            chartHeight: '320px',
-            ariaLabel: 'Distribución de estados de inscripciones',
-            rows: statusRows,
-            valueLabel: 'Total',
-          })}</div>
+        title: 'Estado de inscripciones',
+        subtitle: 'Distribución del período activo',
+        chartId: 'dash-chart-status',
+        chartType: 'doughnut',
+        chartHeight: '320px',
+        ariaLabel: 'Distribución de estados de inscripciones',
+        rows: statusRows,
+        valueLabel: 'Total',
+      })}</div>
           ${isAdvanced ? `<div class="dash-col-6">${renderChartOrEmpty({
-    title: 'Tendencia de comunicaciones',
-    subtitle: 'Últimos 6 meses',
-    chartId: 'dash-chart-communications',
-    chartType: 'line',
-    ariaLabel: 'Serie temporal de comunicaciones de los últimos 6 meses',
-    rows: communicationTrendRows,
-    valueLabel: 'Comunicaciones',
-  })}</div>` : ''}
+        title: 'Tendencia de comunicaciones',
+        subtitle: 'Últimos 6 meses',
+        chartId: 'dash-chart-communications',
+        chartType: 'line',
+        ariaLabel: 'Serie temporal de comunicaciones de los últimos 6 meses',
+        rows: communicationTrendRows,
+        valueLabel: 'Comunicaciones',
+      })}</div>` : ''}
           ${isAdvanced ? `<div class="dash-col-6">${renderChartOrEmpty({
-    title: 'Top talleres por inscripciones',
-    subtitle: 'Ranking del período activo',
-    chartId: 'dash-chart-top-workshops',
-    chartType: 'bar',
-    chartHeight: rankingChartHeight,
-    ariaLabel: 'Ranking de talleres por cantidad de inscripciones',
-    rows: rankingRows,
-    valueLabel: 'Inscripciones',
-  })}</div>` : ''}
+        title: 'Top talleres por inscripciones',
+        subtitle: 'Ranking del período activo',
+        chartId: 'dash-chart-top-workshops',
+        chartType: 'bar',
+        chartHeight: rankingChartHeight,
+        ariaLabel: 'Ranking de talleres por cantidad de inscripciones',
+        rows: rankingRows,
+        valueLabel: 'Inscripciones',
+      })}</div>` : ''}
           ${isAdvanced ? `<div class="dash-col-6">${Card({ title: 'Últimos movimientos', body: movementList, footer: movements.length > store.state.rowsToShow ? Button({ variant: 'ghost', size: 'sm', label: 'Ver más', attrs: 'type="button" data-show-more="1"' }) : '' })}</div>` : ''}
           <div class="dash-col-6">${Card({ title: 'Alertas y pendientes', body: alertsHtml })}</div>
         </div>
@@ -528,11 +441,11 @@
                 <label class="dash-filter-label" for="dash-workshop">Taller</label>
                 <select id="dash-workshop" name="dashboard_workshop" class="dash-filter-control">
                   <option value="">Todos</option>
-                  ${data.workshops.map((w) => `<option value="${esc(w.id)}" ${String(filters.workshop) === String(w.id) ? 'selected' : ''}>${esc(w.name)} (${esc(w.cohort_year)})</option>`).join('')}
+                  ${filterWorkshops.map((w) => `<option value="${esc(w.id)}" ${String(filters.workshop) === String(w.id) ? 'selected' : ''}>${esc(w.name)} (${esc(w.cohort_year)})</option>`).join('')}
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-filter-apply="1"' })}
+                ${Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-filter-apply="1"' })}
                 ${Button({ variant: 'ghost', size: 'md', label: 'Reset', attrs: 'type="button" data-filter-reset="1"' })}
               </div>
             </div>
@@ -649,25 +562,63 @@
       node.addEventListener('click', () => {
         const kpiId = node.getAttribute('data-kpi-id');
         store.setSelectedKpi(kpiId);
-        const detailRows = kpiId === 'communications'
-          ? computed.currentCommunications.slice(0, 8).map((c) => `<tr><td>${esc(c.subject)}</td><td>${dateLabel(c.created_at)}</td></tr>`).join('')
-          : computed.currentEnrollments.slice(0, 8).map((e) => `<tr><td>${esc(e.status)}</td><td>${dateLabel(e.created_at)}</td></tr>`).join('');
-        const table = `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Detalle</th><th>Fecha</th></tr></thead><tbody>${detailRows || '<tr><td colspan="2">Sin registros</td></tr>'}</tbody></table></div>`;
-        const drawerRoot = renderHost.querySelector('#dash-drawer-root');
+
         const currentKpi = kpis.find((k) => k.id === kpiId);
+        const drawerRoot = renderHost.querySelector('#dash-drawer-root');
+
+        // Removed empty table, showing cleaner visual delta
+        const deltaText = currentKpi?.delta?.number !== undefined ? `${currentKpi.delta.number > 0 ? '+' : ''}${currentKpi.delta.number}%` : '';
+        const visualSummary = `
+          <div style="background: var(--bg-card); padding: var(--spacing-4); border-radius: var(--radius-10); border: 1px solid var(--border-neutral); margin-bottom: var(--spacing-4);">
+            <div style="font-size: var(--body-sm); color: var(--color-subtitle); margin-bottom: var(--spacing-2);">Comparativa del período</div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
+               <div>
+                 <div style="font-size: var(--body-sm); color: var(--color-subtitle);">Actual</div>
+                 <strong style="font-size: var(--h3);">${esc(currentKpi?.value || 0)}</strong>
+               </div>
+               <div style="text-align: right;">
+                 <div style="font-size: var(--body-sm); color: var(--color-subtitle);">Anterior</div>
+                 <strong style="font-size: var(--h5); color: var(--color-subtitle);">${esc(currentKpi?.previous || 0)}</strong>
+                 ${deltaText ? `<div style="font-size: var(--body-xs); font-weight: 600; color: var(--color-${currentKpi?.delta?.trend || 'neutral'});">${deltaText}</div>` : ''}
+               </div>
+            </div>
+          </div>
+        `;
+
         drawerRoot.innerHTML = buildDrawer({
           title: `Detalle KPI: ${currentKpi?.label || 'Métrica'}`,
-          subtitle: `Actual: ${currentKpi?.value || 0} | Anterior: ${currentKpi?.previous || 0}`,
+          subtitle: `Rango estudiado: ${esc(activeRange)}`,
           sparkline: currentKpi?.sparkline || [],
           explanation: explainKpi(kpiId),
-          table,
+          table: visualSummary,
         });
+
         const close = () => { drawerRoot.innerHTML = ''; };
         drawerRoot.querySelectorAll('[data-drawer-close="1"]').forEach((btn) => btn.addEventListener('click', close));
         drawerRoot.querySelector('[data-kpi-cta="1"]')?.addEventListener('click', () => {
           opts.onKpiDrilldown?.(kpiId);
           close();
         });
+      });
+    });
+
+    // Alert actions routing
+    renderHost.querySelectorAll('[data-alert-status]').forEach((btn) =>
+      btn.addEventListener('click', () => opts.onStatusDrilldown?.(btn.getAttribute('data-alert-status')))
+    );
+    renderHost.querySelectorAll('[data-alert-kpi]').forEach((btn) =>
+      btn.addEventListener('click', () => opts.onKpiDrilldown?.(btn.getAttribute('data-alert-kpi')))
+    );
+
+    // Flow routing for charts
+    renderHost.querySelectorAll('[data-chart-row-id]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const rowId = btn.getAttribute('data-chart-row-id');
+        if (['active', 'finished', 'dropped'].includes(rowId)) {
+          opts.onStatusDrilldown?.(rowId);
+        } else {
+          opts.onWorkshopDetail?.(rowId);
+        }
       });
     });
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 from uuid import UUID
 
@@ -40,6 +40,13 @@ CSV_HEADER_ALIASES = {
     "gender": "gender",
 }
 
+
+def to_date(value: datetime | date | None) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    return value.date()
 
 def calculate_age(birth_date: date | None) -> int | None:
     if not birth_date:
@@ -291,9 +298,14 @@ def apply_profile_filters(
     age_min: int | None,
     age_max: int | None,
     population: str,
+    active_days: int | None = None,
 ) -> list[dict]:
     term = (q or "").strip().lower()
     filtered = []
+    
+    cutoff: date | None = None
+    if active_days is not None:
+        cutoff = (datetime.now(UTC) - timedelta(days=active_days)).date()
 
     for profile in profiles.values():
         if term:
@@ -322,6 +334,18 @@ def apply_profile_filters(
             continue
         if population != "all" and profile.get("population_segment") != population:
             continue
+            
+        if cutoff:
+            has_recent = False
+            for w in profile["workshops"]:
+                when = to_date(w.get("enrolled_at"))
+                if when and when >= cutoff:
+                    if enrollment_status == "all" or w["enrollment_status"] == enrollment_status:
+                        has_recent = True
+                        break
+            if not has_recent:
+                continue
+
         filtered.append(profile)
 
     filtered.sort(key=lambda p: (p["name"] or "").lower())

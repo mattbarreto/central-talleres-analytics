@@ -8,9 +8,9 @@ class InsightsApiTests(APITestCase):
         credentials = self.create_admin()
         participant = self.seed_insights_data()
         self.assertIsNotNone(participant.id)
-        headers = self.auth_headers(credentials["email"], credentials["password"])
+        self.login(credentials["email"], credentials["password"])
 
-        response = self.client.get("/api/v1/insights/overview?period=monthly", headers=headers)
+        response = self.client.get("/api/v1/insights/overview?period=monthly")
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
 
@@ -24,9 +24,9 @@ class InsightsApiTests(APITestCase):
     def test_participant_journey_contains_enrollments_and_communications(self):
         credentials = self.create_admin()
         participant = self.seed_insights_data()
-        headers = self.auth_headers(credentials["email"], credentials["password"])
+        self.login(credentials["email"], credentials["password"])
 
-        response = self.client.get(f"/api/v1/insights/participant-journey/{participant.id}", headers=headers)
+        response = self.client.get(f"/api/v1/insights/participant-journey/{participant.id}")
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
 

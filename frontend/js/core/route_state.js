@@ -21,6 +21,7 @@
       status: state.participantEnrollmentStatus,
       population: state.participantPopulation,
       mode: state.participantMode,
+      active_days: state.participantActiveDays,
     };
     if (targetView === 'enrollments') params = { workshop: state.enrollmentWorkshop || safeHooks.getEnrollmentWorkshop?.() || '', p: state.tablePages.enrollments };
     if (targetView === 'communications') params = { q: state.communicationSearch, workshop: state.communicationWorkshop, p: state.tablePages.communications };
@@ -71,10 +72,12 @@
       state.participantEnrollmentStatus = safeParams.status || 'all';
       state.participantPopulation = safeParams.population || 'all';
       state.participantMode = safeParams.mode === 'advanced' ? 'advanced' : 'summary';
+      state.participantActiveDays = safeParams.active_days || '';
       state.participantHasLoaded = Boolean(
         state.participantSearch
         || (state.participantEnrollmentStatus && state.participantEnrollmentStatus !== 'all')
         || (state.participantPopulation && state.participantPopulation !== 'all')
+        || state.participantActiveDays
       );
     }
 

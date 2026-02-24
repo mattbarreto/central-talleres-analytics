@@ -156,63 +156,63 @@
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${UI.Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-p-apply="1"' })}
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-p-apply="1"' })}
                 ${UI.Button({ variant: 'ghost', size: 'md', label: 'Reset', attrs: 'type="button" data-p-reset="1"' })}
               </div>
             </div>
           </section>
 
           ${UI.Section({
-            key: 'participants_summary',
-            title: 'Resumen',
-            description: 'Señales clave de la población.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.participants_summary),
-            content: `<div class="dash-kpis">
+      key: 'participants_summary',
+      title: 'Resumen',
+      description: 'Señales clave de la población.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.participants_summary),
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'ptotal', label: 'Registradas', value: String(overview.total_participants || 0), delta: delta('total_participants'), trend: 'Base total' })}
               ${UI.KpiCard({ id: 'pactive', label: 'Activas', value: String(overview.active_members || 0), delta: delta('active_members'), trend: 'En curso' })}
               ${UI.KpiCard({ id: 'pcert', label: 'Finalizadas', value: String(overview.certifiable_members || 0), delta: delta('certifiable_members'), trend: 'Certificables' })}
               ${UI.KpiCard({ id: 'pinactive', label: 'Inactivas', value: String(overview.inactive_members || 0), delta: delta('inactive_members'), trend: 'Seguimiento' })}
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'participants_demo',
-            title: 'Distribuciones',
-            description: 'Lectura demográfica sin ruido.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.participants_demo),
-            content: `<div class="dash-grid">
+      key: 'participants_demo',
+      title: 'Distribuciones',
+      description: 'Lectura demográfica sin ruido.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.participants_demo),
+      content: `<div class="dash-grid">
               <div class="dash-col-6">${renderChartOrEmpty({
-                title: 'Género',
-                subtitle: 'Composición actual',
-                chartId: 'p-chart-gender',
-                chartType: 'doughnut',
-                chartHeight: '320px',
-                ariaLabel: 'Distribución de participantes por género',
-                rows: genders,
-                valueLabel: 'Participantes',
-              })}</div>
+        title: 'Género',
+        subtitle: 'Composición actual',
+        chartId: 'p-chart-gender',
+        chartType: 'doughnut',
+        chartHeight: '320px',
+        ariaLabel: 'Distribución de participantes por género',
+        rows: genders,
+        valueLabel: 'Participantes',
+      })}</div>
               <div class="dash-col-6">${renderChartOrEmpty({
-                title: 'Edad',
-                subtitle: 'Composición por franjas',
-                chartId: 'p-chart-age',
-                chartType: 'bar',
-                ariaLabel: 'Distribución de participantes por rango etario',
-                rows: ages,
-                valueLabel: 'Participantes',
-              })}</div>
+        title: 'Edad',
+        subtitle: 'Composición por franjas',
+        chartId: 'p-chart-age',
+        chartType: 'bar',
+        ariaLabel: 'Distribución de participantes por rango etario',
+        rows: ages,
+        valueLabel: 'Participantes',
+      })}</div>
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'participants_table',
-            title: mode === 'advanced' ? 'Detalle' : 'Resultados',
-            description: mode === 'advanced' ? 'Registros para acción operativa.' : 'Vista rápida de coincidencias.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.participants_table),
-            content: rowTable(slice),
-          })}
+      key: 'participants_table',
+      title: mode === 'advanced' ? 'Detalle' : 'Resultados',
+      description: mode === 'advanced' ? 'Registros para acción operativa.' : 'Vista rápida de coincidencias.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.participants_table),
+      content: rowTable(slice),
+    })}
           <input type="file" accept=".csv,text/csv" data-p-import-file hidden />
         </div>
       </div>
@@ -267,21 +267,10 @@
     renderHost.querySelector('#p-status')?.addEventListener('change', () => triggerFilter());
     renderHost.querySelector('#p-pop')?.addEventListener('change', () => triggerFilter());
 
-    let qTimer = null;
     const queryInput = renderHost.querySelector('#p-q');
-    queryInput?.addEventListener('input', () => {
-      if (qTimer) clearTimeout(qTimer);
-      qTimer = setTimeout(() => triggerFilter(), 250);
-    });
-    queryInput?.addEventListener('blur', () => {
-      if (qTimer) clearTimeout(qTimer);
-      qTimer = null;
-    });
     queryInput?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      if (qTimer) clearTimeout(qTimer);
-      qTimer = null;
       triggerFilter();
     });
 

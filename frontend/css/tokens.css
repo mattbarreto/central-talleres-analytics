@@ -32,16 +32,25 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
 
-  /* Paleta unificada del sistema (alineada a tema + estados semanticos) */
+  /* Paleta unificada del sistema – máximo contraste entre slots adyacentes */
   --chart-1: #60a5fa;
-  --chart-2: #38bdf8;
-  --chart-3: #34d399;
-  --chart-4: #fbbf24;
-  --chart-5: #f87171;
-  --chart-6: #94a3b8;
-  --chart-7: #22d3ee;
-  --chart-8: #f59e0b;
-  --chart-9: #10b981;
-  --chart-10: #ef4444;
+  /* Blue */
+  --chart-2: #34d399;
+  /* Emerald */
+  --chart-3: #fbbf24;
+  /* Amber */
+  --chart-4: #f87171;
+  /* Red */
+  --chart-5: #a78bfa;
+  /* Violet */
+  --chart-6: #38bdf8;
+  /* Sky */
+  --chart-7: #fb923c;
+  /* Orange */
+  --chart-8: #2dd4bf;
+  /* Teal */
+  --chart-9: #f472b6;
+  /* Pink */
+  --chart-10: #94a3b8;
+  /* Slate */
 }
-

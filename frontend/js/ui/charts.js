@@ -21,8 +21,15 @@
   function ensureChartDefaults() {
     if (!isAvailable() || defaultsConfigured) return;
     const family = cssVar('--font-family', 'Inter, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif');
-    const sizeRaw = parseFloat(cssVar('--font-14', '14'));
-    const size = Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : 14;
+    const rawVal = cssVar('--font-14', '14');
+    let sizeRaw = parseFloat(rawVal);
+
+    // Convert rem/em to px heuristically if value is small
+    if (rawVal.includes('rem') || rawVal.includes('em') || (sizeRaw > 0 && sizeRaw < 5)) {
+      sizeRaw *= 16;
+    }
+
+    const size = Number.isFinite(sizeRaw) && sizeRaw >= 8 ? sizeRaw : 14;
     window.Chart.defaults.font.family = family;
     window.Chart.defaults.font.size = size;
     window.Chart.defaults.color = cssVar('--color-text', '#f3f4f6');
@@ -32,16 +39,16 @@
 
   function chartColors() {
     return [
-      cssVar('--chart-1', '#60a5fa'),
-      cssVar('--chart-2', '#38bdf8'),
-      cssVar('--chart-3', '#34d399'),
-      cssVar('--chart-4', '#fbbf24'),
-      cssVar('--chart-5', '#f87171'),
-      cssVar('--chart-6', '#94a3b8'),
-      cssVar('--chart-7', '#22d3ee'),
-      cssVar('--chart-8', '#f59e0b'),
-      cssVar('--chart-9', '#10b981'),
-      cssVar('--chart-10', '#ef4444'),
+      cssVar('--chart-1', '#60a5fa'),   // Blue
+      cssVar('--chart-2', '#34d399'),   // Emerald
+      cssVar('--chart-3', '#fbbf24'),   // Amber
+      cssVar('--chart-4', '#f87171'),   // Red
+      cssVar('--chart-5', '#a78bfa'),   // Violet
+      cssVar('--chart-6', '#38bdf8'),   // Sky
+      cssVar('--chart-7', '#fb923c'),   // Orange
+      cssVar('--chart-8', '#2dd4bf'),   // Teal
+      cssVar('--chart-9', '#f472b6'),   // Pink
+      cssVar('--chart-10', '#94a3b8'),  // Slate
     ];
   }
 
@@ -125,9 +132,15 @@
     } else if (row?.colorToken) {
       baseColor = cssVar(row.colorToken, palette[index % palette.length]);
     } else {
-      const colorKey = row?.colorKey ?? row?.id ?? row?.label;
-      const stableIndex = colorKey ? hashString(colorKey) % palette.length : (index % palette.length);
-      baseColor = palette[stableIndex];
+      // In categorical mode, use sequential index to guarantee unique colors.
+      // Only use hash for stable cross-render consistency when explicitly needed.
+      if (rowColorMode === 'categorical') {
+        baseColor = palette[index % palette.length];
+      } else {
+        const colorKey = row?.colorKey ?? row?.id ?? row?.label;
+        const stableIndex = colorKey ? hashString(colorKey) % palette.length : (index % palette.length);
+        baseColor = palette[stableIndex];
+      }
     }
 
     if (alpha === null || alpha === undefined) return baseColor;
@@ -302,7 +315,7 @@
 
         meta.data.forEach((element, index) => {
           const rawValue = toNumber(dataset?.data?.[index]);
-          if (!Number.isFinite(rawValue)) return;
+          if (!Number.isFinite(rawValue) || rawValue === 0) return;
 
           const valueType = dataset?.valueType || 'count';
           const label = valueType === 'percent'
@@ -416,6 +429,14 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: chartAnimationOptions(),
+        layout: {
+          padding: {
+            top: 24,
+            right: 16,
+            bottom: 8,
+            left: 8
+          }
+        },
         interaction: {
           mode: 'index',
           intersect: false,
@@ -485,6 +506,9 @@
           valueType,
           showValueLabels: true,
           maxValueLabels: horizontal ? 12 : 16,
+          maxBarThickness: horizontal ? 32 : 48,
+          categoryPercentage: 0.8,
+          barPercentage: 0.9,
         }],
       },
       options: {
@@ -492,6 +516,14 @@
         maintainAspectRatio: false,
         animation: chartAnimationOptions(),
         indexAxis: horizontal ? 'y' : 'x',
+        layout: {
+          padding: {
+            top: 24,
+            right: horizontal ? 36 : 16,
+            bottom: 8,
+            left: 8
+          }
+        },
         plugins: basePlugins({ valueType, horizontal, legendPosition: 'top' }),
         scales: {
           x: {
@@ -513,8 +545,14 @@
               text: yLabel,
               color: axisColor(),
             },
-            grid: { color: horizontal ? 'transparent' : gridColor() },
-            ticks: horizontal ? { color: axisColor() } : valueTickOptions,
+            grid: {
+              color: horizontal ? 'transparent' : gridColor(),
+              display: !horizontal
+            },
+            ticks: horizontal ? {
+              color: axisColor(),
+              autoSkip: false
+            } : valueTickOptions,
           },
         },
       },

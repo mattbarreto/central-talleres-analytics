@@ -25,6 +25,7 @@
 
     const topStaff = (overview.top_active_staff || []).slice(0, 8).map((r) => ({
       id: String(r.id || r.name || ''),
+      linkId: String(r.id || ''),
       colorKey: String(r.id || r.name || ''),
       label: r.name,
       value: Number(r.workshops_count || 0),
@@ -120,61 +121,61 @@
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${UI.Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-t-apply="1"' })}
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-t-apply="1"' })}
                 ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-t-reset="1"' })}
               </div>
             </div>
           </section>
 
           ${UI.Section({
-            key: 'team_summary',
-            title: 'Resumen',
-            description: 'Indicadores de actividad del equipo.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.team_summary),
-            content: `<div class="dash-kpis">
+      key: 'team_summary',
+      title: 'Resumen',
+      description: 'Indicadores de actividad del equipo.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.team_summary),
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'ttotal', label: 'Equipo total', value: String(overview.team_total || 0), delta: delta('team_total'), trend: 'Dotación' })}
               ${UI.KpiCard({ id: 'tactive', label: 'Perfiles activos', value: String(overview.active_staff || 0), delta: delta('active_staff'), trend: 'En actividad' })}
               ${UI.KpiCard({ id: 'tteachers', label: 'Docentes', value: String(overview.teachers_total || 0), delta: delta('teachers_total'), trend: 'Capacitación' })}
               ${UI.KpiCard({ id: 'tcoord', label: 'Coordinación', value: String(overview.coordinators_total || 0), delta: delta('coordinators_total'), trend: 'Gestión' })}
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'team_trends',
-            title: 'Tendencias',
-            description: 'Rendimiento relativo por perfiles y talleres.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.team_trends),
-            content: `<div class="dash-grid"><div class="dash-col-6">${renderChartOrEmpty({
-              title: 'Perfiles más activos',
-              subtitle: 'Por cantidad de talleres',
-              chartId: 't-chart-top-staff',
-              chartType: 'bar',
-              chartHeight: staffChartHeight,
-              ariaLabel: 'Ranking de perfiles por cantidad de talleres',
-              rows: topStaff,
-              valueLabel: 'Talleres',
-            })}</div><div class="dash-col-6">${renderChartOrEmpty({
-              title: 'Talleres con más convocatoria',
-              subtitle: 'Por inscripciones',
-              chartId: 't-chart-top-workshops',
-              chartType: 'bar',
-              chartHeight: workshopChartHeight,
-              ariaLabel: 'Ranking de talleres por inscripciones',
-              rows: topWorkshops,
-              valueLabel: 'Inscripciones',
-            })}</div></div>`
-          })}
+      key: 'team_trends',
+      title: 'Tendencias',
+      description: 'Rendimiento relativo por perfiles y talleres.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.team_trends),
+      content: `<div class="dash-grid"><div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Perfiles más activos',
+        subtitle: 'Por cantidad de talleres',
+        chartId: 't-chart-top-staff',
+        chartType: 'bar',
+        chartHeight: staffChartHeight,
+        ariaLabel: 'Ranking de perfiles por cantidad de talleres',
+        rows: topStaff,
+        valueLabel: 'Talleres',
+      })}</div><div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Talleres con más convocatoria',
+        subtitle: 'Por inscripciones',
+        chartId: 't-chart-top-workshops',
+        chartType: 'bar',
+        chartHeight: workshopChartHeight,
+        ariaLabel: 'Ranking de talleres por inscripciones',
+        rows: topWorkshops,
+        valueLabel: 'Inscripciones',
+      })}</div></div>`
+    })}
 
           ${mode === 'advanced' ? UI.Section({
-            key: 'team_table',
-            title: 'Detalle operativo',
-            description: 'Listado accionable de perfiles.',
-            collapsible: true,
-            collapsed: Boolean(store.state.collapsed.team_table),
-            content: table,
-          }) : ''}
+      key: 'team_table',
+      title: 'Detalle operativo',
+      description: 'Listado accionable de perfiles.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.team_table),
+      content: table,
+    }) : ''}
         </div>
       </div>
     `;
@@ -200,8 +201,8 @@
           rows: topWorkshops,
           datasetLabel: 'Inscripciones',
           horizontal: true,
-          rowColorMode: 'single',
-          singleColor: charts?.semanticColor?.('primary'),
+          rowColorMode: 'categorical',
+          singleColor: '',
           yLabel: 'Inscripciones',
         }));
       }
@@ -225,16 +226,10 @@
         wstatus: renderHost.querySelector('#t-wstatus')?.value || 'all',
       });
     };
-    let searchDebounce = null;
     renderHost.querySelector('[data-t-apply="1"]')?.addEventListener('click', emitFilters);
-    renderHost.querySelector('#t-q')?.addEventListener('input', () => {
-      clearTimeout(searchDebounce);
-      searchDebounce = setTimeout(emitFilters, 180);
-    });
     renderHost.querySelector('#t-q')?.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
       e.preventDefault();
-      clearTimeout(searchDebounce);
       emitFilters();
     });
     renderHost.querySelector('#t-role')?.addEventListener('change', emitFilters);
@@ -242,6 +237,8 @@
     renderHost.querySelector('#t-wstatus')?.addEventListener('change', emitFilters);
     renderHost.querySelector('[data-t-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', role: 'all', year: '', wstatus: 'all', reset: true }));
     renderHost.querySelectorAll('[data-t-profile]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-t-profile'))));
+    // Chart data table rows — open profile on click
+    renderHost.querySelectorAll('[data-chart-row-id]').forEach((btn) => btn.addEventListener('click', () => opts.onOpenProfile?.(btn.getAttribute('data-chart-row-id'))));
     return true;
   }
 

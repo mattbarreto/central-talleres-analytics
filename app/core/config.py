@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     revoked_refresh_tokens_path: str = "generated/cache/revoked_refresh_tokens.json"
     log_level: str = "INFO"
     log_json: bool = True
+    cookie_secure: bool = False      # True en prod (requiere HTTPS)
+    cookie_samesite: str = "Lax"     # "Lax" | "Strict" | "None"
 
     @property
     def cors_origins_list(self) -> list[str]:

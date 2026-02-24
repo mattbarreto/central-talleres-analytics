@@ -8,6 +8,8 @@
     openAboutSystem,
     hashRouter,
   }) => {
+    const API_BASE = '/api/v1';
+
     const showApp = (email) => {
       document.getElementById('login-page').classList.add('hidden');
       document.getElementById('app-layout').classList.remove('hidden');
@@ -18,30 +20,17 @@
     };
 
     const logout = () => {
-      const wasAuthenticated = Boolean(api.token);
-      const token = api.token;
-      const refreshToken = api.refreshToken || localStorage.getItem('tc_refresh_token');
-      if (token) {
-        fetch('/api/v1/auth/logout', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ refresh_token: refreshToken || null }),
-        }).catch(() => {});
-      }
-      api.token = null;
-      api.refreshToken = null;
-      localStorage.removeItem('tc_token');
-      localStorage.removeItem('tc_refresh_token');
+      // Ask the backend to revoke tokens and clear HttpOnly cookies.
+      fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+      }).catch(() => { });
       localStorage.removeItem('tc_email');
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app-layout').classList.add('hidden');
       document.getElementById('login-form')?.reset();
-      if (wasAuthenticated) {
-        history.replaceState(null, '', `${window.location.pathname}${window.location.search}#dashboard`);
-      }
+      history.replaceState(null, '', `${window.location.pathname}${window.location.search}#dashboard`);
     };
 
     const closeMobileSidebar = () => {
@@ -62,15 +51,12 @@
         }
         error?.classList.remove('show');
         try {
-          const email = document.getElementById('login-email').value.trim();
+          const emailInput = document.getElementById('login-email').value.trim();
           const password = document.getElementById('login-password').value;
-          const data = await api.post('/auth/login', { email, password });
-          api.token = data.access_token;
-          api.refreshToken = data.refresh_token || null;
-          localStorage.setItem('tc_token', data.access_token);
-          if (data.refresh_token) localStorage.setItem('tc_refresh_token', data.refresh_token);
-          localStorage.setItem('tc_email', email);
-          showApp(email);
+          // Backend sets HttpOnly cookies; response body has only { email }.
+          const data = await api.post('/auth/login', { email: emailInput, password });
+          localStorage.setItem('tc_email', data.email);
+          showApp(data.email);
           toast('Bienvenido de nuevo', 'success');
         } catch {
           if (error) {

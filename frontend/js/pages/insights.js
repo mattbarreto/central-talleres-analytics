@@ -222,13 +222,38 @@
       });
     };
 
+    /* ── Narrative helpers for summary mode ── */
+    const narrativeParts = [];
+    const wsStartedNarr = workshopsStartedNow;
+    const enrNarr = Number(k.enrollments_total || 0);
+    const actNarr = Number(k.active_enrollments_total || 0);
+    const finNarr = Number(k.finished_enrollments_total || 0);
+    const drpNarr = Number(k.dropped_enrollments_total || 0);
+    const comNarr = Number(k.communications_total || 0);
+    if (wsStartedNarr > 0) narrativeParts.push(`Se iniciaron <strong>${wsStartedNarr}</strong> taller${wsStartedNarr !== 1 ? 'es' : ''} en el período.`);
+    if (enrNarr > 0) narrativeParts.push(`Hubo <strong>${enrNarr}</strong> inscripcion${enrNarr !== 1 ? 'es' : ''}, de las cuales <strong>${actNarr}</strong> están activas, <strong>${finNarr}</strong> finalizaron y <strong>${drpNarr}</strong> se dieron de baja.`);
+    if (comNarr > 0) narrativeParts.push(`Se enviaron <strong>${comNarr}</strong> comunicacion${comNarr !== 1 ? 'es' : ''}.`);
+    const enrDelta = cmpMap.get('enrollments');
+    if (enrDelta && enrDelta.delta_pct) {
+      const sign = enrDelta.delta_pct > 0 ? '+' : '';
+      narrativeParts.push(`Las inscripciones variaron <strong>${sign}${enrDelta.delta_pct}%</strong> respecto al período anterior.`);
+    }
+    const narrativeText = narrativeParts.length
+      ? narrativeParts.join(' ')
+      : 'No hay datos suficientes para generar una narrativa del período.';
+
+    /* ── Summary KPIs (3 key metrics) ── */
+    const summaryKpiRows = kpiRows.filter((r) => ['iw', 'ie', 'ia'].includes(r.id));
+    /* ── Full KPIs (all 6) ─ */
+    const fullKpiRows = kpiRows;
+
     renderHost.innerHTML = `
       <div class="dashboard-v2 insights-v2">
         <div class="dash-container">
           <header class="dash-page-header">
             <div>
               <h2 class="dash-page-title">Insights</h2>
-              <p class="dash-page-subtitle">Lectura narrativa + analítica. Modo: ${mode === 'advanced' ? 'avanzada' : 'resumen'}.</p>
+              <p class="dash-page-subtitle">${mode === 'advanced' ? 'Vista analítica completa — series, ranking y comparaciones.' : 'Resumen ejecutivo — lectura rápida del período.'}</p>
             </div>
             <div class="dash-actions">
               ${UI.Button({ variant: 'secondary', size: 'md', label: 'Camino de persona', attrs: 'type="button" data-i-journey="1"' })}
@@ -281,92 +306,139 @@
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${UI.Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-i-apply="1"' })}
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-i-apply="1"' })}
                 ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-i-reset="1"' })}
               </div>
             </div>
           </section>
 
+          ${mode === 'summary' ? `
+          <!-- ═══════ SUMMARY MODE ═══════ -->
           ${UI.Section({
-    key: 'insights_summary',
-    title: 'Resumen',
-    description: 'KPIs institucionales clave (delta contra período anterior).',
-    collapsible: true,
-    collapsed: Boolean(store.state.collapsed.insights_summary),
-    content: `<div class="dash-kpis">${kpiRows.map((row) => UI.KpiCard(row)).join('')}</div>`,
-  })}
+      key: 'insights_summary',
+      title: 'Indicadores clave',
+      description: 'Las tres métricas más relevantes del período.',
+      collapsible: false,
+      content: `<div class="dash-kpis">${summaryKpiRows.map((row) => UI.KpiCard(row)).join('')}</div>`,
+    })}
 
           ${UI.Section({
-    key: 'insights_trends',
-    title: 'Tendencias',
-    description: 'Serie temporal y composición del período.',
-    collapsible: true,
-    collapsed: Boolean(store.state.collapsed.insights_trends),
-    content: `
+      key: 'insights_narrative',
+      title: 'Lectura del período',
+      description: 'Resumen narrativo automático.',
+      collapsible: false,
+      content: `<div class="insights-narrative-card"><p class="insights-narrative-text">${narrativeText}</p></div>`,
+    })}
+
+          ${UI.Section({
+      key: 'insights_main_trend',
+      title: 'Tendencia principal',
+      description: 'Evolución de inscripciones en el tiempo.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_main_trend),
+      content: `<div class="dash-grid"><div class="dash-col-8">${renderChartOrEmpty({
+        title: 'Inscripciones',
+        subtitle: 'Serie temporal',
+        chartId: 'i-chart-enrollments',
+        chartType: 'line',
+        chartHeight: '300px',
+        ariaLabel: 'Serie temporal de inscripciones',
+        rows: enrollments,
+        valueLabel: 'Inscripciones',
+      })}</div><div class="dash-col-4">${renderChartOrEmpty({
+        title: 'Estado actual',
+        subtitle: 'Composición',
+        chartId: 'i-chart-status',
+        chartType: 'doughnut',
+        chartHeight: '280px',
+        ariaLabel: 'Distribución por estado de inscripciones',
+        rows: statusRows,
+        valueLabel: 'Total',
+      })}</div></div>`,
+    })}
+          ` : `
+          <!-- ═══════ ADVANCED MODE ═══════ -->
+          ${UI.Section({
+      key: 'insights_summary',
+      title: 'Panorama completo',
+      description: 'KPIs institucionales con delta contra período anterior.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_summary),
+      content: `<div class="dash-kpis">${fullKpiRows.map((row) => UI.KpiCard(row)).join('')}</div>`,
+    })}
+
+          ${UI.Section({
+      key: 'insights_trends',
+      title: 'Series temporales',
+      description: 'Evolución detallada por variable.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_trends),
+      content: `
               <div class="dash-grid">
                 <div class="dash-col-6">${renderChartOrEmpty({
-                  title: 'Inscripciones',
-                  subtitle: 'Serie temporal',
-                  chartId: 'i-chart-enrollments',
-                  chartType: 'line',
-                  ariaLabel: 'Serie temporal de inscripciones',
-                  rows: enrollments,
-                  valueLabel: 'Inscripciones',
-                })}</div>
+        title: 'Inscripciones',
+        subtitle: 'Serie temporal',
+        chartId: 'i-chart-enrollments',
+        chartType: 'line',
+        ariaLabel: 'Serie temporal de inscripciones',
+        rows: enrollments,
+        valueLabel: 'Inscripciones',
+      })}</div>
                 <div class="dash-col-6">${renderChartOrEmpty({
-                  title: 'Comunicaciones',
-                  subtitle: 'Serie temporal',
-                  chartId: 'i-chart-communications',
-                  chartType: 'line',
-                  ariaLabel: 'Serie temporal de comunicaciones',
-                  rows: comms,
-                  valueLabel: 'Comunicaciones',
-                })}</div>
+        title: 'Comunicaciones',
+        subtitle: 'Serie temporal',
+        chartId: 'i-chart-communications',
+        chartType: 'line',
+        ariaLabel: 'Serie temporal de comunicaciones',
+        rows: comms,
+        valueLabel: 'Comunicaciones',
+      })}</div>
                 <div class="dash-col-6">${renderChartOrEmpty({
-                  title: 'Talleres iniciados',
-                  subtitle: 'Serie temporal',
-                  chartId: 'i-chart-workshops',
-                  chartType: 'line',
-                  ariaLabel: 'Serie temporal de talleres iniciados',
-                  rows: workshopsSeries,
-                  valueLabel: 'Talleres',
-                })}</div>
+        title: 'Talleres iniciados',
+        subtitle: 'Serie temporal',
+        chartId: 'i-chart-workshops',
+        chartType: 'line',
+        ariaLabel: 'Serie temporal de talleres iniciados',
+        rows: workshopsSeries,
+        valueLabel: 'Talleres',
+      })}</div>
                 <div class="dash-col-6">${renderChartOrEmpty({
-                  title: 'Estado de inscripciones',
-                  subtitle: 'Composicion',
-                  chartId: 'i-chart-status',
-                  chartType: 'doughnut',
-                  chartHeight: '320px',
-                  ariaLabel: 'Distribución por estado de inscripciones',
-                  rows: statusRows,
-                  valueLabel: 'Total',
-                })}</div>
+        title: 'Estado de inscripciones',
+        subtitle: 'Composición',
+        chartId: 'i-chart-status',
+        chartType: 'doughnut',
+        chartHeight: '320px',
+        ariaLabel: 'Distribución por estado de inscripciones',
+        rows: statusRows,
+        valueLabel: 'Total',
+      })}</div>
               </div>
             `,
-  })}
+    })}
 
-          ${mode === 'advanced' ? UI.Section({
-    key: 'insights_detail',
-    title: 'Ranking de talleres',
-    description: 'Detalle ampliado para toma de decision.',
-    collapsible: true,
-    collapsed: Boolean(store.state.collapsed.insights_detail),
-    content: `
+          ${UI.Section({
+      key: 'insights_detail',
+      title: 'Ranking de talleres',
+      description: 'Detalle ampliado para toma de decisión.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_detail),
+      content: `
               <div class="dash-grid">
                 <div class="dash-col-6">${renderChartOrEmpty({
-                  title: 'Top talleres por inscripciones',
-                  subtitle: 'Ranking del período activo',
-                  chartId: 'i-chart-top-workshops',
-                  chartType: 'bar',
-                  chartHeight: rankingChartHeight,
-                  ariaLabel: 'Ranking de talleres por inscripciones',
-                  rows: topWsChartRows,
-                  valueLabel: 'Inscripciones',
-                })}</div>
+        title: 'Top talleres por inscripciones',
+        subtitle: 'Ranking del período activo',
+        chartId: 'i-chart-top-workshops',
+        chartType: 'bar',
+        chartHeight: rankingChartHeight,
+        ariaLabel: 'Ranking de talleres por inscripciones',
+        rows: topWsChartRows,
+        valueLabel: 'Inscripciones',
+      })}</div>
                 <div class="dash-col-6">${tableWs}</div>
               </div>
             `,
-  }) : ''}
+    })}
+          `}
         </div>
       </div>
     `;

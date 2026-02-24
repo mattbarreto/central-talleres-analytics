@@ -96,7 +96,7 @@ docker compose up --build
 
 ```powershell
 # Ejecutar suite completa de tests automatizados
-.\venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py"
+python -m pytest tests
 ```
 
 ---
@@ -111,6 +111,8 @@ Copiar `.env.example` y completar los valores requeridos:
 | `SECRET_KEY` | Clave secreta para JWT | ✅ |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | Duración del access token | ✅ |
 | `REFRESH_TOKEN_EXPIRE_MINUTES` | Duración del refresh token | ✅ |
+| `COOKIE_SECURE` | Restringir cookies a HTTPS (`true`/`false`) | ✅ |
+| `COOKIE_SAMESITE` | Política SameSite para cookies (`Lax`, `Strict`, `None`) | ✅ |
 | `CORS_ORIGINS` | Orígenes permitidos (separados por coma) | ✅ |
 | `REPORT_JOBS_MAX_JOBS` | Máximo de jobs concurrentes | ✅ |
 
@@ -159,12 +161,7 @@ La plataforma está diseñada para ser desplegada mediante **Docker**. El stack 
 
 ## Estado del proyecto
 
-En **desarrollo activo**, con foco actual en:
-
-- ✅ Reportes PDF con diseño editorial y data storytelling
-- ✅ Hardening de seguridad y auditoría global
-- 🔄 Consistencia UI/UX y modularización del frontend
-- 🔄 Optimización de escalabilidad de datos
+El proyecto se encuentra en **desarrollo activo**. Las características core operativas (talleres, participantes, seguridad y agregación analítica de datos) están estables, y actualmente se está trabajando en la modularización de la interfaz y la expansión de los flujos automáticos de comunicación.
 
 ---
 

@@ -1,18 +1,13 @@
 from typing import Generator
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Cookie, Depends, HTTPException, status
 from jose import JWTError
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.security import decode_token
 from app.core.token_store import revoked_token_store
 from app.db.session import SessionLocal
 from app.models.admin import Admin
-
-
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.api_v1_prefix}/auth/login")
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -23,11 +18,25 @@ def get_db() -> Generator[Session, None, None]:
         db.close()
 
 
-def get_current_admin(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> str:
+def get_token_from_cookie(tc_access_token: str | None = Cookie(default=None)) -> str:
+    """Extract access token exclusively from the tc_access_token HttpOnly cookie.
+    No Bearer header fallback — cookies-only auth policy.
+    """
+    if not tc_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No autenticado",
+        )
+    return tc_access_token
+
+
+def get_current_admin(
+    token: str = Depends(get_token_from_cookie),
+    db: Session = Depends(get_db),
+) -> str:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
     try:
         payload = decode_token(token)

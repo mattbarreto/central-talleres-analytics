@@ -1,4 +1,4 @@
-from app.schemas.auth import LoginRequest, Token
+from app.schemas.auth import LoginRequest, LoginResponse
 from app.schemas.communication import CommunicationCreate, CommunicationOut
 from app.schemas.communication_recipient import (
     CommunicationRecipientOut,
@@ -41,7 +41,7 @@ __all__ = [
     "EnrollmentOut",
     "EnrollmentUpdate",
     "LoginRequest",
-    "Token",
+    "LoginResponse",
     "CommunicationsCount",
     "ParticipantsByWorkshop",
     "WorkshopsByYear",

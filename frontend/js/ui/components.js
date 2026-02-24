@@ -166,7 +166,13 @@
     const detailsTableId = `dash-chart-table-${safeId}`;
     const heightToken = chartHeightToken(chartHeight);
     const tableRows = hasRows
-      ? safeRows.map((r) => `<tr><td>${esc(r.label ?? '-')}</td><td>${esc(formatValue(r.value, valueType))}</td></tr>`).join('')
+      ? safeRows.map((r) => {
+        const label = esc(r.label ?? '-');
+        const labelCell = r.linkId
+          ? `<button type="button" class="dash-link-btn" data-chart-row-id="${esc(r.linkId)}">${label}</button>`
+          : label;
+        return `<tr><td>${labelCell}</td><td>${esc(formatValue(r.value, valueType))}</td></tr>`;
+      }).join('')
       : '<tr><td>Sin datos</td><td>0</td></tr>';
     const legendMode = safeRows.some((row) => row?.semantic) ? 'semantic' : 'categorical';
     const legendTotal = safeRows.reduce((acc, row) => acc + toNumber(row?.value), 0);

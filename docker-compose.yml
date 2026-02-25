@@ -7,26 +7,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    expose:
-      - "8000"
+    ports:
+      - "8000:8000"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    labels:
-      - "traefik.enable=true"
-      # En VPS se usa File Provider en Traefik. Estas labels quedan como respaldo documental.
-      - "traefik.docker.network=root_default"
-      - "traefik.http.routers.dashboard-talleres.rule=Host(`dashboard.example.com`)"
-      - "traefik.http.routers.dashboard-talleres.entrypoints=websecure"
-      - "traefik.http.routers.dashboard-talleres.tls=true"
-      - "traefik.http.routers.dashboard-talleres.tls.certresolver=mytlschallenge"
-      - "traefik.http.routers.dashboard-talleres.service=dashboard-talleres-svc"
-      - "traefik.http.services.dashboard-talleres-svc.loadbalancer.server.port=8000"
-
-networks:
-  default:
-    external: true
-    name: root_default

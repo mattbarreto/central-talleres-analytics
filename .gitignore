@@ -54,6 +54,7 @@ dashboard.yml
 production.yml
 traefik_root_compose.yml
 reset_password.py
+docker-compose.prod.yml
 
 # Temporary scripts
 cache_bust.py

@@ -2755,22 +2755,85 @@ async function loadTeam() {
 
 let adminsData = [];
 
-function openAdminForm() {
-  openModal('Nuevo administrador', `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" required></div><div class="form-group"><label for="f-password" class="form-label">Contraseña</label><input type="password" id="f-password" name="password" minlength="8" class="form-input" required></div></form>`, modalFooterActions({ primaryLabel: 'Crear admin' }));
+function openAdminForm(a = null) {
+  const isEdit = !!a;
+  const title = isEdit ? 'Editar administrador' : 'Nuevo administrador';
+  const btnLabel = isEdit ? 'Guardar' : 'Crear';
+
+  const html = `
+    <form id="entity-form" autocomplete="off">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-first-name" class="form-label">Nombre</label>
+          <input type="text" id="f-first-name" name="first_name" class="form-input" value="${a?.first_name || ''}" required>
+        </div>
+        <div class="form-group">
+          <label for="f-last-name" class="form-label">Apellido</label>
+          <input type="text" id="f-last-name" name="last_name" class="form-input" value="${a?.last_name || ''}" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label for="f-dni" class="form-label">DNI</label>
+          <input type="text" id="f-dni" name="dni" class="form-input" value="${a?.dni || ''}">
+        </div>
+        <div class="form-group">
+          <label for="f-phone" class="form-label">Teléfono</label>
+          <input type="tel" id="f-phone" name="phone" class="form-input" value="${a?.phone || ''}">
+        </div>
+      </div>
+      <div class="form-group">
+        <label for="f-role" class="form-label">Rol</label>
+        <select id="f-role" name="role" class="form-input" required>
+          <option value="admin" ${a?.role === 'admin' ? 'selected' : ''}>Administrador</option>
+          <option value="superadmin" ${a?.role === 'superadmin' ? 'selected' : ''}>Súper Administrador</option>
+        </select>
+      </div>
+      <div class="form-group mt-lg">
+        <label for="f-email" class="form-label">Correo electrónico</label>
+        <input type="email" id="f-email" name="email" class="form-input" value="${a?.email || ''}" required>
+      </div>
+      <div class="form-group">
+        <label for="f-password" class="form-label">${isEdit ? 'Nueva Contraseña (dejar en blanco para conservar)' : 'Contraseña'}</label>
+        <input type="password" id="f-password" name="password" minlength="8" class="form-input" ${isEdit ? '' : 'required'}>
+      </div>
+    </form>
+  `;
+
+  openModal(title, html, modalFooterActions({ primaryLabel: btnLabel }));
+
   bindAsyncButtonAction('save-entity-btn', async () => {
     const form = document.getElementById('entity-form');
     if (!form.reportValidity()) return;
     const fd = new FormData(form);
+
+    const payload = {
+      email: fd.get('email'),
+      first_name: fd.get('first_name'),
+      last_name: fd.get('last_name'),
+      role: fd.get('role'),
+      dni: fd.get('dni') || null,
+      phone: fd.get('phone') || null
+    };
+
+    const pwd = fd.get('password');
+    if (pwd) payload.password = pwd;
+
     try {
-      await api.post('/admins/', { email: fd.get('email'), password: fd.get('password') });
+      if (isEdit) {
+        await api.put('/admins/' + a.id, payload);
+        toast('Administrador actualizado', 'success');
+      } else {
+        await api.post('/admins/', payload);
+        toast('Administrador creado', 'success');
+      }
       closeModal();
-      toast('Administrador creado', 'success');
       resetTablePage('admins');
       await loadAdmins();
     } catch (err) {
       toast(err.message, 'error');
     }
-  }, 'Creando...');
+  }, isEdit ? 'Guardando...' : 'Creando...');
 }
 
 async function loadAdmins() {
@@ -2800,6 +2863,10 @@ async function loadAdmins() {
       summary: adminSummary,
       kpiDeltas: buildKpiDeltas('admins', adminSummary),
       onNew: () => openAdminForm(),
+      onEdit: (id) => {
+        const admin = adminsData.find(x => x.id === id);
+        if (admin) openAdminForm(admin);
+      },
       onDelete: (id) => deleteAdmin(id),
     });
   } catch {

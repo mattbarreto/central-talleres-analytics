@@ -12,7 +12,39 @@
     const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
-      ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Correo</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((a) => `<tr><td><strong>${esc(a.email)}</strong>${a.isMe ? ' <span class="dash-chip">Vos</span>' : ''}</td><td>${esc(a.created_at_label || '—')}</td><td class="text-right">${a.isMe ? '<span class="dash-page-subtitle">Sesión actual</span>' : `<button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-delete="${esc(a.id)}" aria-label="Eliminar administrador">${UI.icon('trash')}</button>`}</td></tr>`).join('')}</tbody></table></div>${pagination}`
+      ? `<div class="dash-table-wrap">
+          <table class="dash-table">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Correo</th>
+                <th>Rol</th>
+                <th>Creado</th>
+                <th class="text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((a) => {
+        const name = (a.first_name || a.last_name) ? esc(`${a.first_name || ''} ${a.last_name || ''}`.trim()) : '<span class="dash-page-subtitle">Sin definir</span>';
+        const roleBadge = a.role === 'superadmin'
+          ? '<span class="dash-chip" style="background:var(--color-primary); color:#fff;">Súper Admin</span>'
+          : '<span class="dash-chip">Admin</span>';
+        const isMeObj = a.isMe ? ' <span class="dash-chip" style="background:#e2e8f0; color:#475569;">Vos</span>' : '';
+
+        return `<tr>
+                  <td><strong>${name}</strong>${isMeObj}</td>
+                  <td>${esc(a.email)}</td>
+                  <td>${roleBadge}</td>
+                  <td>${esc(a.created_at_label || '—')}</td>
+                  <td class="text-right">
+                    <button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-edit="${esc(a.id)}" aria-label="Editar perfil">${UI.icon('edit')}</button>
+                    ${!a.isMe ? `<button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-delete="${esc(a.id)}" aria-label="Eliminar administrador">${UI.icon('trash')}</button>` : ''}
+                  </td>
+                </tr>`;
+      }).join('')}
+            </tbody>
+          </table>
+        </div>${pagination}`
       : UI.EmptyState({ title: 'Sin administradores', message: 'Agregá un nuevo administrador.' });
 
     root.innerHTML = `
@@ -52,6 +84,7 @@
     `;
 
     root.querySelector('[data-a-new="1"]')?.addEventListener('click', () => opts.onNew?.());
+    root.querySelectorAll('[data-a-edit]').forEach((el) => el.addEventListener('click', () => opts.onEdit?.(el.getAttribute('data-a-edit'))));
     root.querySelectorAll('[data-a-delete]').forEach((el) => el.addEventListener('click', () => opts.onDelete?.(el.getAttribute('data-a-delete'))));
     return true;
   }

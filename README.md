@@ -71,7 +71,7 @@ Copy-Item .env.example .env
 .\venv\Scripts\python.exe -m alembic upgrade head
 
 # 5. Crear usuario administrador
-.\venv\Scripts\python.exe -m scripts.create_admin --email admin@example.com --password Admin123!
+.\venv\Scripts\python.exe -m scripts.create_admin --email admin@example.com --password Admin123! --first-name Super --last-name Admin --role superadmin
 
 # 6. Iniciar servidor de desarrollo
 .\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000

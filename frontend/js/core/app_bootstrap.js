@@ -2472,28 +2472,27 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
               <button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button>
             </div>
             
-            <div class="ai-copilot-box mt-md" style="background:var(--bg-card); padding:1rem; border-radius:8px; border:1px solid var(--border-color);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
-                <strong style="color:var(--color-primary);">✨ Asistente IA</strong>
-                <button type="button" class="btn btn-ghost btn-sm" id="ai-settings-btn">Configurar API</button>
+            <div class="ai-copilot-box mt-md" style="background:var(--bg-card); padding:1rem; border-radius:12px; border:1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
+                <strong style="color:var(--color-primary); display:flex; align-items:center; gap:0.5rem;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                  Copiloto IA
+                </strong>
+                <button type="button" class="btn btn-ghost btn-sm" id="ai-settings-btn" style="font-size:0.8rem; padding:0.2rem 0.6rem;">⚙️ Preferencias</button>
               </div>
-              <div class="form-row">
-                <div class="form-group" style="margin-bottom:0; flex:1;">
-                  <select id="ai-intention" class="form-select" style="font-size:0.9rem; padding:0.3rem;">
-                    <option value="Invitación entusiasta a participar">Intención: Invitación</option>
-                    <option value="Aviso urgente importante">Intención: Aviso urgente</option>
-                    <option value="Agradecimiento formal">Intención: Agradecimiento</option>
-                  </select>
-                </div>
-                <div class="form-group" style="margin-bottom:0; flex:1;">
-                  <select id="ai-format" class="form-select" style="font-size:0.9rem; padding:0.3rem;">
-                    <option value="Cuerpo de Email formal y amable">Formato: Email HTML</option>
-                    <option value="Post de Instagram con emojis y hashtags cortos">Formato: Instagram/WhatsApp</option>
-                  </select>
-                </div>
+              
+              <div class="ai-chips" style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Invitación" data-format="Email HTML">✉️ E-mail Formal</button>
+                <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Aviso urgente" data-format="WhatsApp con emojis">📱 WhatsApp Flash</button>
+                <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Agradecimiento" data-format="Instagram Story">💖 IG Story</button>
               </div>
-              <button type="button" class="btn btn-primary btn-sm mt-sm w-full" id="ai-generate-btn">Generar borrador</button>
-              <div id="ai-loading" class="muted text-sm mt-sm text-center hidden">Generando con IA...</div>
+
+              <div style="display:flex; gap:0.5rem; align-items:center;">
+                <input type="text" id="ai-custom-prompt" class="form-input" style="flex:1; background:rgba(255,255,255,0.03); border-color:var(--border-color); border-radius:24px; padding-left:1rem;" placeholder="Escribe instrucciones personalizadas o haz clic en un chip...">
+                <button type="button" class="btn btn-primary" id="ai-generate-btn" style="border-radius:50%; width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                </button>
+              </div>
             </div>
 
             <div class="form-group mt-md">
@@ -2523,23 +2522,114 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
 
       document.getElementById('ai-settings-btn')?.addEventListener('click', () => {
         if (!window.AICopilot) return toast('El módulo de IA no cargó correctamente.', 'error');
-        const settings = window.AICopilot.getSettings();
-        const pApiKey = prompt('Ingresá tu API Key de Google Gemini:', settings.apiKey || '');
-        if (pApiKey !== null) {
-          window.AICopilot.setSettings('gemini', pApiKey.trim());
-          toast('API Key configurada y guardada localmente.', 'success');
-        }
+        const adminEmail = localStorage.getItem('tc_email') || 'unknown';
+        const settings = window.AICopilot.getSettings(adminEmail);
+
+        const modalBody = `
+          <div class="form-group">
+            <label class="form-label">Motor de Inteligencia Artificial</label>
+            <select id="ai-provider-select" class="form-select">
+              <option value="gemini" ${settings.provider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+              <option value="openai" ${settings.provider === 'openai' ? 'selected' : ''}>OpenAI (GPT)</option>
+              <option value="anthropic" ${settings.provider === 'anthropic' ? 'selected' : ''}>Anthropic (Claude)</option>
+              <option value="ollama" ${settings.provider === 'ollama' ? 'selected' : ''}>Ollama (Local/Cloud)</option>
+            </select>
+          </div>
+          <div class="form-group" id="ai-endpoint-group" style="${settings.provider === 'ollama' ? 'display:block;' : 'display:none;'}">
+            <label class="form-label">URL del Servidor Ollama</label>
+            <input type="text" id="ai-endpoint-input" class="form-input" value="${escapeHTML(settings.endpoint || 'http://localhost:11434')}" placeholder="http://localhost:11434">
+            <small class="muted">Asegúrate de configurar CORS en tu servidor Ollama (OLLAMA_ORIGINS="*").</small>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Modelo Específico</label>
+            <input type="text" id="ai-model-input" class="form-input" value="${escapeHTML(settings.model || 'gemini-1.5-pro')}" placeholder="ej. gemini-1.5-pro, claude-3-5-sonnet-20240620 o llama3">
+          </div>
+          <div class="form-group" id="ai-apikey-group" style="${settings.provider === 'ollama' ? 'display:none;' : 'display:block;'}">
+            <label class="form-label">API Key Secreta</label>
+            <input type="password" id="ai-apikey-input" class="form-input" value="${escapeHTML(settings.apiKey || '')}" placeholder="Pega tu clave secreta aquí...">
+            <small class="muted">La clave se guarda localmente encriptada a tu sesión: <b>${escapeHTML(adminEmail)}</b>.</small>
+          </div>
+        `;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ai-cfg-backdrop';
+        // HARDCODED OVERLAY STYLES TO BYPASS INHERITED DISPLAY ISSUES
+        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999999; backdrop-filter: blur(4px);';
+
+        overlay.innerHTML = `
+          <div class="modal" style="width: 100%; max-width: 480px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--color-primary); box-shadow: 0 0 40px rgba(123, 75, 255, 0.2); padding: 1.5rem;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+              <h3 class="modal-title" style="margin: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem; color: var(--text-main);">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
+                Configuración Avanzada
+              </h3>
+              <button class="btn btn-ghost" id="ai-cfg-close" style="padding: 0.25rem 0.5rem; font-size: 1.2rem;">&times;</button>
+            </div>
+            <div class="modal-body" style="margin-bottom: 1.5rem;">${modalBody}</div>
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
+              <button class="btn btn-secondary" id="ai-cfg-cancel">Cancelar</button>
+              <button class="btn btn-primary" id="ai-cfg-save">Guardar Preferencias</button>
+            </div>
+          </div>
+        `;
+
+        document.body.appendChild(overlay);
+
+        const closeCfg = () => overlay.remove();
+        document.getElementById('ai-cfg-close').addEventListener('click', closeCfg);
+        document.getElementById('ai-cfg-cancel').addEventListener('click', closeCfg);
+
+        document.getElementById('ai-provider-select').addEventListener('change', (e) => {
+          const m = document.getElementById('ai-model-input');
+          const p = e.target.value;
+          const endptGroup = document.getElementById('ai-endpoint-group');
+          const apiKeyGroup = document.getElementById('ai-apikey-group');
+
+          if (p === 'gemini') { m.value = 'gemini-1.5-pro'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
+          else if (p === 'openai') { m.value = 'gpt-4o'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
+          else if (p === 'anthropic') { m.value = 'claude-3-5-sonnet-20240620'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
+          else if (p === 'ollama') { m.value = 'llama3'; endptGroup.style.display = 'block'; apiKeyGroup.style.display = 'none'; }
+        });
+
+        document.getElementById('ai-cfg-save').addEventListener('click', () => {
+          const p = document.getElementById('ai-provider-select').value;
+          const m = document.getElementById('ai-model-input').value.trim();
+          const k = document.getElementById('ai-apikey-input').value.trim();
+          const ep = document.getElementById('ai-endpoint-input').value.trim();
+          window.AICopilot.setSettings(adminEmail, p, m, k, ep);
+          toast('Preferencias de IA actualizadas. ¡Listo para crear!', 'success');
+          closeCfg();
+        });
+      });
+
+      // Handle Chip UX
+      let activeIntention = 'Invitación';
+      let activeFormat = 'Email HTML';
+      document.querySelectorAll('.ai-chip').forEach(chip => {
+        chip.addEventListener('click', (e) => {
+          document.querySelectorAll('.ai-chip').forEach(c => {
+            c.classList.remove('btn-primary');
+            c.classList.add('btn-secondary');
+          });
+          e.target.classList.remove('btn-secondary');
+          e.target.classList.add('btn-primary');
+          activeIntention = e.target.dataset.intention;
+          activeFormat = e.target.dataset.format;
+          // Populate the input with a nice starter string
+          document.getElementById('ai-custom-prompt').value = `Generar ${activeIntention} p/ ${activeFormat}`;
+        });
       });
 
       document.getElementById('ai-generate-btn')?.addEventListener('click', async () => {
-        const intention = document.getElementById('ai-intention')?.value;
-        const format = document.getElementById('ai-format')?.value;
         const btn = document.getElementById('ai-generate-btn');
-        const loading = document.getElementById('ai-loading');
+        const customPrompt = document.getElementById('ai-custom-prompt')?.value.trim();
+        const textBox = document.getElementById('wiz-body');
+        const adminEmail = localStorage.getItem('tc_email') || 'unknown';
 
         try {
           btn.disabled = true;
-          loading.classList.remove('hidden');
+          // Trigger visual cue for streaming start
+          textBox.value = 'Conectando con modelo...';
 
           const enrollmentsCount = wizard.recipients.length;
           let ages = [];
@@ -2551,20 +2641,24 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
             }
           }
           const meanAge = ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
-
           const workshopData = window.DashboardState?.workshops?.find?.(w => w.id === wizard.workshopId) || { name: workshopName };
-          const promptText = window.AICopilot.promptBuilder(workshopData, enrollmentsCount, meanAge, intention, format);
-          const resultText = await window.AICopilot.generateCompletion(promptText);
 
-          wizard.body = resultText + '\n\n' + wizard.body;
-          render();
-          toast('✨ Borrador IA generado', 'success');
+          let finalPromptConfig = customPrompt ? customPrompt : `Intención: ${activeIntention}. Formato esperado: ${activeFormat}`;
+          const promptText = window.AICopilot.promptBuilder(workshopData, enrollmentsCount, meanAge, "Variable según instrucción", finalPromptConfig);
+
+          let firstChunk = true;
+          await window.AICopilot.generateCompletion(adminEmail, promptText, (chunk) => {
+            if (firstChunk) { textBox.value = ''; firstChunk = false; }
+            textBox.value = chunk;
+            wizard.body = chunk;
+          });
+
+          toast('✨ Redacción magistral generada', 'success');
         } catch (err) {
           toast(err.message, 'error');
           if (err.message.toLowerCase().includes('api key')) document.getElementById('ai-settings-btn')?.click();
         } finally {
-          if (btn) btn.disabled = false;
-          if (loading) loading.classList.add('hidden');
+          btn.disabled = false;
         }
       });
       document.getElementById('wiz-next')?.addEventListener('click', async () => {

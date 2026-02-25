@@ -37,6 +37,7 @@ Thumbs.db
 .gemini/
 .kilocode/
 .windsurf/
+docs/internal/
 
 # Build/package artifacts
 dist/

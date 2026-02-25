@@ -25,9 +25,9 @@
       <div class="table-pagination" role="navigation" aria-label="Paginación">
         <span class="table-pagination-meta">Mostrando ${pageData.start}-${pageData.end} de ${pageData.total} ${label}</span>
         <div class="table-pagination-controls">
-          <button class="btn btn-ghost btn-sm" ${prevDisabled} data-inline-click="setListPage('${key}', ${pageData.page - 1})">Anterior</button>
+          <button class="btn btn-ghost btn-sm" ${prevDisabled} data-action="setListPage" data-payload='["${key}", ${pageData.page - 1}]'>Anterior</button>
           <span class="table-pagination-page">Página ${pageData.page} de ${pageData.totalPages}</span>
-          <button class="btn btn-ghost btn-sm" ${nextDisabled} data-inline-click="setListPage('${key}', ${pageData.page + 1})">Siguiente</button>
+          <button class="btn btn-ghost btn-sm" ${nextDisabled} data-action="setListPage" data-payload='["${key}", ${pageData.page + 1}]'>Siguiente</button>
         </div>
       </div>
     `;

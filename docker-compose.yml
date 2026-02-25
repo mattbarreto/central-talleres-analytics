@@ -19,7 +19,7 @@ services:
       - "traefik.enable=true"
       # En VPS se usa File Provider en Traefik. Estas labels quedan como respaldo documental.
       - "traefik.docker.network=root_default"
-      - "traefik.http.routers.dashboard-talleres.rule=Host(`dashboard.matiasbarreto.com`)"
+      - "traefik.http.routers.dashboard-talleres.rule=Host(`dashboard.example.com`)"
       - "traefik.http.routers.dashboard-talleres.entrypoints=websecure"
       - "traefik.http.routers.dashboard-talleres.tls=true"
       - "traefik.http.routers.dashboard-talleres.tls.certresolver=mytlschallenge"

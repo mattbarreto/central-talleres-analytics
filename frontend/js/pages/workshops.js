@@ -7,6 +7,7 @@
     const filters = opts.filters || { q: '', density: 'regular' };
     const rows = opts.rows || [];
     const summary = opts.summary || { total: 0, active: 0, finished: 0, avg_participants: 0 };
+    const statusCounts = opts.statusCounts || { total: 0, active: 0, planned: 0, finished: 0, cohorts: 0 };
     const kpiDeltas = opts.kpiDeltas || {};
     const pagination = opts.pagination || '';
     const delta = (key) => String(kpiDeltas[key] ?? '0%');

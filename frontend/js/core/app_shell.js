@@ -48,7 +48,7 @@
           </div>
         </div>
       `,
-      `<button class="btn btn-secondary" type="button" data-inline-click="closeModal()">Cerrar</button>`
+      `<button class="btn btn-secondary" type="button" data-action="closeModal">Cerrar</button>`
     );
   };
 

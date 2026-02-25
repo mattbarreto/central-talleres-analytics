@@ -1,6 +1,8 @@
 /* Central de Talleres - App */
 
-const API_BASE = '/api/v1';
+import { API_BASE, api, getIsAuthenticated, setIsAuthenticated } from './api.js';
+import { state, resetTablePage, buildKpiDeltas } from './store.js';
+
 const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollments', 'communications', 'team', 'admins'];
 const appShell = window.AppShell || null;
 const appViewUtils = window.AppViewUtils || null;
@@ -39,219 +41,61 @@ const INLINE_ACTION_WHITELIST = new Set([
   'setListPage',
 ]);
 
-function parseInlineArg(token, element) {
-  const value = token.trim();
-  if (!value) return undefined;
-  if (value === 'this.value') return element?.value ?? '';
-  if (value === 'true') return true;
-  if (value === 'false') return false;
-  if (value === 'null') return null;
-  if (/^-?\d+(\.\d+)?$/.test(value)) return Number(value);
-  if (
-    (value.startsWith('\'') && value.endsWith('\'')) ||
-    (value.startsWith('"') && value.endsWith('"'))
-  ) {
-    return value
-      .slice(1, -1)
-      .replace(/\\\\/g, '\\')
-      .replace(/\\'/g, '\'')
-      .replace(/\\"/g, '"');
-  }
-  throw new Error(`Argumento inline no soportado: ${value}`);
-}
-
-function parseInlineArgs(argsSource, element) {
-  const source = (argsSource || '').trim();
-  if (!source) return [];
-
-  const tokens = [];
-  let current = '';
-  let quote = null;
-  let escaped = false;
-
-  for (let i = 0; i < source.length; i += 1) {
-    const ch = source[i];
-    if (escaped) {
-      current += ch;
-      escaped = false;
-      continue;
-    }
-    if (ch === '\\') {
-      current += ch;
-      escaped = true;
-      continue;
-    }
-    if (quote) {
-      current += ch;
-      if (ch === quote) quote = null;
-      continue;
-    }
-    if (ch === '\'' || ch === '"') {
-      current += ch;
-      quote = ch;
-      continue;
-    }
-    if (ch === ',') {
-      tokens.push(current);
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  if (quote) throw new Error('Expresion inline invalida');
-  tokens.push(current);
-  return tokens.map((token) => parseInlineArg(token, element));
-}
-
-function parseInlineExpression(expression, element) {
-  const expr = (expression || '').trim();
-  if (!expr) return null;
-
-  const callMatch = expr.match(/^([A-Za-z_$][\w$]*)\((.*)\)$/);
-  if (callMatch) {
-    return {
-      name: callMatch[1],
-      args: parseInlineArgs(callMatch[2], element),
-    };
-  }
-  if (/^[A-Za-z_$][\w$]*$/.test(expr)) {
-    return { name: expr, args: [] };
-  }
-  throw new Error(`Expresion inline invalida: ${expr}`);
-}
-
-function runInlineAction(element, expression) {
-  if (!expression) return;
+function runAction(element, actionName) {
+  if (!actionName) return;
   try {
-    const parsed = parseInlineExpression(expression, element);
-    if (!parsed) return;
-    if (!INLINE_ACTION_WHITELIST.has(parsed.name)) {
-      console.warn(`Accion inline no permitida: ${parsed.name}`);
+    if (!INLINE_ACTION_WHITELIST.has(actionName)) {
+      console.warn(`Accion no permitida: ${actionName}`);
       return;
     }
-    const action = window[parsed.name];
+    const action = window[actionName];
     if (typeof action !== 'function') {
-      console.warn(`Accion inline no encontrada: ${parsed.name}`);
+      console.warn(`Accion no encontrada: ${actionName}`);
       return;
     }
-    action.apply(element, parsed.args);
+
+    // Parse the JSON payload if it exists
+    let payload = [];
+    const payloadStr = element.getAttribute('data-payload');
+    if (payloadStr) {
+      try {
+        const parsed = JSON.parse(payloadStr);
+        // If it's an object/array, we just pass it as the first argument, or multiple if array?
+        // Let's support passing the raw string if parsing fails, but generally JSON.parse works.
+        // Actually, our previous inline arguments were passed as separate parameters.
+        // Let's pass the payload directly. Most actions expect primitives or specific objects.
+        if (Array.isArray(parsed)) {
+          payload = parsed;
+        } else {
+          payload = [parsed];
+        }
+      } catch (e) {
+        // If it fails to parse as JSON, pass it as a raw string.
+        payload = [payloadStr];
+      }
+    } else {
+      // no payload
+      payload = [];
+    }
+
+    action.apply(element, payload);
   } catch (error) {
-    console.error('Error ejecutando accion inline', error);
+    console.error('Error ejecutando accion', error);
   }
 }
-if (!window.__TC_INLINE_ACTIONS_BOUND__) {
+
+if (!window.__TC_ACTIONS_BOUND__) {
   document.addEventListener('click', (event) => {
-    const element = event.target?.closest?.('[data-inline-click]');
+    const element = event.target?.closest?.('[data-action]');
     if (!element) return;
-    runInlineAction(element, element.getAttribute('data-inline-click'));
+    runAction(element, element.getAttribute('data-action'));
   });
-  document.addEventListener('change', (event) => {
-    const element = event.target?.closest?.('[data-inline-change]');
-    if (!element) return;
-    runInlineAction(element, element.getAttribute('data-inline-change'));
-  });
-  window.__TC_INLINE_ACTIONS_BOUND__ = true;
+  window.__TC_ACTIONS_BOUND__ = true;
 }
 
-/**
- * Session state flag: replaces the old api.token in-memory check.
- * Set to true by showApp(), cleared by logout().
- */
-let isAuthenticated = false;
-
-const state = {
-  workshops: [],
-  participants: [],
-  communications: [],
-  communicationSummary: new Map(),
-  workshopSearch: '',
-  enrollmentWorkshop: '',
-  participantSearch: '',
-  participantEnrollmentStatus: 'all',
-  participantPopulation: 'all',
-  participantMode: 'summary',
-  participantActiveDays: '',
-  participantHasLoaded: false,
-  participantProfiles: [],
-  activeParticipantProfile: null,
-  communicationSearch: '',
-  communicationWorkshop: '',
-  teamSearch: '',
-  teamRole: 'all',
-  teamYear: '',
-  teamWorkshopStatus: 'all',
-  teamMode: 'summary',
-  teamHasLoaded: false,
-  teamProfiles: [],
-  teamOverview: null,
-  dashboardYear: '',
-  dashboardStatus: '',
-  dashboardWorkshop: '',
-  dashboardMode: 'summary',
-  dashboardAdvancedTab: 'status',
-  insightsPeriod: 'monthly',
-  insightsWorkshop: '',
-  insightsStartDate: '',
-  insightsEndDate: '',
-  insightsMode: 'summary',
-  insightsReportPeriod: 'monthly',
-  insightsJourneyParticipant: '',
-  insightsJourneyQuery: '',
-  insightsData: null,
-  workshopsDensity: 'regular',
-  tablePages: {
-    workshops: 1,
-    enrollments: 1,
-    communications: 1,
-    team: 1,
-    admins: 1,
-  },
-  kpiSnapshots: {},
-};
-
-const api = {
-  /**
-   * Cookies-only auth: tokens live in HttpOnly cookies managed by the browser.
-   * No tokens are stored in JS memory or localStorage.
-   * All requests use credentials: 'include' so the browser sends cookies automatically.
-   */
-  headers(json = true) {
-    const h = {};
-    if (json) h['Content-Type'] = 'application/json';
-    return h;
-  },
-  async refreshAccessToken() {
-    const res = await fetch(`${API_BASE}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    return res.ok;
-  },
-  async request(method, path, body = null, allowRefresh = true) {
-    const opts = { method, headers: this.headers(), credentials: 'include' };
-    if (body) opts.body = JSON.stringify(body);
-    const res = await fetch(`${API_BASE}${path}`, opts);
-    if (res.status === 401) {
-      const shouldTryRefresh = allowRefresh && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/me');
-      if (shouldTryRefresh) {
-        const refreshed = await this.refreshAccessToken().catch(() => false);
-        if (refreshed) return this.request(method, path, body, false);
-      }
-      logout();
-      throw new Error('No autorizado');
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      throw new Error(err.detail || `Error ${res.status}`);
-    }
-    return res.status === 204 ? null : res.json();
-  },
-  get: (path) => api.request('GET', path),
-  post: (path, body) => api.request('POST', path, body),
-  put: (path, body) => api.request('PUT', path, body),
-  del: (path) => api.request('DELETE', path),
-};
+window.addEventListener('api:unauthorized', () => {
+  if (typeof logout === 'function') logout();
+});
 
 function hydrateAppMeta() {
   if (appShell?.hydrateAppMeta) {
@@ -570,31 +414,6 @@ function toQuery(params) {
   return q.toString();
 }
 
-function resetTablePage(key) {
-  state.tablePages[key] = 1;
-}
-
-function formatKpiDelta(current, previous) {
-  const cur = Number(current) || 0;
-  const prev = Number(previous) || 0;
-  if (prev === 0) return cur > 0 ? '+100%' : '0%';
-  const pct = ((cur - prev) / prev) * 100;
-  const rounded = Math.round(pct * 10) / 10;
-  if (rounded === 0) return '0%';
-  return `${rounded > 0 ? '+' : ''}${rounded}%`;
-}
-
-function buildKpiDeltas(scopeKey, currentMetrics) {
-  const current = currentMetrics || {};
-  const previous = state.kpiSnapshots[scopeKey] || {};
-  const deltas = {};
-  Object.keys(current).forEach((key) => {
-    deltas[key] = formatKpiDelta(current[key], previous[key]);
-  });
-  state.kpiSnapshots[scopeKey] = { ...current };
-  return deltas;
-}
-
 function paginateRows(rows, key, pageSize = 25) {
   if (appTableUtils?.paginateRows) return appTableUtils.paginateRows(rows, state.tablePages, key, pageSize);
   const safeRows = Array.isArray(rows) ? rows : [];
@@ -687,7 +506,7 @@ function renderViewLoading(viewKey, title, subtitle = 'Cargando datos...') {
 }
 
 function showApp(email) {
-  isAuthenticated = true;
+  setIsAuthenticated(true);
   document.getElementById('login-page').classList.add('hidden');
   document.getElementById('app-layout').classList.remove('hidden');
   document.getElementById('user-email').textContent = email;
@@ -697,7 +516,7 @@ function showApp(email) {
 }
 
 function logout(redirected = false) {
-  isAuthenticated = false;
+  setIsAuthenticated(false);
   // Ask the backend to revoke tokens and clear HttpOnly cookies.
   fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
@@ -1720,7 +1539,7 @@ async function openInsightsJourneyPicker() {
   setModalContent(
     'Seleccionar persona',
     renderJourneyPickerBody(initial, initialQuery),
-    `<button class="btn btn-secondary" data-inline-click="closeModal()">Cancelar</button><button class="btn btn-primary" id="journey-picker-open">Abrir camino</button>`,
+    `<button class="btn btn-secondary" data-action="closeModal">Cancelar</button><button class="btn btn-primary" id="journey-picker-open">Abrir camino</button>`,
     { variant: 'profile' }
   );
 
@@ -1801,12 +1620,12 @@ async function openInsightsJourney() {
       ? journey.events.map((ev) => `<tr><td>${formatDate(ev.at)}</td><td>${ev.type === 'enrollment' ? 'Inscripción' : 'Comunicación'}</td><td>${escapeHTML(ev.workshop_name || '-')}</td><td>${escapeHTML(statusLabels[ev.status] || ev.status)}</td><td>${escapeHTML(ev.detail)}</td></tr>`).join('')
       : '<tr><td colspan="5" class="muted">Sin eventos registrados</td></tr>';
     const certRows = certificateIssues.length
-      ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '-')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-inline-click="downloadCertificateIssue('${c.id}')">Descargar PDF</button></td></tr>`).join('')
+      ? certificateIssues.map((c) => `<tr><td>${escapeHTML(c.workshop_name || c.course_name || '-')}</td><td>${formatDate(c.issue_date)}</td><td>${escapeHTML(c.verification_code)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-action="downloadCertificateIssue" data-payload="${escapeHTML(c.id)}">Descargar PDF</button></td></tr>`).join('')
       : '<tr><td colspan="4" class="muted">Sin certificados emitidos para esta persona</td></tr>';
     setModalContent(
       `Perfil analítico de ${journey.participant_name}`,
       `<div class="summary-grid"><div class="card"><div class="metric-label">Inscripciones</div><div class="metric-value">${journey.totals.enrolled + journey.totals.active + journey.totals.finished + journey.totals.dropped}</div></div><div class="card"><div class="metric-label">Activos/Finalizados</div><div class="metric-value">${journey.totals.active + journey.totals.finished}</div></div><div class="card"><div class="metric-label">Comunicaciones enviadas</div><div class="metric-value">${journey.totals.communications_sent}</div></div><div class="card"><div class="metric-label">Comunicaciones fallidas</div><div class="metric-value">${journey.totals.communications_failed}</div></div></div>${journeyVizHTML}<div class="table-container mt-md"><table><thead><tr><th>Fecha</th><th>Tipo</th><th>Taller</th><th>Estado</th><th>Detalle</th></tr></thead><tbody>${eventsRows}</tbody></table></div><section class="mt-md"><h4>Certificados emitidos</h4><div class="table-container"><table><thead><tr><th>Taller/Curso</th><th>Fecha de emisión</th><th>Código</th><th class="text-right">Acciones</th></tr></thead><tbody>${certRows}</tbody></table></div></section>`,
-      `<button class="btn btn-secondary" id="journey-back-selector">Volver al selector</button><button class="btn btn-secondary" id="journey-print-exec">Reporte ejecutivo (PDF)</button><button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button>`,
+      `<button class="btn btn-secondary" id="journey-back-selector">Volver al selector</button><button class="btn btn-secondary" id="journey-print-exec">Reporte ejecutivo (PDF)</button><button class="btn btn-secondary" data-action="closeModal">Cerrar</button>`,
       { variant: 'profile' }
     );
     document.getElementById('journey-back-selector').onclick = async () => {
@@ -2260,14 +2079,14 @@ window.openParticipantProfile = async function (participantId) {
       : 0;
     const participantStory = `Participo en ${profile.workshops_total} talleres, con ${profile.active_workshops} activos y ${profile.finished_workshops} finalizados (${completionRate}% de cierre).`;
     const workshopsHTML = workshops.length
-      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Anio</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" data-inline-click="openCertificateIssueWizard('${profile.id}','${w.workshop_id}')">Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
+      ? `<div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Anio</th><th>Estado</th><th>Inscripto</th><th>Certificado</th></tr></thead><tbody>${workshops.map((w) => `<tr><td>${escapeHTML(w.workshop_name)}</td><td>${w.cohort_year}</td><td>${signalChip(statusLabels[w.enrollment_status] || w.enrollment_status, 1, `status-${w.enrollment_status}`)}</td><td>${formatDate(w.enrolled_at)}</td><td>${w.enrollment_status === 'finished' ? `<button class="btn btn-ghost btn-sm" data-action="openCertificateIssueWizard" data-payload='["${profile.id}","${w.workshop_id}"]'>Emitir</button>` : '<span class="muted">No aplica</span>'}</td></tr>`).join('')}</tbody></table></div>`
       : `<div class="empty-state"><div class="empty-icon" aria-hidden="true">${icon('empty-enrollments')}</div><h3>Sin talleres</h3><p>Este participante aun no tiene inscripciones.</p></div>`;
 
     state.activeParticipantProfile = profile;
     openModal(
       `Perfil de ${profile.name}`,
       `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Poblacion', population, profile.population_segment === 'current' ? 'status-active' : profile.population_segment === 'graduated' ? 'status-finished' : '')}${participantEngagementChip(profile.engagement_level)}</div></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_total}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Finalizados</span><strong class="profile-kpi-value">${profile.finished_workshops}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Nivel de actividad</span><strong class="profile-kpi-value">${engagement}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(participantStory)}</p></section><section class="profile-meta-grid"><div class="profile-meta-item"><span>DNI</span><strong>${escapeHTML(profile.dni || '-')}</strong></div><div class="profile-meta-item"><span>Edad</span><strong>${profile.age ?? '-'}</strong></div><div class="profile-meta-item"><span>Genero</span><strong>${escapeHTML(genderLabels[profile.gender] || 'Sin declarar')}</strong></div><div class="profile-meta-item"><span>Correo</span><strong>${escapeHTML(profile.email)}</strong></div><div class="profile-meta-item"><span>Telefono</span><strong>${escapeHTML(profile.phone || '-')}</strong></div><div class="profile-meta-item"><span>Ultima actividad</span><strong>${formatDate(profile.last_activity)}</strong></div></section><section class="profile-section"><h4 class="profile-section-title">Historial de talleres</h4>${workshopsHTML}</section></div>`,
-      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" id="profile-journey-btn">Ver camino</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`,
+      `<button class="btn btn-secondary" id="profile-edit-btn">Editar perfil</button><button class="btn btn-secondary" data-action="closeModal">Cerrar</button><button class="btn btn-secondary" id="profile-journey-btn">Ver camino</button><button class="btn btn-primary" id="profile-cert-btn" ${finished.length ? '' : 'disabled'}>Emitir certificado</button>`,
       { variant: 'profile' }
     );
     document.getElementById('profile-edit-btn').onclick = () => {
@@ -2430,7 +2249,7 @@ window.openCertificateIssueWizard = async function (participantId, workshopId) {
     openModal(
       `Emitir certificado para ${profile.name}`,
       renderBody(),
-      `<button class="btn btn-secondary" data-inline-click="closeModal()">Cancelar</button><button class="btn btn-primary" id="issue-cert-btn">Emitir y descargar PDF</button>`,
+      `<button class="btn btn-secondary" data-action="closeModal">Cancelar</button><button class="btn btn-primary" id="issue-cert-btn">Emitir y descargar PDF</button>`,
       { variant: 'profile' }
     );
 
@@ -2830,9 +2649,9 @@ window.openTeamProfile = async function (memberId) {
     const avgAttendees = profile.workshops_count ? Math.round(profile.attendees_reached / profile.workshops_count) : 0;
     const teamStory = `En ${profile.workshops_count} talleres asignados, alcanzó ${profile.participants_reached} inscripciones y ${profile.attendees_reached} asistentes (${avgAttendees} asistentes promedio por taller).`;
     const rows = profile.assignments.length
-      ? profile.assignments.map((a) => `<tr><td>${escapeHTML(a.workshop_name)}</td><td>${a.cohort_year}</td><td>${statusLabels[a.workshop_status] || a.workshop_status}</td><td>${teamRoleLabels[a.assignment_role] || a.assignment_role}</td><td>${formatDate(a.start_date || a.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-inline-click="deleteTeamAssignment('${a.id}')">Quitar</button></td></tr>`).join('')
+      ? profile.assignments.map((a) => `<tr><td>${escapeHTML(a.workshop_name)}</td><td>${a.cohort_year}</td><td>${statusLabels[a.workshop_status] || a.workshop_status}</td><td>${teamRoleLabels[a.assignment_role] || a.assignment_role}</td><td>${formatDate(a.start_date || a.created_at)}</td><td class="text-right"><button class="btn btn-ghost btn-sm" data-action="deleteTeamAssignment" data-payload="${escapeHTML(a.id)}">Quitar</button></td></tr>`).join('')
       : '<tr><td colspan="6" class="muted">Sin asignaciones</td></tr>';
-    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('Último taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} · ${escapeHTML(profile.phone || 'Sin teléfono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">Acción</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" data-inline-click="closeModal()">Cerrar</button><button class="btn btn-secondary" data-inline-click="openTeamMemberForm('${profile.id}')">Editar perfil</button><button class="btn btn-primary" data-inline-click="openTeamAssignmentForm('${profile.id}')">Asignar taller</button>`, { variant: 'profile' });
+    openModal(`Perfil de ${profile.name}`, `<div class="profile-modal-layout"><section class="profile-head"><div class="profile-identity"><h3 class="profile-name">${escapeHTML(profile.name)}</h3><div class="participants-signal-list">${signalChip('Rol', roleLabel, 'status-active')}${signalChip('Último taller', formatDate(profile.last_workshop_date), profile.last_workshop_date ? 'status-active' : '')}</div><p class="muted mt-md">${escapeHTML(profile.email || 'Sin correo')} · ${escapeHTML(profile.phone || 'Sin teléfono')}</p></div><div class="profile-kpi-grid"><div class="profile-kpi"><span class="profile-kpi-label">Talleres</span><strong class="profile-kpi-value">${profile.workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Activos</span><strong class="profile-kpi-value">${profile.active_workshops_count}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Inscripciones</span><strong class="profile-kpi-value">${profile.participants_reached}</strong></div><div class="profile-kpi"><span class="profile-kpi-label">Asistentes</span><strong class="profile-kpi-value">${profile.attendees_reached}</strong></div></div></section><section class="profile-story"><h4 class="profile-section-title">Historia resumida</h4><p class="muted">${escapeHTML(teamStory)}</p></section><section class="profile-section"><h4 class="profile-section-title">Tendencia reciente</h4><div class="participants-signal-list">${recentTrend || '<span class="muted">Sin actividad registrada</span>'}</div></section><section class="profile-section"><h4 class="profile-section-title">Historial de Talleres</h4><div class="profile-workshops-table"><table class="table-compact"><thead><tr><th>Taller</th><th>Año</th><th>Estado</th><th>Rol</th><th>Fecha</th><th class="text-right">Acción</th></tr></thead><tbody>${rows}</tbody></table></div></section></div>`, `<button class="btn btn-secondary" data-action="closeModal">Cerrar</button><button class="btn btn-secondary" data-action="openTeamMemberForm" data-payload="${escapeHTML(profile.id)}">Editar perfil</button><button class="btn btn-primary" data-action="openTeamAssignmentForm" data-payload="${escapeHTML(profile.id)}">Asignar taller</button>`, { variant: 'profile' });
   } catch (err) {
     toast(err.message, 'error');
   }
@@ -3012,7 +2831,7 @@ const routeLoaders = {
 };
 
 async function applyRoute() {
-  if (!isAuthenticated) {
+  if (!getIsAuthenticated()) {
     document.getElementById('login-page').classList.remove('hidden');
     document.getElementById('app-layout').classList.add('hidden');
     return;

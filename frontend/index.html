@@ -1,53 +1,105 @@
 <!doctype html>
-<html
-  lang="es"
-  data-app-author="Matias Barreto"
-  data-app-website="https://matiasbarreto.com"
-  data-app-repo="https://github.com/mattbarreto/central-talleres-analytics"
-  data-app-version="v2026.02.22"
+<html lang="es" data-app-author="Matias Barreto" data-app-website="https://matiasbarreto.com"
+  data-app-repo="https://github.com/mattbarreto/central-talleres-analytics" data-app-version="v2026.02.25"
   data-app-release="Hardening seguridad + auditoria global"
-  data-app-stack="FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS"
->
+  data-app-stack="FastAPI + PostgreSQL (Supabase) + HTML/CSS/JS">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Central de Talleres</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2316364f'/%3E%3Cpath d='M12 23 32 13l20 10-20 10zM22 34v8c0 4 4 7 10 7s10-3 10-7v-8l-10 5z' fill='%23ffffff'/%3E%3C/svg%3E">
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2316364f'/%3E%3Cpath d='M12 23 32 13l20 10-20 10zM22 34v8c0 4 4 7 10 7s10-3 10-7v-8l-10 5z' fill='%23ffffff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/css/tokens.css?v=25">
   <link rel="stylesheet" href="/static/styles.css?v=25">
   <link rel="stylesheet" href="/static/css/dashboard.css?v=25">
 </head>
+
 <body>
   <svg aria-hidden="true" class="icon-sprite">
-    <symbol id="i-brand" viewBox="0 0 24 24"><path fill="currentColor" d="M3 7.5 12 3l9 4.5-9 4.5zm4.5 4.7v3.6c0 1.5 2 2.7 4.5 2.7s4.5-1.2 4.5-2.7v-3.6L12 14.5z"/></symbol>
-    <symbol id="i-dashboard" viewBox="0 0 24 24"><path fill="currentColor" d="M3 3h8v8H3zm10 0h8v5h-8zM3 13h5v8H3zm7 0h11v8H10z"/></symbol>
-    <symbol id="i-insights" viewBox="0 0 24 24"><path fill="currentColor" d="M4 19h16v2H4zm2-3h2V9H6zm5 0h2V5h-2zm5 0h2v-7h-2z"/></symbol>
-    <symbol id="i-workshops" viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h8v8H3zm10 0h8v5h-8zM3 14h8v6H3zm10-3h8v9h-8z"/></symbol>
-    <symbol id="i-participants" viewBox="0 0 24 24"><path fill="currentColor" d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8m8.5-1a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7M2 20a6 6 0 0 1 12 0zm11.5 0a5 5 0 0 1 8.5-3.3V20z"/></symbol>
-    <symbol id="i-enrollments" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h10l4 4v14H5zm9 1.5V8h3.5zM8 11h8v1.5H8zm0 3h8v1.5H8zm0 3h6v1.5H8z"/></symbol>
-    <symbol id="i-communications" viewBox="0 0 24 24"><path fill="currentColor" d="M3 6h18v12H3zm2.5 1.5L12 12l6.5-4.5H5.5m13.5 9V9l-7 4.8L5 9v7.5z"/></symbol>
-    <symbol id="i-team" viewBox="0 0 24 24"><path fill="currentColor" d="M7 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m10 0a3 3 0 1 1 0-6 3 3 0 0 1 0 6M2.5 19a4.5 4.5 0 0 1 9 0zm10 0a4.5 4.5 0 0 1 9 0z"/></symbol>
-    <symbol id="i-admins" viewBox="0 0 24 24"><path fill="currentColor" d="m19.4 13 1.6 1-1 1.8-1.8-.4a7 7 0 0 1-1.1 1l.3 1.8h-2.1l-.3-1.8a7 7 0 0 1-1.4-.4 6 6 0 0 0 .4-2 6.5 6.5 0 0 0-.2-1.7 7 7 0 0 1 1.2-.5l.3-1.8h2.1l-.3 1.8c.4.3.8.6 1.1 1l1.8-.4 1 1.8zM7.5 11a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7M2 20a5.5 5.5 0 0 1 11 0z"/></symbol>
-    <symbol id="i-eye" viewBox="0 0 24 24"><path fill="currentColor" d="M12 5c5.8 0 9.7 5.6 9.8 5.8l.2.2-.2.2C21.7 11.4 17.8 17 12 17s-9.7-5.6-9.8-5.8L2 11l.2-.2C2.3 10.6 6.2 5 12 5m0 2c-3.8 0-6.8 3.2-7.8 4 1 1 4 4 7.8 4s6.8-3.2 7.8-4c-1-1-4-4-7.8-4m0 1.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5"/></symbol>
-    <symbol id="i-edit" viewBox="0 0 24 24"><path fill="currentColor" d="M16.7 3.3a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-10.5 10.5-4.7.7.7-4.7zM14.6 6l3.4 3.4"/></symbol>
-    <symbol id="i-trash" viewBox="0 0 24 24"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4zm-2 6h10l-.8 11.2a2 2 0 0 1-2 1.8H9.8a2 2 0 0 1-2-1.8z"/></symbol>
-    <symbol id="i-empty-workshops" viewBox="0 0 24 24"><path fill="currentColor" d="M3 4h8v8H3zm10 0h8v5h-8zM3 14h8v6H3zm10-3h8v9h-8z"/></symbol>
-    <symbol id="i-empty-participants" viewBox="0 0 24 24"><path fill="currentColor" d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8M2 20a6 6 0 0 1 12 0m3.5-9a3.5 3.5 0 1 0 0-7m-4 16a5 5 0 0 1 8.5-3.3V20z"/></symbol>
-    <symbol id="i-empty-enrollments" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h10l4 4v14H5zm9 1.5V8h3.5M8 11h8v1.5H8m0 3h8v1.5H8m0 3h6v1.5H8"/></symbol>
-    <symbol id="i-empty-communications" viewBox="0 0 24 24"><path fill="currentColor" d="M3 6h18v12H3zm2.5 1.5L12 12l6.5-4.5"/></symbol>
-    <symbol id="i-empty-team" viewBox="0 0 24 24"><path fill="currentColor" d="M7 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m10 0a3 3 0 1 1 0-6 3 3 0 0 1 0 6M2.5 19a4.5 4.5 0 0 1 9 0m1 0a4.5 4.5 0 0 1 9 0"/></symbol>
-    <symbol id="i-empty-admins" viewBox="0 0 24 24"><path fill="currentColor" d="M12 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8M4 21a8 8 0 0 1 16 0"/></symbol>
-    <symbol id="i-empty-search" viewBox="0 0 24 24"><path fill="currentColor" d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12m8.7 13.3 2.8 2.8-1.4 1.4-2.8-2.8z"/></symbol>
-    <symbol id="i-menu" viewBox="0 0 24 24"><path fill="currentColor" d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></symbol>
-    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path fill="currentColor" d="m14.7 5.3 1.4 1.4L10.8 12l5.3 5.3-1.4 1.4L8 12z"/></symbol>
-    <symbol id="i-logout" viewBox="0 0 24 24"><path fill="currentColor" d="M5 3h8v2H7v14h6v2H5zm9.6 3.6 1.4-1.2L22 12l-6 6.6-1.4-1.2 3.7-4H9v-2h9.3z"/></symbol>
+    <symbol id="i-brand" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M3 7.5 12 3l9 4.5-9 4.5zm4.5 4.7v3.6c0 1.5 2 2.7 4.5 2.7s4.5-1.2 4.5-2.7v-3.6L12 14.5z" />
+    </symbol>
+    <symbol id="i-dashboard" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 3h8v8H3zm10 0h8v5h-8zM3 13h5v8H3zm7 0h11v8H10z" />
+    </symbol>
+    <symbol id="i-insights" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M4 19h16v2H4zm2-3h2V9H6zm5 0h2V5h-2zm5 0h2v-7h-2z" />
+    </symbol>
+    <symbol id="i-workshops" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 4h8v8H3zm10 0h8v5h-8zM3 14h8v6H3zm10-3h8v9h-8z" />
+    </symbol>
+    <symbol id="i-participants" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8m8.5-1a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7M2 20a6 6 0 0 1 12 0zm11.5 0a5 5 0 0 1 8.5-3.3V20z" />
+    </symbol>
+    <symbol id="i-enrollments" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M5 3h10l4 4v14H5zm9 1.5V8h3.5zM8 11h8v1.5H8zm0 3h8v1.5H8zm0 3h6v1.5H8z" />
+    </symbol>
+    <symbol id="i-communications" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 6h18v12H3zm2.5 1.5L12 12l6.5-4.5H5.5m13.5 9V9l-7 4.8L5 9v7.5z" />
+    </symbol>
+    <symbol id="i-team" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M7 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m10 0a3 3 0 1 1 0-6 3 3 0 0 1 0 6M2.5 19a4.5 4.5 0 0 1 9 0zm10 0a4.5 4.5 0 0 1 9 0z" />
+    </symbol>
+    <symbol id="i-admins" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="m19.4 13 1.6 1-1 1.8-1.8-.4a7 7 0 0 1-1.1 1l.3 1.8h-2.1l-.3-1.8a7 7 0 0 1-1.4-.4 6 6 0 0 0 .4-2 6.5 6.5 0 0 0-.2-1.7 7 7 0 0 1 1.2-.5l.3-1.8h2.1l-.3 1.8c.4.3.8.6 1.1 1l1.8-.4 1 1.8zM7.5 11a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7M2 20a5.5 5.5 0 0 1 11 0z" />
+    </symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M12 5c5.8 0 9.7 5.6 9.8 5.8l.2.2-.2.2C21.7 11.4 17.8 17 12 17s-9.7-5.6-9.8-5.8L2 11l.2-.2C2.3 10.6 6.2 5 12 5m0 2c-3.8 0-6.8 3.2-7.8 4 1 1 4 4 7.8 4s6.8-3.2 7.8-4c-1-1-4-4-7.8-4m0 1.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5" />
+    </symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M16.7 3.3a1 1 0 0 1 1.4 0l2.6 2.6a1 1 0 0 1 0 1.4l-10.5 10.5-4.7.7.7-4.7zM14.6 6l3.4 3.4" />
+    </symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4zm-2 6h10l-.8 11.2a2 2 0 0 1-2 1.8H9.8a2 2 0 0 1-2-1.8z" />
+    </symbol>
+    <symbol id="i-empty-workshops" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 4h8v8H3zm10 0h8v5h-8zM3 14h8v6H3zm10-3h8v9h-8z" />
+    </symbol>
+    <symbol id="i-empty-participants" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M8 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8M2 20a6 6 0 0 1 12 0m3.5-9a3.5 3.5 0 1 0 0-7m-4 16a5 5 0 0 1 8.5-3.3V20z" />
+    </symbol>
+    <symbol id="i-empty-enrollments" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M5 3h10l4 4v14H5zm9 1.5V8h3.5M8 11h8v1.5H8m0 3h8v1.5H8m0 3h6v1.5H8" />
+    </symbol>
+    <symbol id="i-empty-communications" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M3 6h18v12H3zm2.5 1.5L12 12l6.5-4.5" />
+    </symbol>
+    <symbol id="i-empty-team" viewBox="0 0 24 24">
+      <path fill="currentColor"
+        d="M7 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6m10 0a3 3 0 1 1 0-6 3 3 0 0 1 0 6M2.5 19a4.5 4.5 0 0 1 9 0m1 0a4.5 4.5 0 0 1 9 0" />
+    </symbol>
+    <symbol id="i-empty-admins" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M12 12a4 4 0 1 1 0-8 4 4 0 0 1 0 8M4 21a8 8 0 0 1 16 0" />
+    </symbol>
+    <symbol id="i-empty-search" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12m8.7 13.3 2.8 2.8-1.4 1.4-2.8-2.8z" />
+    </symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M4 7h16v2H4zm0 5h16v2H4zm0 5h16v2H4z" />
+    </symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24">
+      <path fill="currentColor" d="m14.7 5.3 1.4 1.4L10.8 12l5.3 5.3-1.4 1.4L8 12z" />
+    </symbol>
+    <symbol id="i-logout" viewBox="0 0 24 24">
+      <path fill="currentColor" d="M5 3h8v2H7v14h6v2H5zm9.6 3.6 1.4-1.2L22 12l-6 6.6-1.4-1.2 3.7-4H9v-2h9.3z" />
+    </symbol>
   </svg>
   <a class="skip-link" href="#main-content">Saltar al contenido principal</a>
 
   <section id="login-page" class="login-page" aria-labelledby="login-title">
     <div class="login-card">
       <div class="login-logo" aria-hidden="true">
-        <div class="logo-icon"><svg class="ui-icon"><use href="#i-brand"></use></svg></div>
+        <div class="logo-icon"><svg class="ui-icon">
+            <use href="#i-brand"></use>
+          </svg></div>
       </div>
       <h1 id="login-title" class="sr-only">Central de Talleres</h1>
       <h2>Central de Talleres</h2>
@@ -55,11 +107,13 @@
       <form id="login-form" autocomplete="on">
         <div class="form-group">
           <label for="login-email" class="form-label">Correo electrónico</label>
-          <input id="login-email" name="email" type="email" class="form-input" autocomplete="username" spellcheck="false" required>
+          <input id="login-email" name="email" type="email" class="form-input" autocomplete="username"
+            spellcheck="false" required>
         </div>
         <div class="form-group">
           <label for="login-password" class="form-label">Contraseña</label>
-          <input id="login-password" name="password" type="password" class="form-input" autocomplete="current-password" required>
+          <input id="login-password" name="password" type="password" class="form-input" autocomplete="current-password"
+            required>
         </div>
         <p id="login-error" class="login-error" role="alert"></p>
         <button id="login-btn" type="submit" class="btn btn-primary btn-block">Iniciar sesión</button>
@@ -72,14 +126,19 @@
       <header class="sidebar-header">
         <div class="sidebar-header-row">
           <div class="sidebar-logo">
-            <span class="logo-icon"><svg class="ui-icon" aria-hidden="true"><use href="#i-brand"></use></svg></span>
+            <span class="logo-icon"><svg class="ui-icon" aria-hidden="true">
+                <use href="#i-brand"></use>
+              </svg></span>
             <span class="sidebar-title">
               <span class="sidebar-title-main">Central</span>
               <span class="sidebar-title-sub">de Talleres</span>
             </span>
           </div>
-          <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" type="button" aria-label="Colapsar barra lateral" aria-pressed="false" title="Colapsar barra lateral">
-            <svg class="ui-icon" aria-hidden="true"><use href="#i-chevron-left"></use></svg>
+          <button id="sidebar-collapse-btn" class="sidebar-collapse-btn" type="button"
+            aria-label="Colapsar barra lateral" aria-pressed="false" title="Colapsar barra lateral">
+            <svg class="ui-icon" aria-hidden="true">
+              <use href="#i-chevron-left"></use>
+            </svg>
           </button>
         </div>
       </header>
@@ -88,38 +147,58 @@
         <div class="nav-section">
           <div class="nav-section-title">General</div>
           <a class="nav-item active" data-view="dashboard" data-tooltip="Panel" aria-label="Panel" href="#dashboard">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-dashboard"></use></svg></span>
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-dashboard"></use>
+              </svg></span>
             <span class="nav-label">Panel</span>
           </a>
           <a class="nav-item" data-view="insights" data-tooltip="Insights" aria-label="Insights" href="#insights">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-insights"></use></svg></span>
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-insights"></use>
+              </svg></span>
             <span class="nav-label">Insights</span>
           </a>
         </div>
         <div class="nav-section">
           <div class="nav-section-title">Gestión</div>
           <a class="nav-item" data-view="workshops" data-tooltip="Talleres" aria-label="Talleres" href="#workshops">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-workshops"></use></svg></span>
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-workshops"></use>
+              </svg></span>
             <span class="nav-label">Talleres</span>
           </a>
-          <a class="nav-item" data-view="participants" data-tooltip="Participantes" aria-label="Participantes" href="#participants">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-participants"></use></svg></span>
+          <a class="nav-item" data-view="participants" data-tooltip="Participantes" aria-label="Participantes"
+            href="#participants">
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-participants"></use>
+              </svg></span>
             <span class="nav-label">Participantes</span>
           </a>
-          <a class="nav-item" data-view="enrollments" data-tooltip="Inscripciones" aria-label="Inscripciones" href="#enrollments">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-enrollments"></use></svg></span>
+          <a class="nav-item" data-view="enrollments" data-tooltip="Inscripciones" aria-label="Inscripciones"
+            href="#enrollments">
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-enrollments"></use>
+              </svg></span>
             <span class="nav-label">Inscripciones</span>
           </a>
-          <a class="nav-item" data-view="communications" data-tooltip="Comunicaciones" aria-label="Comunicaciones" href="#communications">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-communications"></use></svg></span>
+          <a class="nav-item" data-view="communications" data-tooltip="Comunicaciones" aria-label="Comunicaciones"
+            href="#communications">
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-communications"></use>
+              </svg></span>
             <span class="nav-label">Comunicaciones</span>
           </a>
           <a class="nav-item" data-view="team" data-tooltip="Equipo" aria-label="Equipo" href="#team">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-team"></use></svg></span>
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-team"></use>
+              </svg></span>
             <span class="nav-label">Equipo</span>
           </a>
-          <a class="nav-item" data-view="admins" data-tooltip="Administradores" aria-label="Administradores" href="#admins">
-            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon"><use href="#i-admins"></use></svg></span>
+          <a class="nav-item" data-view="admins" data-tooltip="Administradores" aria-label="Administradores"
+            href="#admins">
+            <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
+                <use href="#i-admins"></use>
+              </svg></span>
             <span class="nav-label">Administradores</span>
           </a>
         </div>
@@ -134,15 +213,21 @@
           </div>
         </div>
         <div class="sidebar-meta-compact" aria-label="Información del sistema">
-          <span id="meta-version" class="project-meta-badge">v2026.02.22</span>
+          <span id="meta-version" class="project-meta-badge">v2026.02.25</span>
           <button id="btn-about-system" type="button" class="btn btn-ghost btn-sm about-link">Acerca de</button>
         </div>
         <div class="sidebar-quick-actions" aria-label="Accesos rápidos">
-          <button id="about-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action" aria-label="Acerca del sistema" title="Acerca del sistema">
-            <svg class="ui-icon" aria-hidden="true"><use href="#i-insights"></use></svg>
+          <button id="about-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action"
+            aria-label="Acerca del sistema" title="Acerca del sistema">
+            <svg class="ui-icon" aria-hidden="true">
+              <use href="#i-insights"></use>
+            </svg>
           </button>
-          <button id="logout-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action" aria-label="Cerrar sesión" title="Cerrar sesión">
-            <svg class="ui-icon" aria-hidden="true"><use href="#i-logout"></use></svg>
+          <button id="logout-icon-btn" type="button" class="btn btn-ghost btn-sm sidebar-quick-action"
+            aria-label="Cerrar sesión" title="Cerrar sesión">
+            <svg class="ui-icon" aria-hidden="true">
+              <use href="#i-logout"></use>
+            </svg>
           </button>
         </div>
       </footer>
@@ -151,7 +236,10 @@
 
     <main id="main-content" class="main-content" tabindex="-1">
       <h1 class="sr-only">Central de Talleres</h1>
-      <button id="mobile-toggle" class="mobile-toggle" type="button" aria-label="Abrir menú" aria-controls="sidebar" aria-expanded="false"><svg class="ui-icon" aria-hidden="true"><use href="#i-menu"></use></svg></button>
+      <button id="mobile-toggle" class="mobile-toggle" type="button" aria-label="Abrir menú" aria-controls="sidebar"
+        aria-expanded="false"><svg class="ui-icon" aria-hidden="true">
+          <use href="#i-menu"></use>
+        </svg></button>
 
       <section id="view-dashboard" class="view-section">
         <div class="page-body dashboard-body"></div>
@@ -201,7 +289,9 @@
 
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1" integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ" crossorigin="anonymous"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"
+    integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
+    crossorigin="anonymous"></script>
   <script defer src="/static/js/ui/state.js?v=25"></script>
   <script defer src="/static/js/ui/components.js?v=25"></script>
   <script defer src="/static/js/ui/charts.js?v=25"></script>
@@ -221,11 +311,8 @@
   <script defer src="/static/js/pages/enrollments.js?v=25"></script>
   <script defer src="/static/js/pages/communications.js?v=25"></script>
   <script defer src="/static/js/pages/admins.js?v=25"></script>
-  <script defer src="/static/js/core/app_bootstrap.js?v=25"></script>
+  <script type="module" src="/static/js/core/app_bootstrap.js?v=25"></script>
   <script defer src="/static/js/core/app_runtime.js?v=25"></script>
 </body>
+
 </html>
-
-
-
-

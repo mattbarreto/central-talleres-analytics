@@ -46,5 +46,16 @@ build/
 # Private documentation and infrastructure details
 docs/
 
-claves.txt 
+claves.txt
+
+# Private Infrastructure & Config
+dashboard.yml
+production.yml
+traefik_root_compose.yml
+reset_password.py
+
+# Temporary scripts
+cache_bust.py
+patch.py
+pytest_output.txt 
  

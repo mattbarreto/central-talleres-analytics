@@ -251,13 +251,28 @@
     });
   };
 
-  const EmptyState = ({ title = 'Sin datos', message = 'No hay informacion disponible.', action = '' } = {}) => `
-    <div class="dash-empty" role="status">
-      <h3>${esc(title)}</h3>
-      <p>${esc(message)}</p>
-      ${action ? `<div>${action}</div>` : ''}
-    </div>
-  `;
+  const EmptyState = ({ title = 'Sin datos', message = 'No hay informacion disponible.', action = null } = {}) => {
+    let actionHtml = '';
+    if (typeof action === 'string') {
+      actionHtml = action;
+    } else if (action && typeof action === 'object') {
+      actionHtml = Button({
+        variant: action.variant || 'primary',
+        size: action.size || 'md',
+        label: action.label || 'Acción',
+        iconName: action.iconName || '',
+        attrs: action.attrs || ''
+      });
+    }
+
+    return `
+      <div class="dash-empty" role="status">
+        <h3>${esc(title)}</h3>
+        <p>${esc(message)}</p>
+        ${actionHtml ? `<div>${actionHtml}</div>` : ''}
+      </div>
+    `;
+  };
 
   const Skeleton = ({ lines = 3 } = {}) => `
     <div class="dash-skeleton" aria-hidden="true">

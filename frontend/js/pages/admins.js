@@ -1,9 +1,9 @@
 ﻿(function () {
-  const UI = window.DashboardUI || {};
-  const esc = UI.esc;
-
   async function render(opts) {
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
     if (!UI.Button || !esc || !opts?.root) return false;
+
     const root = opts.root;
     const rows = opts.rows || [];
     const pagination = opts.pagination || '';
@@ -29,24 +29,24 @@
           </header>
 
           ${UI.Section({
-            key: 'admins_summary',
-            title: 'Resumen',
-            description: 'Estado de cuentas administrativas.',
-            collapsible: false,
-            content: `<div class="dash-kpis">
+      key: 'admins_summary',
+      title: 'Resumen',
+      description: 'Estado de cuentas administrativas.',
+      collapsible: false,
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'a-total', label: 'Administradores', value: String(summary.total || 0), delta: delta('total'), trend: 'Usuarios' })}
               ${UI.KpiCard({ id: 'a-month', label: 'Altas del mes', value: String(summary.createdThisMonth || 0), delta: delta('createdThisMonth'), trend: 'Nuevas cuentas' })}
               ${UI.KpiCard({ id: 'a-me', label: 'Cuenta actual', value: String(summary.me || 0), delta: delta('me'), trend: 'Sesión' })}
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'admins_table',
-            title: 'Listado',
-            description: 'Administración de cuentas con privilegios.',
-            collapsible: false,
-            content: table,
-          })}
+      key: 'admins_table',
+      title: 'Listado',
+      description: 'Administración de cuentas con privilegios.',
+      collapsible: false,
+      content: table,
+    })}
         </div>
       </div>
     `;

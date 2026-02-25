@@ -19,7 +19,7 @@ class AdminCreate(BaseModel):
 
 class AdminOut(BaseModel):
     id: UUID
-    email: EmailStr
+    email: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

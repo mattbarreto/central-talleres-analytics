@@ -138,7 +138,13 @@
         baseColor = palette[index % palette.length];
       } else {
         const colorKey = row?.colorKey ?? row?.id ?? row?.label;
-        const stableIndex = colorKey ? hashString(colorKey) % palette.length : (index % palette.length);
+        let stableIndex = colorKey ? hashString(colorKey) % palette.length : (index % palette.length);
+
+        // FIX DATAVIZ-02: Prevent adjacent segments from having the same color
+        if (index > 0 && palette.length > 1) {
+          stableIndex = (stableIndex + index) % palette.length;
+        }
+
         baseColor = palette[stableIndex];
       }
     }

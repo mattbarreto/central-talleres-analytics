@@ -26,7 +26,14 @@
   }
 
   function rowTable(rows) {
-    if (!rows.length) return UI.EmptyState({ title: 'Sin personas', message: 'No hay resultados con los filtros actuales.' });
+    const UI = window.DashboardUI || {};
+    if (!rows.length) {
+      return UI.EmptyState({
+        title: 'Sin personas',
+        message: 'No hay resultados con los filtros actuales.',
+        action: { variant: 'ghost', label: 'Limpiar filtros', attrs: 'type="button" data-p-reset="1"' }
+      });
+    }
     const head = `
       <thead>
         <tr><th>Participante</th><th>Población</th><th>Trayectoria</th><th>Actividad</th><th>Acciones</th></tr>
@@ -56,8 +63,15 @@
   }
 
   async function render(opts) {
-    if (!UI.Card || !store || !esc || !opts?.root) return false;
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
+    if (!UI.Button || !esc || !opts?.root) return false;
+
     const root = opts.root;
+    const rows = opts.rows || [];
+    const filters = opts.filters || {};
+    const pagination = opts.pagination || '';
+    const summary = opts.summary || { total: 0, engaged: 0, retention: 0, active_workshops_avg: 0 };
     let renderHost = root.querySelector('[data-participants-render-host="1"]');
     if (!renderHost) {
       root.innerHTML = '<div data-participants-render-host="1"></div>';
@@ -80,7 +94,6 @@
     const ages = orderedRows(demoRows(overview.age_brackets, ageLabels), [
       '0-17', '18-24', '25-34', '35-44', '45-54', '55-64', '65+', 'Sin dato',
     ]);
-    const filters = opts.filters || {};
 
     const useCanvasCharts = Boolean(UI.ChartCanvasCard && charts?.isAvailable?.());
     const chartCard = useCanvasCharts ? UI.ChartCanvasCard : UI.ChartCard;
@@ -262,8 +275,8 @@
       e.target.value = '';
     });
     const triggerFilter = (extra = {}) => opts.onFilterChange?.({ ...collectFilters(renderHost), ...extra });
-    renderHost.querySelector('[data-p-apply="1"]')?.addEventListener('click', () => triggerFilter());
-    renderHost.querySelector('[data-p-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', status: 'all', population: 'all', reset: true }));
+    renderHost.querySelectorAll('[data-p-apply="1"]').forEach(btn => btn.addEventListener('click', () => triggerFilter()));
+    renderHost.querySelectorAll('[data-p-reset="1"]').forEach(btn => btn.addEventListener('click', () => opts.onFilterChange?.({ q: '', status: 'all', population: 'all', reset: true })));
     renderHost.querySelector('#p-status')?.addEventListener('change', () => triggerFilter());
     renderHost.querySelector('#p-pop')?.addEventListener('change', () => triggerFilter());
 

@@ -1,9 +1,9 @@
 ﻿(function () {
-  const UI = window.DashboardUI || {};
-  const esc = UI.esc;
-
   async function render(opts) {
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
     if (!UI.Button || !esc || !opts?.root) return false;
+
     const root = opts.root;
     const workshops = opts.workshops || [];
     const selectedWorkshop = opts.selectedWorkshop || '';
@@ -46,25 +46,25 @@
           </section>
 
           ${selectedWorkshop ? UI.Section({
-            key: 'enrollments_summary',
-            title: 'Resumen',
-            description: 'Estado de las inscripciones del taller seleccionado.',
-            collapsible: false,
-            content: `<div class="dash-kpis">
+      key: 'enrollments_summary',
+      title: 'Resumen',
+      description: 'Estado de las inscripciones del taller seleccionado.',
+      collapsible: false,
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'e-total', label: 'Total', value: String(summary.total || 0), delta: delta('total'), trend: 'Inscripciones' })}
               ${UI.KpiCard({ id: 'e-active', label: 'Activos', value: String(summary.active || 0), delta: delta('active'), trend: 'En curso' })}
               ${UI.KpiCard({ id: 'e-finished', label: 'Finalizados', value: String(summary.finished || 0), delta: delta('finished'), trend: 'Cierres' })}
               ${UI.KpiCard({ id: 'e-dropped', label: 'Bajas', value: String(summary.dropped || 0), delta: delta('dropped'), trend: 'Desvinculación' })}
             </div>`
-          }) : UI.EmptyState({ title: 'Seleccioná un taller', message: 'Elegí un taller para ver sus inscripciones.' })}
+    }) : UI.EmptyState({ title: 'Seleccioná un taller', message: 'Elegí un taller para ver sus inscripciones.' })}
 
           ${selectedWorkshop ? UI.Section({
-            key: 'enrollments_table',
-            title: 'Listado',
-            description: 'Edición de estado y eliminación.',
-            collapsible: false,
-            content: table,
-          }) : ''}
+      key: 'enrollments_table',
+      title: 'Listado',
+      description: 'Edición de estado y eliminación.',
+      collapsible: false,
+      content: table,
+    }) : ''}
         </div>
       </div>
     `;

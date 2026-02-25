@@ -1,8 +1,4 @@
 (function () {
-  const UI = window.DashboardUI || {};
-  const {
-    Card, KpiCard, Section, TableCard, ChartCard, ChartCanvasCard, EmptyState, Skeleton, Button, icon,
-  } = UI;
   const store = window.DashboardState;
   const charts = window.DashboardCharts;
   const viewState = {
@@ -10,7 +6,6 @@
     recentPageSize: 8,
   };
 
-  const esc = UI.esc;
 
   function toDate(value) {
     if (!value) return null;
@@ -86,6 +81,7 @@
   }
 
   function buildDrawer(detail) {
+    const { Button } = window.DashboardUI || {};
     return `
       <div class="dash-drawer-backdrop" data-drawer-close="1"></div>
       <aside class="dash-drawer" role="dialog" aria-modal="true" aria-labelledby="kpi-drawer-title">
@@ -100,14 +96,19 @@
         <p>${detail.explanation}</p>
         ${detail.table}
         <div class="dash-row-actions section-stack-top">
-          ${Button({ variant: 'secondary', size: 'md', label: 'Ir a vista filtrada', attrs: 'type="button" data-kpi-cta="1"' })}
-          ${Button({ variant: 'ghost', size: 'md', label: 'Cerrar', attrs: 'type="button" data-drawer-close="1"' })}
+          ${Button ? Button({ variant: 'secondary', size: 'md', label: 'Ir a vista filtrada', attrs: 'type="button" data-kpi-cta="1"' }) : ''}
+          ${Button ? Button({ variant: 'ghost', size: 'md', label: 'Cerrar', attrs: 'type="button" data-drawer-close="1"' }) : ''}
         </div>
       </aside>
     `;
   }
 
   async function render(opts) {
+    const UI = window.DashboardUI || {};
+    const {
+      Card, KpiCard, Section, TableCard, ChartCard, ChartCanvasCard, EmptyState, Skeleton, Button, icon,
+    } = UI;
+    const esc = UI.esc;
     const root = opts.root;
     if (!root || !store || !esc || !window.DashboardUI) return false;
     let renderHost = root.querySelector('[data-dashboard-render-host="1"]');
@@ -207,7 +208,11 @@
     const movementsToShow = (beRecentActivity || []).slice(0, store.state.rowsToShow);
     const movementList = movementsToShow.length
       ? `<ul class="dash-bars">${movementsToShow.map((m) => `<li><span>${esc(m.label)}</span><div class="dash-bar-track"><span style="width:100%"></span></div><strong>${dateLabel(m.date)}</strong></li>`).join('')}</ul>`
-      : EmptyState({ title: 'Sin actividad reciente', message: 'No hubo movimientos en el rango actual.' });
+      : EmptyState({
+        title: 'Sin actividad reciente',
+        message: 'No hubo movimientos en el rango actual.',
+        action: { label: 'Registrar actividad', attrs: 'type="button" data-dashboard-new="1"' }
+      });
 
     const alerts = [];
     if (beKpis.finished_enrollments.current < beKpis.active_enrollments.current) {
@@ -395,7 +400,11 @@
           rows: recentPageRows,
           rowActions: (row) => Button({ variant: 'ghost', size: 'sm', label: 'Ir a talleres', attrs: `type="button" data-workshop-detail="${esc(row.id)}"` }),
         })}${recentPagination}`
-        : EmptyState({ title: 'Sin talleres en el período', message: 'Ajusta filtros para ver detalle.' }),
+        : EmptyState({
+          title: 'Sin talleres en el período',
+          message: 'Ajusta filtros para ver detalle.',
+          action: { variant: 'ghost', label: 'Limpiar filtros', attrs: 'type="button" data-filter-reset="1"' }
+        }),
     });
 
     renderHost.innerHTML = `
@@ -539,11 +548,11 @@
       opts.onFilterChange?.(next);
     });
 
-    renderHost.querySelector('[data-filter-reset="1"]')?.addEventListener('click', () => {
+    renderHost.querySelectorAll('[data-filter-reset="1"]').forEach(btn => btn.addEventListener('click', () => {
       store.resetFilters();
       viewState.recentPage = 1;
       opts.onFilterChange?.({ year: '', status: '', workshop: '' });
-    });
+    }));
 
     renderHost.querySelectorAll('[data-recent-page]').forEach((btn) => {
       btn.addEventListener('click', () => {

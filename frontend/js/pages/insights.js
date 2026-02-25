@@ -70,7 +70,10 @@
   }
 
   async function render(opts) {
-    if (!UI.Card || !store || !esc || !opts?.root) return false;
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
+    if (!UI.Button || !esc || !opts?.root) return false;
+
     const root = opts.root;
     let renderHost = root.querySelector('[data-insights-render-host="1"]');
     if (!renderHost) {

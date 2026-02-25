@@ -1,8 +1,7 @@
 ﻿(function () {
-  const UI = window.DashboardUI || {};
-  const esc = UI.esc;
-
   async function render(opts) {
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
     if (!UI.Button || !esc || !opts?.root) return false;
     const root = opts.root;
     const workshops = opts.workshops || [];
@@ -51,25 +50,25 @@
           </section>
 
           ${UI.Section({
-            key: 'communications_summary',
-            title: 'Resumen',
-            description: 'Volumen y calidad de entrega.',
-            collapsible: false,
-            content: `<div class="dash-kpis">
+      key: 'communications_summary',
+      title: 'Resumen',
+      description: 'Volumen y calidad de entrega.',
+      collapsible: false,
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'c-total', label: 'Comunicaciones', value: String(summary.total || 0), delta: delta('total'), trend: 'Volumen' })}
               ${UI.KpiCard({ id: 'c-sent', label: 'Enviadas', value: String(summary.sent || 0), delta: delta('sent'), trend: 'Entrega' })}
               ${UI.KpiCard({ id: 'c-failed', label: 'Fallidas', value: String(summary.failed || 0), delta: delta('failed'), trend: 'Incidentes' })}
               ${UI.KpiCard({ id: 'c-rate', label: 'Entrega estimada', value: `${summary.deliveryRate || 0}%`, delta: delta('deliveryRate'), trend: 'Calidad' })}
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'communications_table',
-            title: 'Historial',
-            description: 'Mensajes enviados y reenvío de fallidos.',
-            collapsible: false,
-            content: table,
-          })}
+      key: 'communications_table',
+      title: 'Historial',
+      description: 'Mensajes enviados y reenvío de fallidos.',
+      collapsible: false,
+      content: table,
+    })}
         </div>
       </div>
     `;

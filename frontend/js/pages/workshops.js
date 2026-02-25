@@ -1,20 +1,23 @@
 ﻿(function () {
-  const UI = window.DashboardUI || {};
-  const esc = UI.esc;
-
   async function render(opts) {
+    const UI = window.DashboardUI || {};
+    const esc = UI.esc;
     if (!UI.Button || !esc || !opts?.root) return false;
     const root = opts.root;
     const filters = opts.filters || { q: '', density: 'regular' };
     const rows = opts.rows || [];
-    const statusCounts = opts.statusCounts || { total: 0, active: 0, planned: 0, finished: 0, cohorts: 0 };
+    const summary = opts.summary || { total: 0, active: 0, finished: 0, avg_participants: 0 };
     const kpiDeltas = opts.kpiDeltas || {};
     const pagination = opts.pagination || '';
     const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
       ? `<div class="dash-table-wrap"><table class="dash-table dash-table-workshops"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="dash-row-actions"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
-      : UI.EmptyState({ title: 'Sin talleres', message: 'No hay talleres para el filtro actual.', action: UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' }) });
+      : UI.EmptyState({
+        title: 'Sin talleres',
+        message: 'No hay talleres para el filtro actual.',
+        action: { variant: 'primary', size: 'md', label: 'Nuevo taller', attrs: 'type="button" data-w-new="1"' }
+      });
 
     root.innerHTML = `
       <div class="dashboard-v2">
@@ -50,26 +53,26 @@
           </section>
 
           ${UI.Section({
-            key: 'workshops_summary',
-            title: 'Resumen',
-            description: 'Estado general de talleres visibles.',
-            collapsible: false,
-            content: `<div class="dash-kpis">
+      key: 'workshops_summary',
+      title: 'Resumen',
+      description: 'Estado general de talleres visibles.',
+      collapsible: false,
+      content: `<div class="dash-kpis">
               ${UI.KpiCard({ id: 'w-total', label: 'Talleres visibles', value: String(statusCounts.total || 0), delta: delta('total'), trend: 'Volumen' })}
               ${UI.KpiCard({ id: 'w-active', label: 'Activos', value: String(statusCounts.active || 0), delta: delta('active'), trend: 'En curso' })}
               ${UI.KpiCard({ id: 'w-planned', label: 'Planificados', value: String(statusCounts.planned || 0), delta: delta('planned'), trend: 'Próximos' })}
               ${UI.KpiCard({ id: 'w-finished', label: 'Finalizados', value: String(statusCounts.finished || 0), delta: delta('finished'), trend: 'Cierres' })}
               ${UI.KpiCard({ id: 'w-cohorts', label: 'Cohortes', value: String(statusCounts.cohorts || 0), delta: delta('cohorts'), trend: 'Cobertura' })}
             </div>`
-          })}
+    })}
 
           ${UI.Section({
-            key: 'workshops_table',
-            title: 'Listado',
-            description: 'Edición rápida y acciones por taller.',
-            collapsible: false,
-            content: table,
-          })}
+      key: 'workshops_table',
+      title: 'Listado',
+      description: 'Edición rápida y acciones por taller.',
+      collapsible: false,
+      content: table,
+    })}
         </div>
       </div>
     `;

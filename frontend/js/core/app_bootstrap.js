@@ -3025,6 +3025,9 @@ async function applyRoute() {
 
   window.AppViewShell?.activate?.({ views, view, doc: document });
   await window.AppViewLoader?.load?.(view, params, routeLoaders);
+
+  // UX-03: Re-assert focus after data loading and innerHTML injection completes
+  document.getElementById('main-content')?.focus({ preventScroll: false });
 }
 
 /**

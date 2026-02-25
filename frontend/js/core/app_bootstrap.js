@@ -2463,7 +2463,49 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         footer = `<button class="btn btn-secondary" id="wiz-cancel">Cancelar</button><button class="btn btn-primary" id="wiz-next" ${wizard.recipients.length ? '' : 'disabled'}>Siguiente</button>`;
       }
       if (wizard.step === 2) {
-        body = `<div class="wizard-step"><h4>Paso 2: Redactar</h4><div class="template-row"><button class="btn btn-secondary btn-sm" id="tpl-welcome" type="button">Plantilla bienvenida</button><button class="btn btn-secondary btn-sm" id="tpl-reminder" type="button">Plantilla recordatorio</button><button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button></div><div class="form-group"><label for="wiz-subject" class="form-label">Asunto</label><input id="wiz-subject" class="form-input" value="${escapeHTML(wizard.subject)}"></div><div class="form-group"><label for="wiz-body" class="form-label">Mensaje</label><textarea id="wiz-body" class="form-textarea">${escapeHTML(wizard.body)}</textarea></div><p class="muted">Destinatarios: ${wizard.recipients.length} del taller ${escapeHTML(workshopName)}.</p></div>`;
+        body = `
+          <div class="wizard-step">
+            <h4>Paso 2: Redactar</h4>
+            <div class="template-row">
+              <button class="btn btn-secondary btn-sm" id="tpl-welcome" type="button">Plantilla bienvenida</button>
+              <button class="btn btn-secondary btn-sm" id="tpl-reminder" type="button">Plantilla recordatorio</button>
+              <button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button>
+            </div>
+            
+            <div class="ai-copilot-box mt-md" style="background:var(--bg-card); padding:1rem; border-radius:8px; border:1px solid var(--border-color);">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.5rem;">
+                <strong style="color:var(--color-primary);">✨ Asistente IA</strong>
+                <button type="button" class="btn btn-ghost btn-sm" id="ai-settings-btn">Configurar API</button>
+              </div>
+              <div class="form-row">
+                <div class="form-group" style="margin-bottom:0; flex:1;">
+                  <select id="ai-intention" class="form-select" style="font-size:0.9rem; padding:0.3rem;">
+                    <option value="Invitación entusiasta a participar">Intención: Invitación</option>
+                    <option value="Aviso urgente importante">Intención: Aviso urgente</option>
+                    <option value="Agradecimiento formal">Intención: Agradecimiento</option>
+                  </select>
+                </div>
+                <div class="form-group" style="margin-bottom:0; flex:1;">
+                  <select id="ai-format" class="form-select" style="font-size:0.9rem; padding:0.3rem;">
+                    <option value="Cuerpo de Email formal y amable">Formato: Email HTML</option>
+                    <option value="Post de Instagram con emojis y hashtags cortos">Formato: Instagram/WhatsApp</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" class="btn btn-primary btn-sm mt-sm w-full" id="ai-generate-btn">Generar borrador</button>
+              <div id="ai-loading" class="muted text-sm mt-sm text-center hidden">Generando con IA...</div>
+            </div>
+
+            <div class="form-group mt-md">
+              <label for="wiz-subject" class="form-label">Asunto / Título (opcional para redes)</label>
+              <input id="wiz-subject" class="form-input" value="${escapeHTML(wizard.subject)}">
+            </div>
+            <div class="form-group">
+              <label for="wiz-body" class="form-label">Mensaje</label>
+              <textarea id="wiz-body" class="form-textarea" style="min-height: 180px;">${escapeHTML(wizard.body)}</textarea>
+            </div>
+            <p class="muted">Destinatarios: ${wizard.recipients.length} del taller ${escapeHTML(workshopName)}.</p>
+          </div>`;
         footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-next">Vista previa</button>`;
       }
       if (wizard.step === 3) {
@@ -2478,6 +2520,53 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
       document.getElementById('tpl-welcome')?.addEventListener('click', () => setTpl('welcome'));
       document.getElementById('tpl-reminder')?.addEventListener('click', () => setTpl('reminder'));
       document.getElementById('tpl-closing')?.addEventListener('click', () => setTpl('closing'));
+
+      document.getElementById('ai-settings-btn')?.addEventListener('click', () => {
+        if (!window.AICopilot) return toast('El módulo de IA no cargó correctamente.', 'error');
+        const settings = window.AICopilot.getSettings();
+        const pApiKey = prompt('Ingresá tu API Key de Google Gemini:', settings.apiKey || '');
+        if (pApiKey !== null) {
+          window.AICopilot.setSettings('gemini', pApiKey.trim());
+          toast('API Key configurada y guardada localmente.', 'success');
+        }
+      });
+
+      document.getElementById('ai-generate-btn')?.addEventListener('click', async () => {
+        const intention = document.getElementById('ai-intention')?.value;
+        const format = document.getElementById('ai-format')?.value;
+        const btn = document.getElementById('ai-generate-btn');
+        const loading = document.getElementById('ai-loading');
+
+        try {
+          btn.disabled = true;
+          loading.classList.remove('hidden');
+
+          const enrollmentsCount = wizard.recipients.length;
+          let ages = [];
+          for (const email of wizard.recipients) {
+            const participant = window.DashboardState?.participants?.find?.(p => p.email === email);
+            if (participant && participant.birthdate) {
+              const diffMatch = new Date() - new Date(participant.birthdate);
+              ages.push(Math.floor(diffMatch / 31557600000));
+            }
+          }
+          const meanAge = ages.length ? Math.round(ages.reduce((a, b) => a + b, 0) / ages.length) : 0;
+
+          const workshopData = window.DashboardState?.workshops?.find?.(w => w.id === wizard.workshopId) || { name: workshopName };
+          const promptText = window.AICopilot.promptBuilder(workshopData, enrollmentsCount, meanAge, intention, format);
+          const resultText = await window.AICopilot.generateCompletion(promptText);
+
+          wizard.body = resultText + '\n\n' + wizard.body;
+          render();
+          toast('✨ Borrador IA generado', 'success');
+        } catch (err) {
+          toast(err.message, 'error');
+          if (err.message.toLowerCase().includes('api key')) document.getElementById('ai-settings-btn')?.click();
+        } finally {
+          if (btn) btn.disabled = false;
+          if (loading) loading.classList.add('hidden');
+        }
+      });
       document.getElementById('wiz-next')?.addEventListener('click', async () => {
         if (wizard.step === 1) { wizard.step = 2; await render(); return; }
         const s = document.getElementById('wiz-subject')?.value.trim() || '';

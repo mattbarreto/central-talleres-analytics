@@ -1,22 +1,9 @@
 (function () {
   const store = window.DashboardState;
   const charts = window.DashboardCharts;
-  const viewState = {
-    recentPage: 1,
-    recentPageSize: 8,
+  const localState = {
+    trendMetric: 'enrollments',
   };
-
-
-  function toDate(value) {
-    if (!value) return null;
-    const d = new Date(value);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }
-
-  function dateLabel(value) {
-    const d = toDate(value);
-    return d ? new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' }).format(d) : '-';
-  }
 
   function rangeDays(rangeKey) {
     if (rangeKey === '7d') return 7;
@@ -36,65 +23,171 @@
     return `${rounded > 0 ? '+' : ''}${rounded}%`;
   }
 
+  function uniqueCount(rows, key) {
+    const set = new Set();
+    (rows || []).forEach((row) => {
+      const value = row?.[key];
+      if (value) set.add(String(value));
+    });
+    return set.size;
+  }
+
+  function statusLabel(status) {
+    if (status === 'completed') return 'Dictado';
+    if (status === 'cancelled') return 'Cancelado';
+    return 'Programado';
+  }
+
+  function statusClass(status) {
+    if (status === 'completed') return 'is-completed';
+    if (status === 'cancelled') return 'is-cancelled';
+    return 'is-scheduled';
+  }
+
   function explainKpi(kpiId) {
     const dict = {
-      workshops: 'Cantidad de talleres en el rango activo comparada contra el período inmediato anterior.',
-      participants: 'Personas únicas con al menos una inscripción durante el rango activo.',
-      enrollments: 'Total de inscripciones registradas en el período filtrado.',
-      active: 'Inscripciones activas registradas en el período filtrado.',
-      finished: 'Inscripciones finalizadas registradas en el período filtrado.',
-      communications: 'Comunicaciones registradas en el período filtrado.',
+      workshops: 'Talleres con actividad efectiva en el periodo comparado.',
+      participants: 'Participantes unicos con al menos una inscripcion en el periodo.',
+      enrollments: 'Altas de inscripcion registradas durante el periodo.',
+      communications: 'Comunicaciones operativas enviadas en el periodo.',
     };
-    return dict[kpiId] || 'Indicador del panel.';
+    return dict[kpiId] || 'Indicador operativo del periodo.';
   }
 
-  function sparklinePath(values = []) {
-    const points = (Array.isArray(values) ? values : [])
-      .map((value) => Number(value))
-      .filter((value) => Number.isFinite(value));
-    if (points.length < 2) return '';
-
-    const width = 180;
-    const height = 46;
-    const pad = 4;
-    const min = Math.min(...points);
-    const max = Math.max(...points);
-    const span = max - min || 1;
-    const step = (width - (pad * 2)) / Math.max(1, points.length - 1);
-    return points.map((value, index) => {
-      const x = pad + (step * index);
-      const y = height - pad - (((value - min) / span) * (height - (pad * 2)));
-      return `${index ? 'L' : 'M'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    }).join(' ');
+  function agendaRows(rows = []) {
+    return (rows || []).map((session) => ({
+      workshopId: session.workshop_id,
+      timeRange: `${(session.start_time || '').slice(0, 5)} - ${(session.end_time || '').slice(0, 5)}`,
+      workshop: session.workshop_name || 'Taller sin nombre',
+      facilitator: session.facilitator_name || 'Sin asignar',
+      topic: session.topic || 'Sin tema',
+      status: session.status || 'scheduled',
+    }));
   }
 
-  function drawerSparkline(values = []) {
-    const path = sparklinePath(values);
-    if (!path) return '';
+  function agendaCard({ title, rows, esc }) {
+    if (!rows.length) {
+      return `
+        <article class="dash-card dash-agenda-card">
+          <header class="dash-card-header">
+            <div class="dash-card-title-wrap"><h3 class="dash-card-title">${esc(title)}</h3></div>
+          </header>
+          <div class="dash-card-body">
+            <div class="dash-empty" role="status">
+              <h3>Sin agenda cargada</h3>
+              <p>No hay encuentros programados para este bloque.</p>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    const body = rows.map((row) => `
+      <tr>
+        <td data-label="Hora">${esc(row.timeRange)}</td>
+        <td data-label="Taller"><button type="button" class="dash-link-btn" data-workshop-detail="${esc(row.workshopId)}">${esc(row.workshop)}</button></td>
+        <td data-label="Docente">${esc(row.facilitator)}</td>
+        <td data-label="Tema"><span class="dash-topic-text ${row.topic === 'Sin tema' ? 'is-missing' : ''}">${esc(row.topic)}</span></td>
+        <td data-label="Estado"><span class="dash-status-badge ${statusClass(row.status)}">${esc(statusLabel(row.status))}</span></td>
+      </tr>
+    `).join('');
+
     return `
-      <div class="dash-drawer-spark" aria-hidden="true">
-        <svg viewBox="0 0 180 46" focusable="false" aria-hidden="true">
-          <path d="${path}" class="dash-drawer-spark-line"></path>
-        </svg>
+      <article class="dash-card dash-agenda-card">
+        <header class="dash-card-header">
+          <div class="dash-card-title-wrap"><h3 class="dash-card-title">${esc(title)}</h3></div>
+        </header>
+        <div class="dash-card-body">
+          <div class="dash-table-wrap" role="region" aria-label="${esc(`Agenda de ${title}`)}">
+            <table class="dash-table dash-table-operational">
+              <thead>
+                <tr><th>Hora</th><th>Taller</th><th>Docente</th><th>Tema</th><th>Estado</th></tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    `;
+  }
+
+  function buildNarrative(pulse, todayRows, tomorrowRows) {
+    const todaySessions = todayRows.length;
+    const tomorrowSessions = tomorrowRows.length;
+    const todayFacilitators = uniqueCount(todayRows, 'facilitator');
+    const tomorrowFacilitators = uniqueCount(tomorrowRows, 'facilitator');
+    const weekSessions = Number(pulse.week_sessions_count) || 0;
+    const weekWorkshops = Number(pulse.week_active_workshops_count) || 0;
+    const todayExpected = Number(pulse.today_expected_participants_estimate) || 0;
+    const tomorrowExpected = Number(pulse.tomorrow_expected_participants_estimate) || 0;
+
+    return {
+      lead: `Hoy se dictan ${todaySessions} encuentros con ${todayFacilitators} docentes. Manana se prevén ${tomorrowSessions} encuentros con ${tomorrowFacilitators} docentes.`,
+      points: [
+        `Semana en curso: ${weekSessions} encuentros y ${weekWorkshops} talleres activos.`,
+        todayExpected > 0
+          ? `Participacion esperada hoy: ${todayExpected} personas (estimacion por inscripciones activas).`
+          : 'Participacion esperada hoy: sin base suficiente para estimar.',
+        tomorrowExpected > 0
+          ? `Participacion esperada manana: ${tomorrowExpected} personas (estimacion por inscripciones activas).`
+          : 'Participacion esperada manana: sin base suficiente para estimar.',
+        pulse.week_peak_day
+          ? `Pico semanal detectado: ${pulse.week_peak_day}${pulse.week_peak_time_slot ? `, franja ${pulse.week_peak_time_slot}` : ''}.`
+          : 'Pico semanal: sin datos suficientes en la agenda actual.',
+      ],
+    };
+  }
+
+  function buildAttention(pulse, droppedCount) {
+    const items = [];
+    const missingTopic = Number(pulse.week_sessions_without_topic_count) || 0;
+    const missingFacilitator = Number(pulse.week_sessions_without_facilitator_count) || 0;
+
+    if (missingTopic > 0) {
+      items.push({ severity: 'warning', text: `${missingTopic} encuentros semanales sin tema cargado.`, action: 'Completar agenda' });
+    }
+    if (missingFacilitator > 0) {
+      items.push({ severity: 'warning', text: `${missingFacilitator} encuentros semanales sin docente asignado.`, action: 'Asignar docente' });
+    }
+    if (droppedCount > 0) {
+      items.push({ severity: 'critical', text: `Se registraron ${droppedCount} bajas en el periodo actual.`, action: 'Ver detalle', status: 'dropped' });
+    }
+    if (!items.length) {
+      items.push({ severity: 'ok', text: 'No hay incidencias operativas criticas en este momento.' });
+    }
+    return items;
+  }
+
+  function drawerBody(kpi, esc) {
+    return `
+      <div class="dash-kpi-detail-box">
+        <div>
+          <div class="dash-kpi-detail-label">Periodo actual</div>
+          <strong class="dash-kpi-detail-value">${esc(String(kpi.value))}</strong>
+        </div>
+        <div class="dash-kpi-detail-prev">
+          <div class="dash-kpi-detail-label">Periodo anterior</div>
+          <strong class="dash-kpi-detail-value-prev">${esc(String(kpi.previous))}</strong>
+          <div class="dash-kpi-detail-delta">${esc(kpi.delta)}</div>
+        </div>
       </div>
     `;
   }
 
-  function buildDrawer(detail) {
+  function drawerLayout({ title, subtitle, explanation, body }) {
     const { Button } = window.DashboardUI || {};
     return `
       <div class="dash-drawer-backdrop" data-drawer-close="1"></div>
       <aside class="dash-drawer" role="dialog" aria-modal="true" aria-labelledby="kpi-drawer-title">
         <header class="dash-drawer-header">
           <div>
-            <h3 id="kpi-drawer-title">${detail.title}</h3>
-            <p class="dash-page-subtitle">${detail.subtitle}</p>
+            <h3 id="kpi-drawer-title">${title}</h3>
+            <p class="dash-page-subtitle">${subtitle}</p>
           </div>
           <button class="dash-drawer-close" type="button" data-drawer-close="1">Cerrar</button>
         </header>
-        ${drawerSparkline(detail.sparkline)}
-        <p>${detail.explanation}</p>
-        ${detail.table}
+        <p>${explanation}</p>
+        ${body}
         <div class="dash-row-actions section-stack-top">
           ${Button ? Button({ variant: 'secondary', size: 'md', label: 'Ir a vista filtrada', attrs: 'type="button" data-kpi-cta="1"' }) : ''}
           ${Button ? Button({ variant: 'ghost', size: 'md', label: 'Cerrar', attrs: 'type="button" data-drawer-close="1"' }) : ''}
@@ -106,11 +199,19 @@
   async function render(opts) {
     const UI = window.DashboardUI || {};
     const {
-      Card, KpiCard, Section, TableCard, ChartCard, ChartCanvasCard, EmptyState, Skeleton, Button, icon,
+      Card,
+      KpiCard,
+      Section,
+      ChartCard,
+      ChartCanvasCard,
+      EmptyState,
+      Skeleton,
+      Button,
     } = UI;
     const esc = UI.esc;
     const root = opts.root;
     if (!root || !store || !esc || !window.DashboardUI) return false;
+
     let renderHost = root.querySelector('[data-dashboard-render-host="1"]');
     if (!renderHost) {
       root.innerHTML = '<div data-dashboard-render-host="1"></div>';
@@ -119,341 +220,239 @@
 
     charts?.destroyRootCharts?.(renderHost);
 
-    const isError = !!opts.dashboardError;
-    const isLoading = !!opts.dashboardLoading;
-    const isAdvanced = opts.dashboardMode === 'advanced';
-    const filters = opts.dashboardFilters || { year: '', status: '', workshop: '' };
-    const activeRange = store.state.filters.range || '30d';
-
-    if (isLoading) {
-      renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${Skeleton({ lines: 6 })}</div></div>`;
+    if (opts.dashboardLoading) {
+      renderHost.innerHTML = `<div class="dashboard-v2 dashboard-v2-institutional"><div class="dash-container">${Skeleton({ lines: 8 })}</div></div>`;
       return true;
     }
 
-    if (isError || !opts.metrics) {
-      renderHost.innerHTML = `<div class="dashboard-v2"><div class="dash-container">${EmptyState({
+    if (opts.dashboardError || !opts.metrics) {
+      renderHost.innerHTML = `<div class="dashboard-v2 dashboard-v2-institutional"><div class="dash-container">${EmptyState({
         title: 'Error cargando panel',
-        message: 'Ocurrió un error al consultar las métricas. Intente recargar.',
+        message: 'Ocurrio un error al consultar las metricas. Intente recargar.',
         actionLabel: 'Reintentar',
         actionAttrs: 'onclick="window.location.reload()"'
       })}</div></div>`;
       return true;
     }
 
-    const { kpis: beKpis, top_workshops: beTopWorkshops, recent_activity: beRecentActivity, trends_enrollments: beTrendsEnrollments, trends_communications: beTrendsCommunications, status_distribution: beStatusDistribution } = opts.metrics;
+    const { kpis: beKpis, trends_enrollments: beEnrollTrend, trends_communications: beCommTrend, status_distribution: beStatusDistribution } = opts.metrics;
+    const pulse = opts.pulse || {
+      today_sessions: [],
+      tomorrow_sessions: [],
+      week_sessions_count: 0,
+      week_active_workshops_count: 0,
+      week_facilitators_count: 0,
+      week_peak_day: null,
+      week_peak_time_slot: null,
+      week_sessions_without_topic_count: 0,
+      week_sessions_without_facilitator_count: 0,
+      today_expected_participants_estimate: 0,
+      tomorrow_expected_participants_estimate: 0,
+    };
+    const ytd = opts.ytd || { workshops_total: 0, participants_total: 0, enrollments_total: 0, communications_total: 0 };
 
-    // We optionally keep available unaggregated lists for filters UI if provided, 
-    // otherwise the backend gives us purely aggregated numbers.
-    const filterWorkshops = opts.workshops || [];
-    const years = [...new Set(filterWorkshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
-
+    const activeRange = store.state.filters.range || '30d';
     const comparablePeriod = rangeDays(activeRange) > 0;
+    const filters = opts.dashboardFilters || { year: '', status: '', workshop: '' };
+    const workshops = opts.workshops || [];
+    const years = [...new Set(workshops.map((w) => w.cohort_year))].sort((a, b) => b - a);
 
-    const kpis = [
-      {
-        id: 'workshops',
-        label: 'Talleres',
-        value: beKpis.workshops.current,
-        previous: beKpis.workshops.previous,
-        trend: 'Oferta activa',
-      },
-      {
-        id: 'participants',
-        label: 'Participantes únicos',
-        value: beKpis.participants_unique.current,
-        previous: beKpis.participants_unique.previous,
-        trend: 'Base activa',
-      },
-      {
-        id: 'enrollments',
-        label: 'Inscripciones',
-        value: beKpis.enrollments.current,
-        previous: beKpis.enrollments.previous,
-        trend: 'Flujo operativo',
-      },
-      {
-        id: 'communications',
-        label: 'Comunicaciones',
-        value: beKpis.communications.current,
-        previous: beKpis.communications.previous,
-        trend: 'Seguimiento',
-      },
-    ].map((kpi) => ({
-      ...kpi,
-      sparkline: [kpi.previous, kpi.value],
-      delta: delta(kpi.value, kpi.previous, comparablePeriod),
-    }));
+    const monthlyKpis = [
+      { id: 'workshops', label: 'Talleres activos del mes', value: beKpis.workshops.current, previous: beKpis.workshops.previous, trend: 'Oferta operativa' },
+      { id: 'participants', label: 'Participantes unicos del mes', value: beKpis.participants_unique.current, previous: beKpis.participants_unique.previous, trend: 'Cobertura institucional' },
+      { id: 'enrollments', label: 'Inscripciones del mes', value: beKpis.enrollments.current, previous: beKpis.enrollments.previous, trend: 'Flujo de demanda' },
+      { id: 'communications', label: 'Comunicaciones del mes', value: beKpis.communications.current, previous: beKpis.communications.previous, trend: 'Seguimiento operativo' },
+    ].map((kpi) => ({ ...kpi, sparkline: [kpi.previous, kpi.value], delta: delta(kpi.value, kpi.previous, comparablePeriod) }));
 
+    const todayRows = agendaRows(pulse.today_sessions || []);
+    const tomorrowRows = agendaRows(pulse.tomorrow_sessions || []);
+    const narrative = buildNarrative(pulse, todayRows, tomorrowRows);
+    const droppedCount = beStatusDistribution.find((item) => item.label === 'Bajas')?.value || 0;
+    const attentionItems = buildAttention(pulse, droppedCount);
+
+    const attentionHtml = attentionItems.map((item) => {
+      const action = item.status
+        ? `<button type="button" class="dash-link-btn" data-alert-status="${esc(item.status)}">${esc(item.action || 'Ver detalle')}</button>`
+        : item.action
+          ? `<button type="button" class="dash-link-btn" data-open-workshops="1">${esc(item.action)}</button>`
+          : '';
+      return `<li class="dash-attention-item ${item.severity}"><span>${esc(item.text)}</span>${action ? `<span class="dash-attention-action">${action}</span>` : ''}</li>`;
+    }).join('');
 
     const chips = [
       activeRange !== 'all' ? `<span class="dash-chip">Rango: ${esc(activeRange)}</span>` : '<span class="dash-chip">Rango completo</span>',
-      filters.year ? `<span class="dash-chip">Año: ${esc(filters.year)}</span>` : '',
+      filters.year ? `<span class="dash-chip">Ano: ${esc(filters.year)}</span>` : '',
       filters.status ? `<span class="dash-chip">Estado: ${esc(filters.status)}</span>` : '',
-      filters.workshop ? '<span class="dash-chip">Taller específico</span>' : '',
+      filters.workshop ? '<span class="dash-chip">Taller especifico</span>' : '',
     ].filter(Boolean).join('');
 
-    const movementsToShow = (beRecentActivity || []).slice(0, store.state.rowsToShow);
-    const movementList = movementsToShow.length
-      ? `<ul class="dash-bars">${movementsToShow.map((m) => `<li><span>${esc(m.label)}</span><div class="dash-bar-track"><span style="width:100%"></span></div><strong>${dateLabel(m.date)}</strong></li>`).join('')}</ul>`
-      : EmptyState({
-        title: 'Sin actividad reciente',
-        message: 'No hubo movimientos en el rango actual.',
-        action: { label: 'Registrar actividad', attrs: 'type="button" data-dashboard-new="1"' }
-      });
-
-    const alerts = [];
-    if (beKpis.finished_enrollments.current < beKpis.active_enrollments.current) {
-      alerts.push({ text: 'Hay más activos que finalizados: revisar cierres si es fin de período.', kpi: 'active' });
-    }
-    const droppedCount = beStatusDistribution.find(s => s.label === 'Bajas')?.value || 0;
-    if (droppedCount > 0) {
-      alerts.push({ text: `Se registraron ${droppedCount} bajas en el período actual.`, status: 'dropped' });
-    }
-
-    const alertsHtml = alerts.length
-      ? `<div class="dash-helper-note">${alerts.map((a, i) => {
-        const btn = a.status
-          ? `<button type="button" class="dash-link-btn" data-alert-status="${esc(a.status)}">${esc(a.text)}</button>`
-          : a.kpi
-            ? `<button type="button" class="dash-link-btn" data-alert-kpi="${esc(a.kpi)}">${esc(a.text)}</button>`
-            : esc(a.text);
-        return `<div>${icon('insights')} ${btn}</div>`;
-      }).join('')}</div>`
-      : '<div class="dash-helper-note">Sin alertas críticas para este período.</div>';
-
-    // Recent workflows are now just the recent_activity of type workshop mapped to the table format
-    const recentRows = (beRecentActivity || [])
-      .filter(w => w.type === 'workshop')
-      .map((w) => ({
-        id: w.id || '', // we don't have id in recent activity row currently, would need backend extension to be clickable
-        name: esc(w.label),
-        year: '-', // meta holds "2024 - status" string
-        status: esc(w.meta),
-        created: dateLabel(w.date),
-      }));
-
-    const recentTotalPages = Math.max(1, Math.ceil(recentRows.length / viewState.recentPageSize));
-    if (viewState.recentPage > recentTotalPages) viewState.recentPage = recentTotalPages;
-    const recentStart = (viewState.recentPage - 1) * viewState.recentPageSize;
-    const recentPageRows = recentRows.slice(recentStart, recentStart + viewState.recentPageSize);
-    const recentPagination = recentRows.length > viewState.recentPageSize
-      ? `
-        <div class="dash-table-pager">
-          <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-recent-page="prev" ${viewState.recentPage <= 1 ? 'disabled' : ''}>Anterior</button>
-          <span>Página ${viewState.recentPage} de ${recentTotalPages}</span>
-          <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-recent-page="next" ${viewState.recentPage >= recentTotalPages ? 'disabled' : ''}>Siguiente</button>
+    const operationalSection = Section({
+      key: 'operational_state',
+      title: 'Estado operativo',
+      description: 'Que pasa ahora, que requiere atencion y como viene la semana.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.operational_state),
+      content: `
+        <div class="dash-operational-grid">
+          <article class="dash-card dash-operational-brief-card">
+            <div class="dash-card-body">
+              <p class="dash-operational-lead">${esc(narrative.lead)}</p>
+              <ul class="dash-operational-points">${narrative.points.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>
+            </div>
+          </article>
+          <article class="dash-card dash-operational-attention-card">
+            <header class="dash-card-header">
+              <div class="dash-card-title-wrap"><h3 class="dash-card-title">Que requiere atencion</h3></div>
+            </header>
+            <div class="dash-card-body"><ul class="dash-attention-list">${attentionHtml}</ul></div>
+          </article>
         </div>
-      `
-      : '';
+        <div class="dash-operational-agenda">
+          ${agendaCard({ title: 'Hoy', rows: todayRows, esc })}
+          ${agendaCard({ title: 'Manana', rows: tomorrowRows, esc })}
+        </div>
+        <article class="dash-card dash-week-summary-card">
+          <header class="dash-card-header">
+            <div class="dash-card-title-wrap"><h3 class="dash-card-title">Semana en curso</h3></div>
+          </header>
+          <div class="dash-card-body">
+            <div class="dash-week-summary-grid">
+              <div class="dash-week-metric"><span>Encuentros</span><strong>${esc(String(pulse.week_sessions_count || 0))}</strong></div>
+              <div class="dash-week-metric"><span>Talleres activos</span><strong>${esc(String(pulse.week_active_workshops_count || 0))}</strong></div>
+              <div class="dash-week-metric"><span>Docentes implicados</span><strong>${esc(String(pulse.week_facilitators_count || 0))}</strong></div>
+              <div class="dash-week-metric"><span>Pico por dia</span><strong>${esc(pulse.week_peak_day || 'Sin dato')}</strong></div>
+              <div class="dash-week-metric"><span>Franja pico</span><strong>${esc(pulse.week_peak_time_slot || 'Sin dato')}</strong></div>
+              <div class="dash-week-metric warning"><span>Sin tema / sin docente</span><strong>${esc(String(pulse.week_sessions_without_topic_count || 0))} / ${esc(String(pulse.week_sessions_without_facilitator_count || 0))}</strong></div>
+            </div>
+          </div>
+        </article>
+      `,
+    });
 
-    const enrollmentTrendRows = beTrendsEnrollments || [];
+    const monthlySection = Section({
+      key: 'monthly_activity',
+      title: 'Actividad del mes',
+      description: 'Cuatro KPIs tacticos consistentes para lectura del periodo actual.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.monthly_activity),
+      content: `<div class="dash-kpis dash-kpis-monthly">${monthlyKpis.map((kpi) => KpiCard({ id: kpi.id, label: kpi.label, value: String(kpi.value), delta: kpi.delta, trend: kpi.trend, sparkline: kpi.sparkline })).join('')}</div>`,
+    });
 
+    const trendMap = {
+      enrollments: { label: 'Inscripciones', subtitle: 'Serie consolidada de los ultimos 6 meses', rows: beEnrollTrend || [] },
+      communications: { label: 'Comunicaciones', subtitle: 'Volumen operativo de comunicaciones por mes', rows: beCommTrend || [] },
+    };
+    const activeTrend = trendMap[localState.trendMetric] || trendMap.enrollments;
     const useCanvasCharts = Boolean(ChartCanvasCard && charts?.isAvailable?.());
     const chartCard = useCanvasCharts ? ChartCanvasCard : ChartCard;
-    const hasChartData = (rows, allowZero = true) => (
-      charts?.hasRenderableData?.(rows, { allowZero })
-      ?? (Array.isArray(rows) && (allowZero ? rows.length > 0 : rows.some((row) => Number(row?.value) > 0)))
-    );
-    const hasEnrollmentData = hasChartData(enrollmentTrendRows);
+    const hasTrendData = charts?.hasRenderableData?.(activeTrend.rows, { allowZero: true }) || (Array.isArray(activeTrend.rows) && activeTrend.rows.length > 0);
 
-    const renderChartOrEmpty = ({
-      title,
-      subtitle,
-      chartId,
-      chartType,
-      ariaLabel,
-      rows,
-      valueLabel,
-      chartHeight = '260px',
-      emptyTitle = 'Sin datos para graficar',
-      emptyMessage = 'No hay datos suficientes con el filtro actual.',
-    }) => {
-      if (!hasChartData(rows)) {
-        return Card({ title, body: EmptyState({ title: emptyTitle, message: emptyMessage }) });
-      }
-      return chartCard({
-        title,
-        subtitle,
-        chartId,
-        chartType,
-        chartHeight,
-        ariaLabel,
-        rows,
-        valueLabel,
-      });
-    };
-
-    // BLOCKS 1 & 2: PULSE (Today, Tomorrow, Week)
-    const p = opts.pulse || { today_sessions: [], tomorrow_sessions: [], week_sessions_count: 0, week_active_workshops_count: 0, week_facilitators_count: 0 };
-
-    // Map today rows safely
-    const todayRows = (p.today_sessions || []).map(s => ({
-      id: s.id,
-      workshopId: s.workshop_id,
-      time: esc(`${(s.start_time || '').slice(0, 5)} - ${(s.end_time || '').slice(0, 5)}`),
-      topic: esc(s.topic || 'Sin tema'),
-      workshop: esc(s.workshop_name),
-      facilitator: esc(s.facilitator_name || 'Sin asignar')
-    }));
-
-    // Map tomorrow rows safely
-    const tomorrowRows = (p.tomorrow_sessions || []).map(s => ({
-      id: s.id,
-      workshopId: s.workshop_id,
-      time: esc(`${(s.start_time || '').slice(0, 5)} - ${(s.end_time || '').slice(0, 5)}`),
-      topic: esc(s.topic || 'Sin tema'),
-      workshop: esc(s.workshop_name),
-      facilitator: esc(s.facilitator_name || 'Sin asignar')
-    }));
-
-    const pulseImmediateSection = Section({
-      key: 'pulse_immediate',
-      title: 'Pulso Inmediato',
-      description: 'Estado operativo actual.',
-      collapsible: true,
-      collapsed: store.state.collapsed.pulse_immediate,
-      content: `
-        <div class="dash-grid">
-          <div class="dash-col-6">
-            ${todayRows.length ? TableCard({
-        title: 'Agenda de Hoy',
-        columns: [{ key: 'time', label: 'Hora' }, { key: 'workshop', label: 'Taller' }, { key: 'facilitator', label: 'Docente' }],
-        rows: todayRows,
-      }) : EmptyState({ title: 'Hoy libre', message: 'No hay encuentros programados.', action: null })}
-          </div>
-          <div class="dash-col-6">
-            ${tomorrowRows.length ? TableCard({
-        title: 'Mañana',
-        columns: [{ key: 'time', label: 'Hora' }, { key: 'workshop', label: 'Taller' }, { key: 'facilitator', label: 'Docente' }],
-        rows: tomorrowRows,
-      }) : EmptyState({ title: 'Mañana libre', message: 'No hay encuentros programados.', action: null })}
-          </div>
-          <div class="dash-col-12">
-            ${Card({
-        title: 'Síntesis de esta semana',
-        body: `<div style="display: flex; gap: var(--space-16); align-items: center;">
-                <div><strong style="font-size: var(--font-24);">${p.week_sessions_count}</strong><br><span style="color: var(--color-muted); font-size: var(--font-14)">Encuentros</span></div>
-                <div><strong style="font-size: var(--font-24);">${p.week_active_workshops_count}</strong><br><span style="color: var(--color-muted); font-size: var(--font-14)">Talleres activos</span></div>
-                <div><strong style="font-size: var(--font-24);">${p.week_facilitators_count}</strong><br><span style="color: var(--color-muted); font-size: var(--font-14)">Docentes implicados</span></div>
-                <div style="margin-left: auto;">${alertsHtml}</div>
-              </div>`
-      })}
-          </div>
-        </div>
-      `
-    });
-
-    // BLOCK 3: MONTHLY TACTICAL
-    const monthlySection = Section({
-      key: 'monthly_tactical',
-      title: 'Resumen Mensual Táctico',
-      description: 'Indicadores clave del mes en curso y comparativa.',
-      collapsible: true,
-      collapsed: store.state.collapsed.monthly_tactical,
-      content: `<div class="dash-kpis">${kpis.map((k) => KpiCard({
-        id: k.id,
-        label: k.label,
-        value: String(k.value),
-        delta: k.delta,
-        trend: k.trend,
-        sparkline: k.sparkline,
-      })).join('')}</div>`,
-    });
-
-    // BLOCK 4: TRENDS
     const trendSection = Section({
-      key: 'temporal_trend',
-      title: 'Tendencia Histórica',
-      description: 'Evolución a 6 meses de inscriptos e interacción.',
+      key: 'institutional_trend',
+      title: 'Tendencia',
+      description: 'Lectura historica subordinada al estado operativo y mensual.',
+      rightActions: `
+        <div class="dash-segmented" role="tablist" aria-label="Serie de tendencia">
+          <button type="button" class="dash-segmented-btn ${localState.trendMetric === 'enrollments' ? 'is-active' : ''}" data-trend-metric="enrollments">Inscripciones</button>
+          <button type="button" class="dash-segmented-btn ${localState.trendMetric === 'communications' ? 'is-active' : ''}" data-trend-metric="communications">Comunicaciones</button>
+          <button type="button" class="dash-segmented-btn is-disabled" disabled title="Preparado para futura integracion">Encuentros</button>
+          <button type="button" class="dash-segmented-btn is-disabled" disabled title="Preparado para futura integracion">Actividad docente</button>
+        </div>
+      `,
       collapsible: true,
-      collapsed: store.state.collapsed.temporal_trend,
-      content: `
-        <div class="dash-grid">
-          <div class="dash-col-12">${renderChartOrEmpty({
-        title: 'Tendencia de inscripciones',
-        subtitle: 'Últimos 6 meses',
-        chartId: 'dash-chart-enrollments',
-        chartType: 'line',
-        ariaLabel: 'Serie temporal de inscripciones de los últimos 6 meses',
-        rows: enrollmentTrendRows,
-        valueLabel: 'Inscripciones',
-        chartHeight: '260px',
-      })}</div>
-      </div>`
+      collapsed: Boolean(store.state.collapsed.institutional_trend),
+      content: hasTrendData
+        ? chartCard({
+          title: `Tendencia de ${activeTrend.label.toLowerCase()}`,
+          subtitle: activeTrend.subtitle,
+          chartId: 'dash-chart-main-trend',
+          chartType: 'line',
+          ariaLabel: `Serie temporal de ${activeTrend.label.toLowerCase()} en los ultimos seis meses`,
+          rows: activeTrend.rows,
+          valueLabel: activeTrend.label,
+          chartHeight: '220px',
+        })
+        : Card({
+          title: `Tendencia de ${activeTrend.label.toLowerCase()}`,
+          body: EmptyState({ title: 'Sin datos para tendencia', message: 'No hay volumen suficiente para mostrar serie temporal con el filtro actual.' }),
+        }),
     });
 
-    // BLOCK 5: ACUMULADO ANUAL
-    const y = opts.ytd || { workshops_total: 0, participants_total: 0, enrollments_total: 0, communications_total: 0 };
     const ytdSection = Section({
-      key: 'ytd_accumulated',
-      title: 'Vision anual acumulada',
-      description: 'Lectura acumulada desde inicio de año.',
+      key: 'ytd_vision',
+      title: 'Vision acumulada',
+      description: 'Cierre anual sobrio, sin competir con la lectura operativa.',
       collapsible: true,
-      collapsed: Boolean(store.state.collapsed.ytd_accumulated),
-      content: "<div class='dash-kpis'>"
-        + KpiCard({ id: 'ytd-workshops', label: 'Oferta dictada', value: String(y.workshops_total), delta: 'Acumulado anual', trend: 'Talleres', sparkline: [0, Number(y.workshops_total) || 0] })
-        + KpiCard({ id: 'ytd-participants', label: 'Audiencia unica', value: String(y.participants_total), delta: 'Acumulado anual', trend: 'Personas', sparkline: [0, Number(y.participants_total) || 0] })
-        + KpiCard({ id: 'ytd-enrollments', label: 'Inscripciones', value: String(y.enrollments_total), delta: 'Acumulado anual', trend: 'Cupos', sparkline: [0, Number(y.enrollments_total) || 0] })
-        + KpiCard({ id: 'ytd-communications', label: 'Conectividad', value: String(y.communications_total), delta: 'Acumulado anual', trend: 'Envios', sparkline: [0, Number(y.communications_total) || 0] })
-        + '</div>',
+      collapsed: Boolean(store.state.collapsed.ytd_vision),
+      content: `
+        <div class="dash-ytd-strip" role="list" aria-label="Vision anual acumulada">
+          <div class="dash-ytd-item" role="listitem"><span>Talleres</span><strong>${esc(String(ytd.workshops_total || 0))}</strong></div>
+          <div class="dash-ytd-item" role="listitem"><span>Participantes</span><strong>${esc(String(ytd.participants_total || 0))}</strong></div>
+          <div class="dash-ytd-item" role="listitem"><span>Inscripciones</span><strong>${esc(String(ytd.enrollments_total || 0))}</strong></div>
+          <div class="dash-ytd-item" role="listitem"><span>Comunicaciones</span><strong>${esc(String(ytd.communications_total || 0))}</strong></div>
+        </div>
+      `,
     });
+
     renderHost.innerHTML = `
-      <div class="dashboard-v2">
+      <div class="dashboard-v2 dashboard-v2-institutional">
         <div class="dash-container">
-          <header class="dash-page-header" style="flex-direction: column; gap: 16px;">
-            <div style="display: flex; justify-content: space-between; width: 100%; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
-              <div>
-                <h2 class="dash-page-title">Panel de Control</h2>
-                <p class="dash-page-subtitle">Rango activo: ${esc(activeRange)}. Modo: ${isAdvanced ? 'avanzada' : 'resumen'}.</p>
-              </div>
-              <div class="dash-actions" style="margin-left: auto;">
-                ${Button({ variant: 'secondary', size: 'sm', label: 'Exportar CSV', attrs: 'type="button" data-dashboard-export="1"' })}
-                ${Button({ variant: 'secondary', size: 'sm', label: 'Crear reporte', attrs: 'type="button" data-dashboard-report="1"' })}
-                ${Button({ variant: 'primary', size: 'sm', label: 'Nueva actividad', attrs: 'type="button" data-dashboard-new="1"' })}
-              </div>
+          <header class="dash-page-header dash-page-header-dashboard">
+            <div class="dash-page-headline">
+              <p class="dash-kicker">Lector de situacion institucional</p>
+              <h2 class="dash-page-title">Panel de Control</h2>
+              <p class="dash-page-subtitle">Orden de lectura: ahora, atencion, mes en curso y tendencia. Modo ${opts.dashboardMode === 'advanced' ? 'avanzado' : 'resumen'}.</p>
             </div>
-            
-            <div class="dash-filterbar" style="width: 100%; box-shadow: none; border: none; padding: 12px 0 0 0; border-top: 1px solid var(--color-border); border-radius: 0; background: transparent;">
-              <div class="dash-filter-grid" style="display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
-                <div class="dash-filter-field" style="flex: 1; min-width: 120px;">
-                  <label class="dash-filter-label" for="dash-range">Rango</label>
-                  <select id="dash-range" name="dashboard_range" class="dash-filter-control" style="width: 100%">
-                    <option value="7d" ${activeRange === '7d' ? 'selected' : ''}>7 días</option>
-                    <option value="30d" ${activeRange === '30d' ? 'selected' : ''}>30 días</option>
-                    <option value="90d" ${activeRange === '90d' ? 'selected' : ''}>90 días</option>
-                    <option value="all" ${activeRange === 'all' ? 'selected' : ''}>Todo</option>
-                  </select>
-                </div>
-                <div class="dash-filter-field" style="flex: 1; min-width: 120px;">
-                  <label class="dash-filter-label" for="dash-year">Año</label>
-                  <select id="dash-year" name="dashboard_year" class="dash-filter-control" style="width: 100%"><option value="">Todos</option>${years.map((y) => `<option value="${esc(y)}" ${String(filters.year) === String(y) ? 'selected' : ''}>${esc(y)}</option>`).join('')}</select>
-                </div>
-                <div class="dash-filter-field" style="flex: 1; min-width: 120px;">
-                  <label class="dash-filter-label" for="dash-status">Estado</label>
-                  <select id="dash-status" name="dashboard_status" class="dash-filter-control" style="width: 100%">
-                    <option value="">Todos</option>
-                    <option value="planned" ${filters.status === 'planned' ? 'selected' : ''}>Planificado</option>
-                    <option value="active" ${filters.status === 'active' ? 'selected' : ''}>Activo</option>
-                    <option value="finished" ${filters.status === 'finished' ? 'selected' : ''}>Finalizado</option>
-                  </select>
-                </div>
-                <div class="dash-filter-field" style="flex: 2; min-width: 200px;">
-                  <label class="dash-filter-label" for="dash-workshop">Taller específico</label>
-                  <select id="dash-workshop" name="dashboard_workshop" class="dash-filter-control" style="width: 100%">
-                    <option value="">Todos</option>
-                    ${filterWorkshops.map((w) => `<option value="${esc(w.id)}" ${String(filters.workshop) === String(w.id) ? 'selected' : ''}>${esc(w.name)} (${esc(w.cohort_year)})</option>`).join('')}
-                  </select>
-                </div>
-                <div class="dash-filter-actions" style="margin-left: auto; display: flex; gap: 8px;">
-                  ${Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-filter-apply="1"' })}
-                  ${Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-filter-reset="1"' })}
-                </div>
-              </div>
-              <div class="dash-filter-chips" style="margin-top: 12px;">${chips || '<span class="dash-chip">Sin filtros activos</span>'}</div>
+            <div class="dash-actions">
+              ${Button({ variant: 'secondary', size: 'sm', label: 'Exportar CSV', attrs: 'type="button" data-dashboard-export="1"' })}
+              ${Button({ variant: 'secondary', size: 'sm', label: 'Crear reporte', attrs: 'type="button" data-dashboard-report="1"' })}
+              ${Button({ variant: 'primary', size: 'sm', label: 'Nueva actividad', attrs: 'type="button" data-dashboard-new="1"' })}
             </div>
           </header>
 
-          ${pulseImmediateSection}
+          <div class="dash-filterbar">
+            <div class="dash-filter-grid">
+              <div class="dash-filter-field">
+                <label class="dash-filter-label" for="dash-range">Rango</label>
+                <select id="dash-range" name="dashboard_range" class="dash-filter-control">
+                  <option value="7d" ${activeRange === '7d' ? 'selected' : ''}>7 dias</option>
+                  <option value="30d" ${activeRange === '30d' ? 'selected' : ''}>30 dias</option>
+                  <option value="90d" ${activeRange === '90d' ? 'selected' : ''}>90 dias</option>
+                  <option value="all" ${activeRange === 'all' ? 'selected' : ''}>Todo</option>
+                </select>
+              </div>
+              <div class="dash-filter-field">
+                <label class="dash-filter-label" for="dash-year">Ano</label>
+                <select id="dash-year" name="dashboard_year" class="dash-filter-control">
+                  <option value="">Todos</option>
+                  ${years.map((year) => `<option value="${esc(year)}" ${String(filters.year) === String(year) ? 'selected' : ''}>${esc(year)}</option>`).join('')}
+                </select>
+              </div>
+              <div class="dash-filter-field">
+                <label class="dash-filter-label" for="dash-status">Estado</label>
+                <select id="dash-status" name="dashboard_status" class="dash-filter-control">
+                  <option value="">Todos</option>
+                  <option value="planned" ${filters.status === 'planned' ? 'selected' : ''}>Planificado</option>
+                  <option value="active" ${filters.status === 'active' ? 'selected' : ''}>Activo</option>
+                  <option value="finished" ${filters.status === 'finished' ? 'selected' : ''}>Finalizado</option>
+                </select>
+              </div>
+              <div class="dash-filter-field is-wide">
+                <label class="dash-filter-label" for="dash-workshop">Taller especifico</label>
+                <select id="dash-workshop" name="dashboard_workshop" class="dash-filter-control">
+                  <option value="">Todos</option>
+                  ${workshops.map((workshop) => `<option value="${esc(workshop.id)}" ${String(filters.workshop) === String(workshop.id) ? 'selected' : ''}>${esc(workshop.name)} (${esc(workshop.cohort_year)})</option>`).join('')}
+                </select>
+              </div>
+              <div class="dash-filter-actions">
+                ${Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-filter-apply="1"' })}
+                ${Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-filter-reset="1"' })}
+              </div>
+            </div>
+            <div class="dash-filter-chips">${chips || '<span class="dash-chip">Sin filtros activos</span>'}</div>
+          </div>
+
+          ${operationalSection}
           ${monthlySection}
           ${trendSection}
           ${ytdSection}
@@ -462,19 +461,15 @@
       </div>
     `;
 
-    const chartSpecs = [];
-    if (useCanvasCharts) {
-      if (hasEnrollmentData) {
-        chartSpecs.push(charts?.makeLineSpec?.({
-          key: 'dash-enroll-line',
-          selector: '#dash-chart-enrollments',
-          rows: enrollmentTrendRows,
-          datasetLabel: 'Inscripciones',
-          yLabel: 'Cantidad',
-        }));
-      }
-
-      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
+    if (useCanvasCharts && hasTrendData) {
+      const spec = charts?.makeLineSpec?.({
+        key: 'dash-main-trend',
+        selector: '#dash-chart-main-trend',
+        rows: activeTrend.rows,
+        datasetLabel: activeTrend.label,
+        yLabel: 'Cantidad',
+      });
+      charts?.mount?.(renderHost, [spec].filter(Boolean));
     }
 
     renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => {
@@ -488,9 +483,31 @@
       });
     });
 
-    renderHost.querySelector('[data-show-more="1"]')?.addEventListener('click', () => {
-      store.setRowsToShow(store.state.rowsToShow + 8);
-      render(opts);
+    renderHost.querySelector('[data-filter-apply="1"]')?.addEventListener('click', () => {
+      const next = {
+        year: renderHost.querySelector('#dash-year')?.value || '',
+        status: renderHost.querySelector('#dash-status')?.value || '',
+        workshop: renderHost.querySelector('#dash-workshop')?.value || '',
+      };
+      store.setFilter('range', renderHost.querySelector('#dash-range')?.value || '30d');
+      opts.onFilterChange?.(next);
+    });
+
+    renderHost.querySelector('[data-filter-reset="1"]')?.addEventListener('click', () => {
+      store.resetFilters();
+      opts.onFilterChange?.({ year: '', status: '', workshop: '' });
+    });
+
+    renderHost.querySelector('[data-dashboard-export="1"]')?.addEventListener('click', () => opts.onExport?.());
+    renderHost.querySelector('[data-dashboard-report="1"]')?.addEventListener('click', () => opts.onReport?.());
+    renderHost.querySelector('[data-dashboard-new="1"]')?.addEventListener('click', () => opts.onNewActivity?.());
+
+    renderHost.querySelectorAll('[data-open-workshops="1"]').forEach((btn) => {
+      btn.addEventListener('click', () => opts.onNewActivity?.());
+    });
+
+    renderHost.querySelectorAll('[data-alert-status]').forEach((btn) => {
+      btn.addEventListener('click', () => opts.onStatusDrilldown?.(btn.getAttribute('data-alert-status')));
     });
 
     renderHost.querySelectorAll('[data-workshop-detail]').forEach((btn) => {
@@ -501,69 +518,28 @@
       });
     });
 
-    renderHost.querySelector('[data-filter-apply="1"]')?.addEventListener('click', () => {
-      const next = {
-        year: renderHost.querySelector('#dash-year')?.value || '',
-        status: renderHost.querySelector('#dash-status')?.value || '',
-        workshop: renderHost.querySelector('#dash-workshop')?.value || '',
-      };
-      store.setFilter('range', renderHost.querySelector('#dash-range')?.value || '30d');
-      viewState.recentPage = 1;
-      opts.onFilterChange?.(next);
-    });
-
-    renderHost.querySelectorAll('[data-filter-reset="1"]').forEach(btn => btn.addEventListener('click', () => {
-      store.resetFilters();
-      viewState.recentPage = 1;
-      opts.onFilterChange?.({ year: '', status: '', workshop: '' });
-    }));
-
-    renderHost.querySelectorAll('[data-recent-page]').forEach((btn) => {
+    renderHost.querySelectorAll('[data-trend-metric]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const action = btn.getAttribute('data-recent-page');
-        if (action === 'prev') viewState.recentPage = Math.max(1, viewState.recentPage - 1);
-        if (action === 'next') viewState.recentPage += 1;
+        const metric = btn.getAttribute('data-trend-metric');
+        if (!metric || metric === localState.trendMetric) return;
+        localState.trendMetric = metric;
         render(opts);
       });
     });
 
-    renderHost.querySelector('[data-dashboard-export="1"]')?.addEventListener('click', () => opts.onExport?.());
-    renderHost.querySelector('[data-dashboard-report="1"]')?.addEventListener('click', () => opts.onReport?.());
-    renderHost.querySelector('[data-dashboard-new="1"]')?.addEventListener('click', () => opts.onNewActivity?.());
-
     renderHost.querySelectorAll('[data-kpi-id]').forEach((node) => {
       node.addEventListener('click', () => {
         const kpiId = node.getAttribute('data-kpi-id');
+        const currentKpi = monthlyKpis.find((kpi) => kpi.id === kpiId);
+        if (!currentKpi) return;
+
         store.setSelectedKpi(kpiId);
-
-        const currentKpi = kpis.find((k) => k.id === kpiId);
         const drawerRoot = renderHost.querySelector('#dash-drawer-root');
-
-        // Removed empty table, showing cleaner visual delta
-        const deltaText = currentKpi?.delta?.number !== undefined ? `${currentKpi.delta.number > 0 ? '+' : ''}${currentKpi.delta.number}%` : '';
-        const visualSummary = `
-          <div style="background: var(--color-surface); padding: var(--space-16); border-radius: var(--radius-10); border: 1px solid var(--color-border); margin-bottom: var(--space-16);">
-            <div style="font-size: var(--font-14); color: var(--color-muted); margin-bottom: var(--space-8);">Comparativa del período</div>
-            <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-               <div>
-                 <div style="font-size: var(--font-14); color: var(--color-muted);">Actual</div>
-                 <strong style="font-size: var(--font-24);">${esc(currentKpi?.value || 0)}</strong>
-               </div>
-               <div style="text-align: right;">
-                 <div style="font-size: var(--font-14); color: var(--color-muted);">Anterior</div>
-                 <strong style="font-size: var(--font-20); color: var(--color-muted);">${esc(currentKpi?.previous || 0)}</strong>
-                 ${deltaText ? `<div style="font-size: var(--font-12); font-weight: 600; color: var(--color-${currentKpi?.delta?.trend || 'neutral'});">${deltaText}</div>` : ''}
-               </div>
-            </div>
-          </div>
-        `;
-
-        drawerRoot.innerHTML = buildDrawer({
-          title: `Detalle del indicador: ${currentKpi?.label || 'Métrica'}`,
-          subtitle: `Rango estudiado: ${esc(activeRange)}`,
-          sparkline: currentKpi?.sparkline || [],
+        drawerRoot.innerHTML = drawerLayout({
+          title: `Detalle de ${currentKpi.label}`,
+          subtitle: `Rango aplicado: ${activeRange}`,
           explanation: explainKpi(kpiId),
-          table: visualSummary,
+          body: drawerBody(currentKpi, esc),
         });
 
         const close = () => { drawerRoot.innerHTML = ''; };
@@ -575,32 +551,8 @@
       });
     });
 
-    // Alert actions routing
-    renderHost.querySelectorAll('[data-alert-status]').forEach((btn) =>
-      btn.addEventListener('click', () => opts.onStatusDrilldown?.(btn.getAttribute('data-alert-status')))
-    );
-    renderHost.querySelectorAll('[data-alert-kpi]').forEach((btn) =>
-      btn.addEventListener('click', () => opts.onKpiDrilldown?.(btn.getAttribute('data-alert-kpi')))
-    );
-
-    // Flow routing for charts
-    renderHost.querySelectorAll('[data-chart-row-id]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const rowId = btn.getAttribute('data-chart-row-id');
-        if (['active', 'finished', 'dropped'].includes(rowId)) {
-          opts.onStatusDrilldown?.(rowId);
-        } else {
-          opts.onWorkshopDetail?.(rowId);
-        }
-      });
-    });
-
     return true;
   }
 
   window.DashboardPage = { render };
 })();
-
-
-
-

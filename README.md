@@ -128,6 +128,14 @@ python -m pytest tests
 
 ---
 
+## Novedades UI recientes / Recent UI updates
+
+- **Panel de Control institucional**: el Dashboard ahora prioriza lectura operativa en 4 niveles (Estado operativo -> Actividad del mes -> Tendencia -> Vision acumulada), con agenda visible Hoy/Manana, foco semanal y mejores senales de atencion.
+- **Tema visual renovado**: modo claro por defecto y switch persistente a modo oscuro para mejorar legibilidad y flexibilidad en distintos contextos de uso.
+- **Sidebar colapsada mejorada**: el estado colapsado funciona como icon rail compacta (iconos mas legibles, estado activo reforzado, tooltips en hover/focus y acciones inferiores simplificadas).
+
+---
+
 ## Variables de entorno
 
 Copiar `.env.example` y completar los valores requeridos:

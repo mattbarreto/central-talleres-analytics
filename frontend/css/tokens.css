@@ -33,24 +33,24 @@
   --color-warning: var(--warning);
 
   /* Paleta unificada del sistema – máximo contraste entre slots adyacentes */
-  --chart-1: #60a5fa;
-  /* Blue */
-  --chart-2: #34d399;
-  /* Emerald */
-  --chart-3: #fbbf24;
-  /* Amber */
-  --chart-4: #f87171;
-  /* Red */
-  --chart-5: #a78bfa;
-  /* Violet */
-  --chart-6: #38bdf8;
-  /* Sky */
-  --chart-7: #fb923c;
-  /* Orange */
-  --chart-8: #2dd4bf;
-  /* Teal */
-  --chart-9: #f472b6;
-  /* Pink */
-  --chart-10: #94a3b8;
+  --chart-1: #b24e39;
+  /* Terracotta */
+  --chart-2: #2f6f79;
+  /* Teal deep */
+  --chart-3: #c68a2f;
+  /* Ochre */
+  --chart-4: #4f6d3a;
+  /* Olive */
+  --chart-5: #8f4f7a;
+  /* Plum muted */
+  --chart-6: #28658f;
+  /* Blue steel */
+  --chart-7: #9b5f2f;
+  /* Clay */
+  --chart-8: #1f7f72;
+  /* Jade */
+  --chart-9: #b6485f;
+  /* Carmine */
+  --chart-10: #6a6f7f;
   /* Slate */
 }

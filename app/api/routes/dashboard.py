@@ -1,3 +1,4 @@
+from collections import Counter
 from datetime import datetime, timedelta, timezone
 import zoneinfo
 from typing import Annotated
@@ -249,59 +250,99 @@ def get_dashboard_pulse(
      .join(Workshop, WorkshopSession.workshop_id == Workshop.id)\
      .outerjoin(TeamMember, WorkshopSession.facilitator_id == TeamMember.id)
 
+    def normalize_topic(topic: str | None) -> str:
+        value = (topic or "").strip()
+        return value if value else "Sin tema"
+
+    def has_meaningful_topic(topic: str | None) -> bool:
+        value = (topic or "").strip().lower()
+        if not value:
+            return False
+        return value not in {"sin tema", "s/t", "pendiente", "por definir", "tbd"}
+
+    def map_session_row(result_row) -> PulseSessionRow:
+        status = result_row.WorkshopSession.status or "scheduled"
+        if status not in {"scheduled", "completed", "cancelled"}:
+            status = "scheduled"
+        return PulseSessionRow(
+            id=str(result_row.WorkshopSession.id),
+            workshop_id=str(result_row.WorkshopSession.workshop_id),
+            workshop_name=result_row.ws_name,
+            date=result_row.WorkshopSession.date.isoformat(),
+            start_time=result_row.WorkshopSession.start_time.strftime("%H:%M") if result_row.WorkshopSession.start_time else "",
+            end_time=result_row.WorkshopSession.end_time.strftime("%H:%M") if result_row.WorkshopSession.end_time else "",
+            topic=normalize_topic(result_row.WorkshopSession.topic),
+            facilitator_name=result_row.fac_name,
+            status=status,
+        )
+
+    def estimate_expected_participants(session_results: list) -> int:
+        workshop_ids = {row.WorkshopSession.workshop_id for row in session_results if row.WorkshopSession.workshop_id}
+        if not workshop_ids:
+            return 0
+        return db.query(func.count(func.distinct(Enrollment.participant_id))).filter(
+            Enrollment.workshop_id.in_(list(workshop_ids)),
+            Enrollment.status.in_(["enrolled", "active"]),
+        ).scalar() or 0
+
     # 1. Today
     today_results = base_query.filter(WorkshopSession.date == today_date).order_by(WorkshopSession.start_time).all()
-    today_sessions = [
-        PulseSessionRow(
-            id=str(s.WorkshopSession.id),
-            workshop_id=str(s.WorkshopSession.workshop_id),
-            workshop_name=s.ws_name,
-            date=s.WorkshopSession.date.isoformat(),
-            start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",
-            end_time=s.WorkshopSession.end_time.strftime("%H:%M") if s.WorkshopSession.end_time else "",
-            topic=s.WorkshopSession.topic or "Sin tema",
-            facilitator_name=s.fac_name
-        ) for s in today_results
-    ]
+    today_sessions = [map_session_row(row) for row in today_results]
 
     # 2. Tomorrow
     tomorrow_results = base_query.filter(WorkshopSession.date == tomorrow_date).order_by(WorkshopSession.start_time).all()
-    tomorrow_sessions = [
-        PulseSessionRow(
-            id=str(s.WorkshopSession.id),
-            workshop_id=str(s.WorkshopSession.workshop_id),
-            workshop_name=s.ws_name,
-            date=s.WorkshopSession.date.isoformat(),
-            start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",
-            end_time=s.WorkshopSession.end_time.strftime("%H:%M") if s.WorkshopSession.end_time else "",
-            topic=s.WorkshopSession.topic or "Sin tema",
-            facilitator_name=s.fac_name
-        ) for s in tomorrow_results
-    ]
+    tomorrow_sessions = [map_session_row(row) for row in tomorrow_results]
 
-    # 3. This Week synthesis
-    week_sessions_cnt = db.query(func.count(WorkshopSession.id)).filter(
-        WorkshopSession.date >= start_of_week,
-        WorkshopSession.date <= end_of_week
-    ).scalar() or 0
-
-    week_workshops_cnt = db.query(func.count(func.distinct(WorkshopSession.workshop_id))).filter(
-        WorkshopSession.date >= start_of_week,
-        WorkshopSession.date <= end_of_week
-    ).scalar() or 0
-    
-    week_facs_cnt = db.query(func.count(func.distinct(WorkshopSession.facilitator_id))).filter(
+    # 3. This Week synthesis (Monday-Sunday)
+    week_results = base_query.filter(
         WorkshopSession.date >= start_of_week,
         WorkshopSession.date <= end_of_week,
-        WorkshopSession.facilitator_id.isnot(None)
-    ).scalar() or 0
+    ).order_by(WorkshopSession.date, WorkshopSession.start_time).all()
+
+    week_sessions_cnt = len(week_results)
+    week_workshops_cnt = len({row.WorkshopSession.workshop_id for row in week_results if row.WorkshopSession.workshop_id})
+    week_facs_cnt = len({row.WorkshopSession.facilitator_id for row in week_results if row.WorkshopSession.facilitator_id})
+
+    weekday_names = {0: "Lun", 1: "Mar", 2: "Mie", 3: "Jue", 4: "Vie", 5: "Sab", 6: "Dom"}
+    day_counter = Counter(row.WorkshopSession.date for row in week_results if row.WorkshopSession.date)
+    peak_day_date = day_counter.most_common(1)[0][0] if day_counter else None
+    week_peak_day = (
+        f"{weekday_names.get(peak_day_date.weekday(), '')} {peak_day_date.strftime('%d/%m')}"
+        if peak_day_date
+        else None
+    )
+
+    hour_counter = Counter()
+    for row in week_results:
+        start_time = row.WorkshopSession.start_time
+        if not start_time:
+            continue
+        slot = f"{start_time.hour:02d}:00-{start_time.hour:02d}:59"
+        hour_counter[slot] += 1
+    week_peak_time_slot = hour_counter.most_common(1)[0][0] if hour_counter else None
+
+    week_sessions_without_topic_count = sum(
+        1 for row in week_results if not has_meaningful_topic(row.WorkshopSession.topic)
+    )
+    week_sessions_without_facilitator_count = sum(
+        1 for row in week_results if row.WorkshopSession.facilitator_id is None
+    )
+
+    today_expected_participants_estimate = estimate_expected_participants(today_results)
+    tomorrow_expected_participants_estimate = estimate_expected_participants(tomorrow_results)
 
     return DashboardPulseResponse(
         today_sessions=today_sessions,
         tomorrow_sessions=tomorrow_sessions,
         week_sessions_count=week_sessions_cnt,
         week_active_workshops_count=week_workshops_cnt,
-        week_facilitators_count=week_facs_cnt
+        week_facilitators_count=week_facs_cnt,
+        week_peak_day=week_peak_day,
+        week_peak_time_slot=week_peak_time_slot,
+        week_sessions_without_topic_count=week_sessions_without_topic_count,
+        week_sessions_without_facilitator_count=week_sessions_without_facilitator_count,
+        today_expected_participants_estimate=today_expected_participants_estimate,
+        tomorrow_expected_participants_estimate=tomorrow_expected_participants_estimate,
     )
 
 

@@ -58,9 +58,11 @@
     appLayout?.classList.toggle('sidebar-collapsed', normalized);
     const btn = document.getElementById('sidebar-collapse-btn');
     if (btn) {
+      const label = normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral';
       btn.setAttribute('aria-pressed', normalized ? 'true' : 'false');
-      btn.setAttribute('aria-label', normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral');
-      btn.setAttribute('title', normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral');
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+      btn.setAttribute('data-tooltip', label);
     }
     if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, normalized ? '1' : '0');
   };

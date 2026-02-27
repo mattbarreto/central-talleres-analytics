@@ -62,6 +62,7 @@ class PulseSessionRow(BaseModel):
     end_time: str
     topic: str
     facilitator_name: str | None = None
+    status: Literal["scheduled", "completed", "cancelled"] = "scheduled"
 
 class DashboardPulseResponse(BaseModel):
     today_sessions: list[PulseSessionRow]
@@ -69,6 +70,12 @@ class DashboardPulseResponse(BaseModel):
     week_sessions_count: int
     week_active_workshops_count: int
     week_facilitators_count: int
+    week_peak_day: str | None = None
+    week_peak_time_slot: str | None = None
+    week_sessions_without_topic_count: int = 0
+    week_sessions_without_facilitator_count: int = 0
+    today_expected_participants_estimate: int = 0
+    tomorrow_expected_participants_estimate: int = 0
 
 class DashboardYtdResponse(BaseModel):
     workshops_total: int

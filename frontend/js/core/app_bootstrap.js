@@ -9,6 +9,7 @@ const appViewUtils = window.AppViewUtils || null;
 const appTableUtils = window.AppTableUtils || null;
 const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
 const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
+const THEME_KEY = 'tc_theme';
 const metaSource = document.documentElement?.dataset || {};
 const APP_META = {
   author: metaSource.appAuthor || 'No definido',
@@ -170,9 +171,11 @@ function setSidebarCollapsed(collapsed, persist = true) {
   appLayout?.classList.toggle('sidebar-collapsed', normalized);
   const btn = document.getElementById('sidebar-collapse-btn');
   if (btn) {
+    const label = normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral';
     btn.setAttribute('aria-pressed', normalized ? 'true' : 'false');
-    btn.setAttribute('aria-label', normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral');
-    btn.setAttribute('title', normalized ? 'Expandir barra lateral' : 'Colapsar barra lateral');
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('title', label);
+    btn.setAttribute('data-tooltip', label);
   }
   if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, normalized ? '1' : '0');
 }
@@ -189,6 +192,41 @@ function getInitialSidebarCollapsed() {
   localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
   localStorage.removeItem(SIDEBAR_LEGACY_MODE_KEY);
   return collapsed;
+}
+
+function updateThemeButtons(theme) {
+  const nextLabel = theme === 'dark' ? 'Modo claro' : 'Modo oscuro';
+  const toggleBtn = document.getElementById('theme-toggle-btn');
+  if (toggleBtn) {
+    toggleBtn.textContent = nextLabel;
+    toggleBtn.setAttribute('aria-label', nextLabel);
+    toggleBtn.setAttribute('title', nextLabel);
+  }
+  const iconBtn = document.getElementById('theme-icon-btn');
+  if (iconBtn) {
+    iconBtn.setAttribute('aria-label', nextLabel);
+    iconBtn.setAttribute('title', nextLabel);
+  }
+}
+
+function applyTheme(theme, persist = true) {
+  const normalized = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', normalized);
+  updateThemeButtons(normalized);
+  if (persist) localStorage.setItem(THEME_KEY, normalized);
+}
+
+function initTheme() {
+  const stored = localStorage.getItem(THEME_KEY);
+  const initial = stored === 'dark' ? 'dark' : 'light';
+  applyTheme(initial, false);
+}
+
+function toggleTheme() {
+  const current = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+  const next = current === 'dark' ? 'light' : 'dark';
+  applyTheme(next, true);
+  if (getIsAuthenticated()) applyRoute();
 }
 
 function focusableIn(el) {
@@ -558,8 +596,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 
 document.getElementById('logout-btn').addEventListener('click', logout);
 document.getElementById('logout-icon-btn')?.addEventListener('click', logout);
+document.getElementById('theme-toggle-btn')?.addEventListener('click', toggleTheme);
+document.getElementById('theme-icon-btn')?.addEventListener('click', toggleTheme);
 document.getElementById('btn-about-system')?.addEventListener('click', openAboutSystem);
 document.getElementById('about-icon-btn')?.addEventListener('click', openAboutSystem);
+initTheme();
 hashRouter?.start?.();
 document.getElementById('mobile-toggle')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');

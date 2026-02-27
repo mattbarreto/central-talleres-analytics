@@ -55,6 +55,7 @@ class DashboardMetricsResponse(BaseModel):
 
 class PulseSessionRow(BaseModel):
     id: str
+    workshop_id: str
     workshop_name: str
     date: str
     start_time: str

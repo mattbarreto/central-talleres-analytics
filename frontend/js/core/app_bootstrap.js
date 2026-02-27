@@ -599,6 +599,12 @@ async function fetchDashboardMetrics(params = {}) {
   const q = toQuery(params);
   return api.get(`/dashboard/metrics${q ? `?${q}` : ''}`);
 }
+async function fetchDashboardPulse() {
+  return api.get('/dashboard/pulse');
+}
+async function fetchDashboardYtd() {
+  return api.get('/dashboard/ytd');
+}
 async function fetchInsights(params = {}) {
   const q = toQuery(params);
   return api.get(`/insights/overview${q ? `?${q}` : ''}`);
@@ -798,6 +804,8 @@ async function loadDashboard() {
 
     const renderDashboardV2 = async () => {
       let metrics = null;
+      let pulse = null;
+      let ytd = null;
       let dashboardError = false;
       let dashboardLoading = true;
 
@@ -886,12 +894,25 @@ async function loadDashboard() {
         else if (rangeKey === '180d') rangeDays = 180;
         else if (rangeKey === '365d') rangeDays = 365;
 
-        metrics = await fetchDashboardMetrics({
-          range_days: rangeDays,
-          cohort_year: state.dashboardYear || '',
-          status: state.dashboardStatus || '',
-          workshop_id: state.dashboardWorkshop || ''
-        });
+        const [metricsResponse, pulseResponse, ytdResponse] = await Promise.all([
+          fetchDashboardMetrics({
+            range_days: rangeDays,
+            cohort_year: state.dashboardYear || '',
+            status: state.dashboardStatus || '',
+            workshop_id: state.dashboardWorkshop || ''
+          }),
+          fetchDashboardPulse().catch((err) => {
+            console.error('Failed to fetch dashboard pulse:', err);
+            return null;
+          }),
+          fetchDashboardYtd().catch((err) => {
+            console.error('Failed to fetch dashboard ytd:', err);
+            return null;
+          }),
+        ]);
+        metrics = metricsResponse;
+        pulse = pulseResponse;
+        ytd = ytdResponse;
         dashboardLoading = false;
       } catch (err) {
         dashboardLoading = false;
@@ -902,6 +923,8 @@ async function loadDashboard() {
       await window.DashboardPage.render({
         ...renderOpts,
         metrics,
+        pulse,
+        ytd,
         dashboardError,
         dashboardLoading
       });

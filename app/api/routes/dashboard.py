@@ -254,6 +254,7 @@ def get_dashboard_pulse(
     today_sessions = [
         PulseSessionRow(
             id=str(s.WorkshopSession.id),
+            workshop_id=str(s.WorkshopSession.workshop_id),
             workshop_name=s.ws_name,
             date=s.WorkshopSession.date.isoformat(),
             start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",
@@ -268,6 +269,7 @@ def get_dashboard_pulse(
     tomorrow_sessions = [
         PulseSessionRow(
             id=str(s.WorkshopSession.id),
+            workshop_id=str(s.WorkshopSession.workshop_id),
             workshop_name=s.ws_name,
             date=s.WorkshopSession.date.isoformat(),
             start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",

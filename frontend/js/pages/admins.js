@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   async function render(opts) {
     const UI = window.DashboardUI || {};
     const esc = UI.esc;
@@ -7,13 +7,11 @@
     const root = opts.root;
     const rows = opts.rows || [];
     const pagination = opts.pagination || '';
-    const summary = opts.summary || { total: 0, createdThisMonth: 0, me: 0 };
-    const kpiDeltas = opts.kpiDeltas || {};
-    const delta = (key) => String(kpiDeltas[key] ?? '0%');
+    const filters = opts.filters || { q: '' };
 
     const table = rows.length
       ? `<div class="dash-table-wrap">
-          <table class="dash-table">
+          <table class="dash-table dash-table-compact">
             <thead>
               <tr>
                 <th>Nombre</th>
@@ -30,15 +28,16 @@
           ? '<span class="dash-chip" style="background:var(--color-primary); color:#fff;">Súper Admin</span>'
           : '<span class="dash-chip">Admin</span>';
         const isMeObj = a.isMe ? ' <span class="dash-chip" style="background:#e2e8f0; color:#475569;">Vos</span>' : '';
-
         return `<tr>
                   <td><strong>${name}</strong>${isMeObj}</td>
                   <td>${esc(a.email)}</td>
                   <td>${roleBadge}</td>
                   <td>${esc(a.created_at_label || '—')}</td>
                   <td class="text-right">
-                    <button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-edit="${esc(a.id)}" aria-label="Editar perfil">${UI.icon('edit')}</button>
-                    ${!a.isMe ? `<button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-a-delete="${esc(a.id)}" aria-label="Eliminar administrador">${UI.icon('trash')}</button>` : ''}
+                    <div class="dash-row-actions">
+                      <button class="dash-btn dash-btn-secondary dash-btn-sm" type="button" data-a-edit="${esc(a.id)}">Editar</button>
+                      ${!a.isMe ? `<button class="dash-btn dash-btn-danger dash-btn-sm" type="button" data-a-delete="${esc(a.id)}" aria-label="Eliminar administrador">Eliminar</button>` : ''}
+                    </div>
                   </td>
                 </tr>`;
       }).join('')}
@@ -53,24 +52,25 @@
           <header class="dash-page-header">
             <div>
               <h2 class="dash-page-title">Administradores</h2>
-              <p class="dash-page-subtitle">Gestión de acceso y cuentas con permisos.</p>
+              <p class="dash-page-subtitle">Gestión de cuentas con permisos.</p>
             </div>
             <div class="dash-actions">
               ${UI.Button({ variant: 'primary', size: 'md', label: 'Nuevo admin', attrs: 'type="button" data-a-new="1"' })}
             </div>
           </header>
 
-          ${UI.Section({
-      key: 'admins_summary',
-      title: 'Resumen',
-      description: 'Estado de cuentas administrativas.',
-      collapsible: false,
-      content: `<div class="dash-kpis">
-              ${UI.KpiCard({ id: 'a-total', label: 'Administradores', value: String(summary.total || 0), delta: delta('total'), trend: 'Usuarios' })}
-              ${UI.KpiCard({ id: 'a-month', label: 'Altas del mes', value: String(summary.createdThisMonth || 0), delta: delta('createdThisMonth'), trend: 'Nuevas cuentas' })}
-              ${UI.KpiCard({ id: 'a-me', label: 'Cuenta actual', value: String(summary.me || 0), delta: delta('me'), trend: 'Sesión' })}
-            </div>`
-    })}
+          <section class="dash-filterbar">
+            <div class="dash-filter-grid">
+              <div class="dash-filter-field is-wide">
+                <label class="dash-filter-label" for="a-q">Búsqueda</label>
+                <input id="a-q" name="admins_query" class="dash-filter-control" value="${esc(filters.q || '')}" placeholder="Nombre o correo…" />
+              </div>
+              <div class="dash-filter-actions">
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-a-apply="1"' })}
+                ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-a-reset="1"' })}
+              </div>
+            </div>
+          </section>
 
           ${UI.Section({
       key: 'admins_table',
@@ -83,7 +83,15 @@
       </div>
     `;
 
+    const emitFilter = () => opts.onFilterChange?.({ q: root.querySelector('#a-q')?.value || '' });
     root.querySelector('[data-a-new="1"]')?.addEventListener('click', () => opts.onNew?.());
+    root.querySelector('[data-a-apply="1"]')?.addEventListener('click', emitFilter);
+    root.querySelector('[data-a-reset="1"]')?.addEventListener('click', () => opts.onFilterChange?.({ q: '', reset: true }));
+    root.querySelector('#a-q')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      emitFilter();
+    });
     root.querySelectorAll('[data-a-edit]').forEach((el) => el.addEventListener('click', () => opts.onEdit?.(el.getAttribute('data-a-edit'))));
     root.querySelectorAll('[data-a-delete]').forEach((el) => el.addEventListener('click', () => opts.onDelete?.(el.getAttribute('data-a-delete'))));
     return true;
@@ -91,5 +99,3 @@
 
   window.AdminsPage = { render };
 })();
-
-

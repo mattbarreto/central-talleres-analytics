@@ -1,3 +1,6 @@
+import Chart from 'chart.js/auto';
+window.Chart = Chart;
+
 (function () {
   const rootChartMap = new WeakMap();
   let defaultsConfigured = false;

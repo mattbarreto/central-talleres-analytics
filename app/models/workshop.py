@@ -22,3 +22,4 @@ class Workshop(Base, UUIDMixin, TimestampMixin):
     enrollments = relationship("Enrollment", back_populates="workshop", cascade="all, delete-orphan")
     communications = relationship("Communication", back_populates="workshop", cascade="all, delete-orphan")
     staff_assignments = relationship("WorkshopStaffAssignment", back_populates="workshop", cascade="all, delete-orphan")
+    sessions = relationship("WorkshopSession", back_populates="workshop", cascade="all, delete-orphan")

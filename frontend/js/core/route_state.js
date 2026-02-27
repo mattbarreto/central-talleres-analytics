@@ -33,7 +33,7 @@
       mode: state.teamMode,
       p: state.tablePages.team,
     };
-    if (targetView === 'admins') params = { p: state.tablePages.admins };
+    if (targetView === 'admins') params = { q: state.adminSearch, p: state.tablePages.admins };
     return params;
   }
 
@@ -102,6 +102,7 @@
     }
 
     if (view === 'admins') {
+      state.adminSearch = safeParams.q || '';
       state.tablePages.admins = Math.max(1, Number(safeParams.p) || 1);
     }
   }

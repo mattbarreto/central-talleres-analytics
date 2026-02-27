@@ -16,7 +16,12 @@ from app.schemas.dashboard import (
     TrendRow,
     TopWorkshopRow,
     RecentActivityRow,
+    DashboardPulseResponse,
+    DashboardYtdResponse,
+    PulseSessionRow
 )
+from app.models.workshop_session import WorkshopSession
+from app.models.team_member import TeamMember
 
 router = APIRouter()
 
@@ -216,4 +221,112 @@ def get_dashboard_metrics(
         status_distribution=status_dist,
         top_workshops=top_workshops,
         recent_activity=recent_activities
+    )
+
+
+@router.get("/pulse", response_model=DashboardPulseResponse)
+def get_dashboard_pulse(
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_admin)
+):
+    """
+    Returns the immediate operative pulse for Today, Tomorrow and the current Week.
+    """
+    now_tz = datetime.now(TZ)
+    today_date = now_tz.date()
+    tomorrow_date = today_date + timedelta(days=1)
+    
+    # Calculate current week strictly (Monday to Sunday)
+    start_of_week = today_date - timedelta(days=today_date.weekday())
+    end_of_week = start_of_week + timedelta(days=6)
+
+    # Base query for sessions joining Workshop and Facilitator
+    base_query = db.query(
+        WorkshopSession, 
+        Workshop.name.label("ws_name"), 
+        TeamMember.name.label("fac_name")
+    ).select_from(WorkshopSession)\
+     .join(Workshop, WorkshopSession.workshop_id == Workshop.id)\
+     .outerjoin(TeamMember, WorkshopSession.facilitator_id == TeamMember.id)
+
+    # 1. Today
+    today_results = base_query.filter(WorkshopSession.date == today_date).order_by(WorkshopSession.start_time).all()
+    today_sessions = [
+        PulseSessionRow(
+            id=str(s.WorkshopSession.id),
+            workshop_name=s.ws_name,
+            date=s.WorkshopSession.date.isoformat(),
+            start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",
+            end_time=s.WorkshopSession.end_time.strftime("%H:%M") if s.WorkshopSession.end_time else "",
+            topic=s.WorkshopSession.topic or "Sin tema",
+            facilitator_name=s.fac_name
+        ) for s in today_results
+    ]
+
+    # 2. Tomorrow
+    tomorrow_results = base_query.filter(WorkshopSession.date == tomorrow_date).order_by(WorkshopSession.start_time).all()
+    tomorrow_sessions = [
+        PulseSessionRow(
+            id=str(s.WorkshopSession.id),
+            workshop_name=s.ws_name,
+            date=s.WorkshopSession.date.isoformat(),
+            start_time=s.WorkshopSession.start_time.strftime("%H:%M") if s.WorkshopSession.start_time else "",
+            end_time=s.WorkshopSession.end_time.strftime("%H:%M") if s.WorkshopSession.end_time else "",
+            topic=s.WorkshopSession.topic or "Sin tema",
+            facilitator_name=s.fac_name
+        ) for s in tomorrow_results
+    ]
+
+    # 3. This Week synthesis
+    week_sessions_cnt = db.query(func.count(WorkshopSession.id)).filter(
+        WorkshopSession.date >= start_of_week,
+        WorkshopSession.date <= end_of_week
+    ).scalar() or 0
+
+    week_workshops_cnt = db.query(func.count(func.distinct(WorkshopSession.workshop_id))).filter(
+        WorkshopSession.date >= start_of_week,
+        WorkshopSession.date <= end_of_week
+    ).scalar() or 0
+    
+    week_facs_cnt = db.query(func.count(func.distinct(WorkshopSession.facilitator_id))).filter(
+        WorkshopSession.date >= start_of_week,
+        WorkshopSession.date <= end_of_week,
+        WorkshopSession.facilitator_id.isnot(None)
+    ).scalar() or 0
+
+    return DashboardPulseResponse(
+        today_sessions=today_sessions,
+        tomorrow_sessions=tomorrow_sessions,
+        week_sessions_count=week_sessions_cnt,
+        week_active_workshops_count=week_workshops_cnt,
+        week_facilitators_count=week_facs_cnt
+    )
+
+
+@router.get("/ytd", response_model=DashboardYtdResponse)
+def get_dashboard_ytd(
+    db: Session = Depends(get_db),
+    _: str = Depends(get_current_admin)
+):
+    """
+    Returns Accumulated Year-To-Date (YTD) metrics.
+    """
+    now_tz = datetime.now(TZ)
+    # Beginning of the current year
+    start_of_year = datetime(year=now_tz.year, month=1, day=1, tzinfo=TZ)
+    
+    workshops_total = db.query(func.count(Workshop.id)).filter(Workshop.created_at >= start_of_year).scalar() or 0
+    enrollments_total = db.query(func.count(Enrollment.id)).filter(Enrollment.created_at >= start_of_year).scalar() or 0
+    communications_total = db.query(func.count(Communication.id)).filter(Communication.created_at >= start_of_year).scalar() or 0
+    
+    # Unique participants this year
+    participants_total = db.query(func.count(func.distinct(Enrollment.participant_id))).filter(
+        Enrollment.created_at >= start_of_year
+    ).scalar() or 0
+
+    return DashboardYtdResponse(
+        workshops_total=workshops_total,
+        participants_total=participants_total,
+        enrollments_total=enrollments_total,
+        communications_total=communications_total
     )

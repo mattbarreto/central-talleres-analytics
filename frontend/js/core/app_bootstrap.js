@@ -1837,9 +1837,2213 @@ async function loadWorkshops() {
       onEdit: (id) => openWorkshopForm(id),
       onDelete: (id) => deleteWorkshop(id),
       onNew: () => openWorkshopForm(),
+      onAgenda: (id) => window.openWorkshopAgenda?.(id),
     });
   } catch { toast('Error al cargar talleres', 'error'); }
 }
+
+window.openWorkshopAgenda = async function (workshopId) {
+
+
+
+
+  try {
+
+
+
+
+    const normalizedWorkshopId = String(workshopId);
+
+
+
+
+    const workshop = state.workshops.find((w) => String(w.id) === normalizedWorkshopId)
+
+
+
+
+      || await api.get(`/workshops/${normalizedWorkshopId}`);
+
+
+
+
+    const res = await api.get(`/workshops/${normalizedWorkshopId}/sessions`);
+
+
+
+
+    const sessions = Array.isArray(res) ? res : [];
+
+
+
+
+    const teamMembers = state.team_members || await fetchTeamMembers();
+
+
+
+
+
+
+
+
+
+    let viewMode = 'list'; // can be 'list', 'single', 'bulk', 'bulk-preview'
+
+
+
+
+    let editModeData = null;
+
+
+
+
+    let bulkPreviewPayloads = [];
+
+
+
+
+    let bulkPreviewWarnings = [];
+
+
+
+
+
+
+
+
+
+    // Global state for agenda interactions
+
+
+
+
+    window.AgendaState = window.AgendaState || {};
+
+
+
+
+    window.AgendaState.selectedSessions = window.AgendaState.selectedSessions || new Set();
+
+
+
+
+
+
+
+
+
+    // Toggle handlers
+
+
+
+
+    window.AgendaState.toggleSelection = (id) => {
+
+
+
+
+      if (window.AgendaState.selectedSessions.has(id)) window.AgendaState.selectedSessions.delete(id);
+
+
+
+
+      else window.AgendaState.selectedSessions.add(id);
+
+
+
+
+      window.setAgendaView('list');
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.AgendaState.toggleAll = (checked) => {
+
+
+
+
+      if (checked) {
+
+
+
+
+        sessions.forEach(s => window.AgendaState.selectedSessions.add(s.id));
+
+
+
+
+      } else {
+
+
+
+
+        window.AgendaState.selectedSessions.clear();
+
+
+
+
+      }
+
+
+
+
+      window.setAgendaView('list');
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.AgendaState.clearSelection = () => {
+
+
+
+
+      window.AgendaState.selectedSessions.clear();
+
+
+
+
+      window.setAgendaView('list');
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.AgendaState.confirmBulkDelete = async () => {
+
+
+
+
+      const selCount = window.AgendaState.selectedSessions.size;
+
+
+
+
+      const confirmMsg = `¿Estás seguro de que deseas eliminar ${selCount} encuentro(s) seleccionado(s)?\n\nEsta acción NO elimina el taller general. Si eliminas todos los encuentros, el taller quedará con la Agenda vacía.`;
+
+
+
+
+      if (!confirm(confirmMsg)) return;
+
+
+
+
+
+
+
+
+
+      try {
+
+
+
+
+        await api.del(`/workshops/${normalizedWorkshopId}/sessions/bulk`, Array.from(window.AgendaState.selectedSessions));
+
+
+
+
+        window.AgendaState.selectedSessions.clear();
+
+
+
+
+        toast(`${selCount} encuentros eliminados con éxito.`, 'success');
+
+
+
+
+        window.openWorkshopAgenda(normalizedWorkshopId); // Recargar
+
+
+
+
+      } catch (err) {
+
+
+
+
+        console.error(err);
+
+
+
+
+        toast('Error al tratar de eliminar los encuentros', 'error');
+
+
+
+
+      }
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    const renderStates = () => {
+
+
+
+
+      const UI = window.DashboardUI || {};
+
+
+
+
+      const esc = UI.esc || escapeHTML;
+
+
+
+
+
+
+
+
+
+      let listHTML = '';
+
+
+
+
+      if (sessions.length) {
+
+
+
+
+        const allSelected = sessions.every(s => window.AgendaState.selectedSessions.has(s.id));
+
+
+
+
+
+
+
+
+
+        listHTML = `<div class="dash-table-wrap" style="overflow-x: auto;">
+
+
+
+
+          <table style="width: 100%; border-collapse: collapse;">
+
+
+
+
+            <thead>
+
+
+
+
+              <tr style="border-bottom: 1px solid var(--border-color);">
+
+
+
+
+                <th style="padding: 12px; width: 40px; text-align: center;"><input type="checkbox" onchange="window.AgendaState.toggleAll(this.checked)" ${allSelected ? 'checked' : ''}></th>
+
+
+
+
+                <th style="padding: 12px; text-align: left;">Encuentro / Tema</th>
+
+
+
+
+                <th style="padding: 12px; text-align: left;">Fecha y Hora</th>
+
+
+
+
+                <th style="padding: 12px; text-align: left;">Docente</th>
+
+
+
+
+                <th style="padding: 12px; text-align: right;">Acciones</th>
+
+
+
+
+              </tr>
+
+
+
+
+            </thead>
+
+
+
+
+            <tbody>
+
+
+
+
+              ${sessions.map((s, idx) => {
+
+
+
+
+          const fac = teamMembers.find(t => t.id === s.facilitator_id);
+
+
+
+
+          const facName = fac ? fac.name : 'No asignado';
+
+
+
+
+          const isSelected = window.AgendaState.selectedSessions.has(s.id);
+
+
+
+
+          const bgStyle = isSelected ? 'background: rgba(99, 102, 241, 0.08);' : '';
+
+
+
+
+
+
+
+
+
+          return `<tr style="border-bottom: 1px solid var(--border-color); ${bgStyle}">
+
+
+
+
+                  <td style="padding: 12px; text-align: center; vertical-align: middle;">
+
+
+
+
+                    <input type="checkbox" value="${s.id}" ${isSelected ? 'checked' : ''} onchange="window.AgendaState.toggleSelection('${s.id}')">
+
+
+
+
+                  </td>
+
+
+
+
+                  <td style="padding: 12px;"><strong>${esc(s.topic || 'Sin tema')}</strong><br><small class="dash-page-subtitle">Encuentro ${s.session_order || idx + 1}</small></td>
+
+
+
+
+                  <td style="padding: 12px;">${esc(s.date)}<br><small class="dash-page-subtitle">${esc((s.start_time || '').slice(0, 5))} - ${esc((s.end_time || '').slice(0, 5))}</small></td>
+
+
+
+
+                  <td style="padding: 12px;">${esc(facName)}</td>
+
+
+
+
+                  <td style="padding: 12px; text-align: right;">
+
+
+
+
+                    <div style="display:flex; gap:8px; justify-content:flex-end;">
+
+
+
+
+                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" onclick="editSession('${s.id}')">Editar</button>
+
+
+
+
+                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm dash-page-subtitle" onclick="deleteSession('${s.id}')">Eliminar</button>
+
+
+
+
+                    </div>
+
+
+
+
+                  </td>
+
+
+
+
+                </tr>`;
+
+
+
+
+        }).join('')}
+
+
+
+
+            </tbody>
+
+
+
+
+          </table>
+
+
+
+
+        </div>`;
+
+
+
+
+
+
+
+
+
+        // Floating contextual Action Bar
+
+
+
+
+        if (window.AgendaState.selectedSessions.size > 0) {
+
+
+
+
+          const selCount = window.AgendaState.selectedSessions.size;
+
+
+
+
+          listHTML += `
+
+
+
+
+            <div style="background: var(--bg-card-hover); padding: 12px 16px; margin-top: 1rem; border-radius: 8px; border: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+
+
+
+
+              <span style="font-weight: 500; color: var(--color-primary, #6366f1);">${selCount} encuentro${selCount > 1 ? 's' : ''} seleccionado${selCount > 1 ? 's' : ''}</span>
+
+
+
+
+              <div style="display: flex; gap: 8px;">
+
+
+
+
+                <button class="dash-btn dash-btn-ghost dash-btn-sm" onclick="window.AgendaState.clearSelection()">Cancelar selección</button>
+
+
+
+
+                <button class="dash-btn dash-btn-danger dash-btn-sm" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444;" onclick="window.AgendaState.confirmBulkDelete()">Eliminar seleccionados</button>
+
+
+
+
+              </div>
+
+
+
+
+            </div>
+
+
+
+
+          `;
+
+
+
+
+        }
+
+
+
+
+      } else {
+
+
+
+
+        listHTML = UI.EmptyState
+
+
+
+
+          ? UI.EmptyState({ title: 'Agenda vacía', message: 'No hay encuentros registrados aún.', action: null })
+
+
+
+
+          : '<p class="muted">No hay encuentros registrados aún.</p>';
+
+
+
+
+      }
+
+
+
+
+
+
+
+
+
+      const listActionsHTML = `
+
+
+
+
+        <div style="display: flex; gap: 12px; margin-top: 1rem; flex-wrap: wrap;">
+
+
+
+
+          <button class="dash-btn dash-btn-primary" onclick="setAgendaView('bulk')">Generar cursada automática</button>
+
+
+
+
+          <button class="btn btn-ghost" onclick="setAgendaView('single')">Agregar encuentro individual</button>
+
+
+
+
+        </div>
+
+
+
+
+      `;
+
+
+
+
+
+
+
+
+
+      const singleFormHTML = `
+
+
+
+
+        <form id="new-session-form" data-session-id="${editModeData?.id || ''}" style="margin-top: 1rem;">
+
+
+
+
+          <div style="margin-bottom: 1.5rem;">
+
+
+
+
+            <h4 style="margin: 0;">${editModeData ? 'Editar encuentro' : 'Encuentro individual'}</h4>
+
+
+
+
+            <p class="dash-page-subtitle" style="margin-top: 4px; font-size: 0.9rem;">Completa la información del encuentro.</p>
+
+
+
+
+          </div>
+
+
+
+
+          <div class="form-row" style="display:flex; flex-direction:column; gap:16px;">
+
+
+
+
+            <div class="form-group"><label class="form-label">Fecha</label><input class="form-input" name="date" type="date" value="${esc(editModeData?.date || '')}" required></div>
+
+
+
+
+            <div style="display:flex; gap:16px;">
+
+
+
+
+              <div class="form-group" style="flex:1"><label class="form-label">Inicio</label><input class="form-input" name="start_time" type="time" value="${esc((editModeData?.start_time || '').slice(0, 5))}" required></div>
+
+
+
+
+              <div class="form-group" style="flex:1"><label class="form-label">Fin</label><input class="form-input" name="end_time" type="time" value="${esc((editModeData?.end_time || '').slice(0, 5))}" required></div>
+
+
+
+
+            </div>
+
+
+
+
+          </div>
+
+
+
+
+          <div class="form-row" style="display:flex; flex-direction:column; gap:16px; margin-top: 16px;">
+
+
+
+
+            <div class="form-group"><label class="form-label">Tema / Contenido</label><input class="form-input" name="topic" value="${esc(editModeData?.topic || '')}" required></div>
+
+
+
+
+            <div class="form-group">
+
+
+
+
+              <label class="form-label">Docente</label>
+
+
+
+
+              <select class="form-select" name="facilitator_id">
+
+
+
+
+                <option value="">-- Sin asignar --</option>
+
+
+
+
+                ${teamMembers.map(t => `<option value="${esc(t.id)}" ${editModeData?.facilitator_id === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}
+
+
+
+
+              </select>
+
+
+
+
+            </div>
+
+
+
+
+          </div>
+
+
+
+
+          <div style="text-align: right; margin-top: 2rem;"><button type="submit" class="dash-btn dash-btn-primary">Guardar encuentro</button></div>
+
+
+
+
+        </form>
+
+
+
+
+      `;
+
+
+
+
+
+
+
+
+
+      // Helper vars for workshop range
+
+
+
+
+      const wStart = workshop.start_date || '';
+
+
+
+
+      const wEnd = workshop.end_date || '';
+
+
+
+
+      const wLength = wStart && wEnd ? `<small class="dash-page-subtitle">El taller corre desde ${esc(wStart)} hasta ${esc(wEnd)}.</small>` : '<small class="dash-page-subtitle">¡El taller no tiene un rango de fechas definido! Editalo primero.</small>';
+
+
+
+
+
+
+
+
+
+      const bulkFormHTML = `
+
+
+
+
+        <form id="bulk-session-form" style="margin-top: 1rem;">
+
+
+
+
+          <div style="margin-bottom: 1.5rem;">
+
+
+
+
+            <h4 style="margin: 0;">Generador masivo de cursada</h4>
+
+
+
+
+            ${wLength}
+
+
+
+
+          </div>
+
+
+
+
+          <div class="dash-card-body" style="padding: 0;">
+
+
+
+
+            <div class="form-group">
+
+
+
+
+              <label class="form-label">Días de cursada</label>
+
+
+
+
+              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="1"> Lunes</label>
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="2"> Martes</label>
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="3"> Miércoles</label>
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="4"> Jueves</label>
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="5"> Viernes</label>
+
+
+
+
+                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="6"> Sábado</label>
+
+
+
+
+              </div>
+
+
+
+
+            </div>
+
+
+
+
+            <div class="form-row">
+
+
+
+
+              <div class="form-group"><label class="form-label">Horario Inicio</label><input class="form-input" name="start_time" type="time" required></div>
+
+
+
+
+              <div class="form-group"><label class="form-label">Horario Cierre</label><input class="form-input" name="end_time" type="time" required></div>
+
+
+
+
+              <div class="form-group">
+
+
+
+
+                <label class="form-label">Docente General</label>
+
+
+
+
+                <select class="form-select" name="facilitator_id">
+
+
+
+
+                  <option value="">-- Sin asignar --</option>
+
+
+
+
+                  ${teamMembers.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}
+
+
+
+
+                </select>
+
+
+
+
+              </div>
+
+
+
+
+            </div>
+
+
+
+
+            <div class="form-group">
+
+
+
+
+              <label class="form-label">Temario por encuentro (Copia y pega tu programa. Un tema por línea)</label>
+
+
+
+
+              <div class="dash-helper-note" style="margin-bottom: 8px; font-size: 0.85rem; color: var(--dash-page-subtitle)">El sistema creará las fechas de los encuentros guiándose por el inicio y fin del taller. A cada fecha le asignará consecutivamente el tema leído línea por línea.</div>
+
+
+
+
+              <textarea class="form-input" name="topics_list" rows="5" placeholder="Tema 1: Introducción\nTema 2: Desarrollo\n..."></textarea>
+
+
+
+
+            </div>
+
+
+
+
+            <div style="text-align: right; margin-top: 1rem;"><button type="submit" class="dash-btn dash-btn-primary">Generar encuentros base</button></div>
+
+
+
+
+          </div>
+
+
+
+
+        </form>
+
+
+
+
+      `;
+
+
+
+
+
+
+
+
+
+      const previewHTML = `
+
+
+
+
+        <div style="margin-top: 1rem;">
+
+
+
+
+          <div style="margin-bottom: 1.5rem;">
+
+
+
+
+            <h4 style="margin: 0;">Previsualización de cursada</h4>
+
+
+
+
+            <small class="dash-page-subtitle">Revisa como quedará la agenda antes de confirmarla.</small>
+
+
+
+
+          </div>
+
+
+
+
+          
+
+
+
+
+          ${bulkPreviewWarnings.length ? `
+
+
+
+
+            <div style="background: var(--bg-warning); color: var(--text-warning); padding: 12px; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;">
+
+
+
+
+              <strong style="display:block; margin-bottom: 4px;">Atención:</strong>
+
+
+
+
+              <ul style="margin: 0; padding-left: 1.5rem;">
+
+
+
+
+                ${bulkPreviewWarnings.map(w => `<li>${w}</li>`).join('')}
+
+
+
+
+              </ul>
+
+
+
+
+            </div>
+
+
+
+
+          ` : ''}
+
+
+
+
+
+
+
+
+
+          <div class="dash-table-wrap" style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;">
+
+
+
+
+            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+
+
+
+
+              <thead style="position: sticky; top: 0; background: var(--color-surface); z-index: 10;">
+
+
+
+
+                <tr style="border-bottom: 1px solid var(--border-color);">
+
+
+
+
+                  <th style="padding: 12px; text-align: left;">N°</th>
+
+
+
+
+                  <th style="padding: 12px; text-align: left;">Fecha y Hora</th>
+
+
+
+
+                  <th style="padding: 12px; text-align: left;">Tema</th>
+
+
+
+
+                  <th style="padding: 12px; text-align: left;">Docente</th>
+
+
+
+
+                </tr>
+
+
+
+
+              </thead>
+
+
+
+
+              <tbody>
+
+
+
+
+                ${bulkPreviewPayloads.map((p, i) => {
+
+
+
+
+        const fac = teamMembers.find(t => t.id === p.facilitator_id);
+
+
+
+
+        const isMissingTopic = p.topic.startsWith('Encuentro sin tema');
+
+
+
+
+        return `<tr style="border-bottom: 1px solid var(--border-color);">
+
+
+
+
+                    <td style="padding: 8px 12px;" class="dash-page-subtitle">${p.session_order}</td>
+
+
+
+
+                    <td style="padding: 8px 12px;"><strong>${p.date}</strong><br><small class="dash-page-subtitle">${p.start_time.slice(0, 5)} - ${p.end_time.slice(0, 5)}</small></td>
+
+
+
+
+                    <td style="padding: 8px 12px; ${isMissingTopic ? 'color: var(--dash-page-subtitle); font-style: italic;' : ''}">${esc(p.topic)}</td>
+
+
+
+
+                    <td style="padding: 8px 12px;">${fac ? esc(fac.name) : '<span class="dash-page-subtitle">Sin asignar</span>'}</td>
+
+
+
+
+                  </tr>`;
+
+
+
+
+      }).join('')}
+
+
+
+
+              </tbody>
+
+
+
+
+            </table>
+
+
+
+
+          </div>
+
+
+
+
+
+
+
+
+
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+
+
+
+
+            <span class="dash-page-subtitle">Total a crear: <strong>${bulkPreviewPayloads.length}</strong> encuentros.</span>
+
+
+
+
+            <button type="button" class="dash-btn dash-btn-primary" id="btn-confirm-bulk" ${bulkPreviewWarnings.some(w => w.includes('solapa')) ? 'disabled' : ''}>Confirmar y generar</button>
+
+
+
+
+          </div>
+
+
+
+
+        </div>
+
+
+
+
+      `;
+
+
+
+
+
+
+
+
+
+      // Helper para renderizar listado
+
+
+
+
+      const renderListOnly = () => {
+
+
+
+
+        return listHTML + listActionsHTML;
+
+
+
+
+      };
+
+
+
+
+
+
+
+
+
+      // Helper para renderizar Drawer
+
+
+
+
+      const renderDrawerOnly = () => {
+
+
+
+
+        if (viewMode === 'list') return '';
+
+
+
+
+
+
+
+
+
+        const withDrawer = (content, width = '440px') => `
+
+
+
+
+          <div class="dash-drawer-backdrop" onclick="setAgendaView('list')" style="display: block; z-index: 10400;"></div>
+
+
+
+
+          <div class="dash-drawer" style="width: min(${width}, 95vw); display: block; z-index: 10500; right: 0; box-shadow: -4px 0 24px rgba(0,0,0,0.15); animation: dashDrawerSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
+
+
+
+
+            <div style="display:flex; justify-content:flex-end; margin-bottom: 1rem;">
+
+
+
+
+              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" onclick="setAgendaView('${viewMode === 'bulk-preview' ? 'bulk' : 'list'}')">Cerrar</button>
+
+
+
+
+            </div>
+
+
+
+
+            ${content}
+
+
+
+
+          </div>
+
+
+
+
+        `;
+
+
+
+
+
+
+
+
+
+        if (viewMode === 'bulk-preview') return withDrawer(previewHTML, '700px');
+
+
+
+
+        if (viewMode === 'bulk') return withDrawer(bulkFormHTML, '500px');
+
+
+
+
+        if (viewMode === 'single') return withDrawer(singleFormHTML, '440px');
+
+
+
+
+        return '';
+
+
+
+
+      };
+
+
+
+
+
+
+
+
+
+      return { list: renderListOnly(), drawer: renderDrawerOnly() };
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.setAgendaView = (mode, data = null) => {
+
+
+
+
+      viewMode = mode;
+
+
+
+
+      editModeData = data;
+
+
+
+
+
+
+
+
+
+      const states = renderStates();
+
+
+
+
+
+
+
+
+
+      // View normal inside Modal
+
+
+
+
+      const cnt = document.getElementById('agenda-modal-content');
+
+
+
+
+      if (cnt) {
+
+
+
+
+        cnt.innerHTML = states.list;
+
+
+
+
+      }
+
+
+
+
+
+
+
+
+
+      // Drawer attached directly to Body (bypassing Modal Stacking Context)
+
+
+
+
+      let drawerRoot = document.getElementById('agenda-drawer-root');
+
+
+
+
+      if (!drawerRoot) {
+
+
+
+
+        drawerRoot = document.createElement('div');
+
+
+
+
+        drawerRoot.id = 'agenda-drawer-root';
+
+
+
+
+        document.body.appendChild(drawerRoot);
+
+
+
+
+      }
+
+
+
+
+      drawerRoot.innerHTML = states.drawer;
+
+
+
+
+
+
+
+
+
+      attachFormListeners();
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.editSession = (sessionId) => {
+
+
+
+
+      const targetSession = sessions.find(s => s.id === sessionId);
+
+
+
+
+      if (!targetSession) return;
+
+
+
+
+      window.setAgendaView('single', targetSession);
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    window.deleteSession = async (sessionId) => {
+
+
+
+
+      if (!confirm('¿Seguro que deseas eliminar este encuentro?')) return;
+
+
+
+
+      try {
+
+
+
+
+        await api.del(`/workshops/${normalizedWorkshopId}/sessions/${sessionId}`);
+
+
+
+
+        toast('Encuentro eliminado', 'success');
+
+
+
+
+        closeModal();
+
+
+
+
+        window.openWorkshopAgenda(normalizedWorkshopId);
+
+
+
+
+      } catch (err) { toast(err.message, 'error'); }
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const attachFormListeners = () => {
+
+
+
+
+      // Single create or edit handler
+
+
+
+
+      const sForm = document.getElementById('new-session-form');
+
+
+
+
+      if (sForm) {
+
+
+
+
+        sForm.onsubmit = async (e) => {
+
+
+
+
+          e.preventDefault();
+
+
+
+
+          const btn = sForm.querySelector('button[type="submit"]');
+
+
+
+
+          if (btn) btn.disabled = true;
+
+
+
+
+          try {
+
+
+
+
+            const formData = new FormData(sForm);
+
+
+
+
+            const payload = Object.fromEntries(formData.entries());
+
+
+
+
+            payload.start_time = `${payload.start_time}:00`;
+
+
+
+
+            payload.end_time = `${payload.end_time}:00`;
+
+
+
+
+            if (!payload.facilitator_id) delete payload.facilitator_id;
+
+
+
+
+
+
+
+
+
+            const sid = sForm.getAttribute('data-session-id');
+
+
+
+
+            if (sid) {
+
+
+
+
+              await api.put(`/workshops/${normalizedWorkshopId}/sessions/${sid}`, payload);
+
+
+
+
+              toast('Encuentro actualizado', 'success');
+
+
+
+
+            } else {
+
+
+
+
+              await api.post(`/workshops/${normalizedWorkshopId}/sessions`, payload);
+
+
+
+
+              toast('Encuentro agregado', 'success');
+
+
+
+
+            }
+
+
+
+
+            closeModal();
+
+
+
+
+            window.openWorkshopAgenda(normalizedWorkshopId);
+
+
+
+
+          } catch (err) {
+
+
+
+
+            toast(err.message || 'Error al guardar', 'error');
+
+
+
+
+            if (btn) btn.disabled = false;
+
+
+
+
+          }
+
+
+
+
+        };
+
+
+
+
+      }
+
+
+
+
+
+
+
+
+
+      // Bulk form handler - Generates preview
+
+
+
+
+      const bForm = document.getElementById('bulk-session-form');
+
+
+
+
+      if (bForm) {
+
+
+
+
+        bForm.onsubmit = (e) => {
+
+
+
+
+          e.preventDefault();
+
+
+
+
+          try {
+
+
+
+
+            const formData = new FormData(bForm);
+
+
+
+
+            const daysObj = formData.getAll('days').map(Number);
+
+
+
+
+            if (!daysObj.length) throw new Error('Seleccioná al menos un día de dictado.');
+
+
+
+
+
+
+
+
+
+            const startT = formData.get('start_time');
+
+
+
+
+            const endT = formData.get('end_time');
+
+
+
+
+            const fac = formData.get('facilitator_id') || null;
+
+
+
+
+            const topicsText = formData.get('topics_list') || '';
+
+
+
+
+
+
+
+
+
+            const topicsRaw = window.AgendaHelpers ? window.AgendaHelpers.parseTopics(topicsText) : topicsText.split('\\n').map(t => t.trim()).filter(Boolean);
+
+
+
+
+            const dates = window.AgendaHelpers ? window.AgendaHelpers.generateDates(workshop.start_date, workshop.end_date, daysObj) : [];
+
+
+
+
+
+
+
+
+
+            if (!dates.length) throw new Error('No hay fechas válidas de dictado en el rango actual del taller.');
+
+
+
+
+
+
+
+
+
+            bulkPreviewWarnings = [];
+
+
+
+
+
+
+
+
+
+            // Rules engine
+
+
+
+
+            if (topicsRaw.length > dates.length) {
+
+
+
+
+              bulkPreviewWarnings.push(`Pegaste ${topicsRaw.length} temas, pero solo se generaron ${dates.length} clases cronológicas. Algunos temas sobrantes serán descartados.`);
+
+
+
+
+            } else if (topicsRaw.length < dates.length) {
+
+
+
+
+              bulkPreviewWarnings.push(`Pegaste ${topicsRaw.length} temas, pero la cursada tiene ${dates.length} clases cronológicas. Habrá ${dates.length - topicsRaw.length} clases sin tema pre-asignado.`);
+
+
+
+
+            }
+
+
+
+
+            if (!fac) {
+
+
+
+
+              bulkPreviewWarnings.push(`No has seleccionado Docente/Facilitador General. Todas las clases quedarán **Sin asignar** (Podés designarlos aula por aula mas tarde).`);
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+            bulkPreviewPayloads = dates.map((d, index) => {
+
+
+
+
+              const p = {
+
+
+
+
+                date: d,
+
+
+
+
+                start_time: `${startT}:00`,
+
+
+
+
+                end_time: `${endT}:00`,
+
+
+
+
+                topic: topicsRaw[index] || `Encuentro sin tema ${index + 1}`,
+
+
+
+
+                session_order: index + 1
+
+
+
+
+              };
+
+
+
+
+              if (fac) p.facilitator_id = fac;
+
+
+
+
+              return p;
+
+
+
+
+            });
+
+
+
+
+
+
+
+
+
+            if (window.AgendaHelpers && fac) {
+
+
+
+
+              const overlapWarning = window.AgendaHelpers.validateInternalOverlaps(bulkPreviewPayloads);
+
+
+
+
+              if (overlapWarning) bulkPreviewWarnings.push(overlapWarning);
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+            window.setAgendaView('bulk-preview');
+
+
+
+
+          } catch (err) {
+
+
+
+
+            toast(err.message || 'Error calculando cursada', 'error');
+
+
+
+
+          }
+
+
+
+
+        };
+
+
+
+
+      }
+
+
+
+
+
+
+
+
+
+      // Bulk Confirm Action
+
+
+
+
+      const btnConfirm = document.getElementById('btn-confirm-bulk');
+
+
+
+
+      if (btnConfirm) {
+
+
+
+
+        btnConfirm.onclick = async () => {
+
+
+
+
+          btnConfirm.disabled = true;
+
+
+
+
+          btnConfirm.innerText = 'Generando...';
+
+
+
+
+          try {
+
+
+
+
+            await api.post(`/workshops/${normalizedWorkshopId}/sessions/bulk`, bulkPreviewPayloads);
+
+
+
+
+            toast(`Cursada generada: ${bulkPreviewPayloads.length} encuentros con éxito.`, 'success');
+
+
+
+
+            closeModal();
+
+
+
+
+            window.openWorkshopAgenda(normalizedWorkshopId);
+
+
+
+
+          } catch (err) {
+
+
+
+
+            toast(err.message || 'Error persistiendo agenda', 'error');
+
+
+
+
+            btnConfirm.disabled = false;
+
+
+
+
+            btnConfirm.innerText = 'Confirmar y generar';
+
+
+
+
+          }
+
+
+
+
+        };
+
+
+
+
+      }
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+    openModal(`Agenda del taller: ${workshop.name}`, `<div id="agenda-modal-content">${renderStates().list}</div>`, '');
+
+
+
+
+
+
+
+
+
+    // Al abrir el modal, asegurar que si hay un drawer root preexistente, reciba su estado correspondiente.
+
+
+
+
+    let drawerRoot = document.getElementById('agenda-drawer-root');
+
+
+
+
+    if (!drawerRoot) {
+
+
+
+
+      drawerRoot = document.createElement('div');
+
+
+
+
+      drawerRoot.id = 'agenda-drawer-root';
+
+
+
+
+      document.body.appendChild(drawerRoot);
+
+
+
+
+    }
+
+
+
+
+    drawerRoot.innerHTML = renderStates().drawer;
+
+
+
+
+
+
+
+
+
+    attachFormListeners();
+
+
+
+
+
+
+
+
+
+  } catch (err) {
+
+
+
+
+    console.error('openWorkshopAgenda Error:', err);
+
+
+
+
+    toast('Error al cargar agenda', 'error');
+
+
+
+
+  }
+
+
+
+
+}
+
 
 function participantFormHTML(p = null) {
   return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo números"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">Género</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;

@@ -15,6 +15,7 @@ from app.models.enrollment import Enrollment
 from app.models.participant import Participant
 from app.models.workshop import Workshop
 from app.schemas.participant import ParticipantCreate, ParticipantUpdate
+from sqlalchemy import func, case, or_, and_
 
 
 KNOWN_GENDERS = {"female", "male", "non_binary", "other", "undisclosed"}
@@ -430,6 +431,173 @@ def group_profiles_by_workshop(filtered_profiles: list[dict], workshop_id: UUID 
         groups.append(group)
     groups.sort(key=lambda g: (-g["cohort_year"], g["workshop_name"].lower()))
     return groups
+
+def build_overview_sql(db: Session) -> dict:
+    total_participants = db.query(Participant).count()
+
+    stmt = db.query(
+        Enrollment.participant_id,
+        func.count(Enrollment.id).label('total'),
+        func.sum(case((Enrollment.status == 'active', 1), else_=0)).label('active'),
+        func.sum(case((Enrollment.status == 'finished', 1), else_=0)).label('finished')
+    ).group_by(Enrollment.participant_id).subquery()
+    
+    stats = db.query(
+        func.count(stmt.c.participant_id).label('with_workshops'),
+        func.sum(case((stmt.c.active > 0, 1), else_=0)).label('active_members'),
+        func.sum(case((stmt.c.finished > 0, 1), else_=0)).label('certifiable_members'),
+        func.sum(case(((stmt.c.total > 0) & (stmt.c.active == 0) & (stmt.c.finished == 0), 1), else_=0)).label('inactive_members')
+    ).first()
+    
+    with_workshops = int(stats.with_workshops or 0) if stats else 0
+    active_members = int(stats.active_members or 0) if stats else 0
+    certifiable_members = int(stats.certifiable_members or 0) if stats else 0
+    inactive_members = int(stats.inactive_members or 0) if stats else 0
+    no_history_members = total_participants - with_workshops
+
+    demographics = db.query(Participant.gender, Participant.birth_date).all()
+    age_brackets = {"0_17": 0, "18_24": 0, "25_34": 0, "35_44": 0, "45_54": 0, "55_64": 0, "65_plus": 0, "unknown": 0}
+    gender_distribution = {"female": 0, "male": 0, "non_binary": 0, "other": 0, "undisclosed": 0}
+
+    for gender, bd in demographics:
+        g_key = gender if gender in gender_distribution else "undisclosed"
+        gender_distribution[g_key] += 1
+        age_brackets[age_bracket(calculate_age(bd))] += 1
+
+    return {
+        "total_participants": total_participants,
+        "with_workshops": with_workshops,
+        "active_members": active_members,
+        "certifiable_members": certifiable_members,
+        "inactive_members": inactive_members,
+        "no_history_members": no_history_members,
+        "age_brackets": age_brackets,
+        "gender_distribution": gender_distribution,
+    }
+
+def get_profiles_sql(
+    db: Session,
+    skip: int, limit: int,
+    q: str | None,
+    workshop_id: UUID | None,
+    enrollment_status: str,
+    engagement: str | None,
+    gender: str | None,
+    age_min: int | None,
+    age_max: int | None,
+    population: str,
+    active_days: int | None
+) -> list[dict]:
+    # 1. build Subqueries
+    enrollment_stats = db.query(
+        Enrollment.participant_id,
+        func.count(Enrollment.id).label("workshops_total"),
+        func.sum(case((Enrollment.status == 'enrolled', 1), else_=0)).label("enrolled_workshops"),
+        func.sum(case((Enrollment.status == 'active', 1), else_=0)).label("active_workshops"),
+        func.sum(case((Enrollment.status == 'finished', 1), else_=0)).label("finished_workshops"),
+        func.sum(case((Enrollment.status == 'dropped', 1), else_=0)).label("dropped_workshops"),
+        func.max(Enrollment.created_at).label("last_enrollment")
+    ).group_by(Enrollment.participant_id).subquery()
+
+    comm_stats = db.query(
+        CommunicationRecipient.participant_id,
+        func.sum(case((CommunicationRecipient.status == 'sent', 1), else_=0)).label("communications_sent"),
+        func.sum(case((CommunicationRecipient.status == 'failed', 1), else_=0)).label("communications_failed"),
+        func.max(CommunicationRecipient.created_at).label("last_comm")
+    ).group_by(CommunicationRecipient.participant_id).subquery()
+
+    # 2. Main Query
+    query = db.query(
+        Participant,
+        func.coalesce(enrollment_stats.c.workshops_total, 0).label("workshops_total"),
+        func.coalesce(enrollment_stats.c.enrolled_workshops, 0).label("enrolled_workshops"),
+        func.coalesce(enrollment_stats.c.active_workshops, 0).label("active_workshops"),
+        func.coalesce(enrollment_stats.c.finished_workshops, 0).label("finished_workshops"),
+        func.coalesce(enrollment_stats.c.dropped_workshops, 0).label("dropped_workshops"),
+        enrollment_stats.c.last_enrollment,
+        func.coalesce(comm_stats.c.communications_sent, 0).label("communications_sent"),
+        func.coalesce(comm_stats.c.communications_failed, 0).label("communications_failed"),
+        comm_stats.c.last_comm
+    ).outerjoin(enrollment_stats, Participant.id == enrollment_stats.c.participant_id) \
+     .outerjoin(comm_stats, Participant.id == comm_stats.c.participant_id)
+
+    # 3. Base Filters
+    if q:
+        term = f"%{q.strip().lower()}%"
+        query = query.filter(
+            or_(
+                func.lower(Participant.name).like(term),
+                func.lower(Participant.email).like(term),
+                func.lower(Participant.dni).like(term),
+                func.lower(Participant.phone).like(term),
+            )
+        )
+    if gender:
+        query = query.filter(Participant.gender == gender)
+        
+    if age_min is not None or age_max is not None:
+        today = datetime.now(UTC).date()
+        if age_min is not None:
+            max_bd = today.replace(year=today.year - age_min)
+            query = query.filter(Participant.birth_date <= max_bd)
+        if age_max is not None:
+            min_bd = today.replace(year=today.year - (age_max + 1)) + timedelta(days=1)
+            query = query.filter(Participant.birth_date >= min_bd)
+
+    if workshop_id or enrollment_status != "all" or active_days:
+        w_query = db.query(Enrollment.id).filter(Enrollment.participant_id == Participant.id)
+        if workshop_id:
+            w_query = w_query.filter(Enrollment.workshop_id == workshop_id)
+        if enrollment_status != "all":
+            w_query = w_query.filter(Enrollment.status == enrollment_status)
+        if active_days is not None:
+            cutoff_date = datetime.now(UTC) - timedelta(days=active_days)
+            w_query = w_query.filter(Enrollment.created_at >= cutoff_date)
+        query = query.filter(w_query.exists())
+
+    rows = query.order_by(Participant.name.asc()).all()
+
+    filtered = []
+    for row in rows:
+        p = row.Participant
+        p_age = calculate_age(p.birth_date)
+        
+        pseudo_profile = {
+            "id": p.id,
+            "name": p.name,
+            "dni": p.dni,
+            "email": p.email,
+            "phone": p.phone,
+            "birth_date": p.birth_date,
+            "gender": p.gender if p.gender in KNOWN_GENDERS else "undisclosed",
+            "age": p_age,
+            "created_at": p.created_at,
+            "updated_at": p.updated_at,
+            "workshops_total": row.workshops_total,
+            "enrolled_workshops": row.enrolled_workshops,
+            "active_workshops": row.active_workshops,
+            "finished_workshops": row.finished_workshops,
+            "dropped_workshops": row.dropped_workshops,
+            "communications_sent": row.communications_sent,
+            "communications_failed": row.communications_failed,
+        }
+        
+        pseudo_profile["engagement_level"] = engagement_level(pseudo_profile)
+        pseudo_profile["population_segment"] = population_segment(pseudo_profile)
+        
+        le = row.last_enrollment
+        lc = row.last_comm
+        last_activity = max(x for x in (le, lc) if x is not None) if (le or lc) else None
+        pseudo_profile["last_activity"] = last_activity
+        
+        if engagement and pseudo_profile["engagement_level"] != engagement:
+            continue
+        if population != "all" and pseudo_profile["population_segment"] != population:
+            continue
+            
+        filtered.append(pseudo_profile)
+
+    return filtered[skip : skip + limit]
 
 
 def export_participants_csv_text(db: Session) -> str:

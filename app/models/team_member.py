@@ -16,3 +16,4 @@ class TeamMember(Base, UUIDMixin, TimestampMixin):
     )
 
     assignments = relationship("WorkshopStaffAssignment", back_populates="team_member", cascade="all, delete-orphan")
+    sessions = relationship("WorkshopSession", back_populates="facilitator")

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import admins, auth, certificates, communications, dashboard, enrollments, insights, metrics, participants, report_jobs, team_members, workshops
+from app.api.routes import admins, auth, certificates, communications, dashboard, enrollments, insights, metrics, participants, report_jobs, team_members, workshops, sessions
 
 
 api_router = APIRouter()
@@ -16,3 +16,4 @@ api_router.include_router(metrics.router)
 api_router.include_router(insights.router)
 api_router.include_router(certificates.router)
 api_router.include_router(report_jobs.router)
+api_router.include_router(sessions.router)

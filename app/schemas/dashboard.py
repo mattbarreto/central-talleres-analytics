@@ -52,3 +52,25 @@ class DashboardMetricsResponse(BaseModel):
     status_distribution: list[TrendRow]
     top_workshops: list[TopWorkshopRow]
     recent_activity: list[RecentActivityRow]
+
+class PulseSessionRow(BaseModel):
+    id: str
+    workshop_name: str
+    date: str
+    start_time: str
+    end_time: str
+    topic: str
+    facilitator_name: str | None = None
+
+class DashboardPulseResponse(BaseModel):
+    today_sessions: list[PulseSessionRow]
+    tomorrow_sessions: list[PulseSessionRow]
+    week_sessions_count: int
+    week_active_workshops_count: int
+    week_facilitators_count: int
+
+class DashboardYtdResponse(BaseModel):
+    workshops_total: int
+    participants_total: int
+    enrollments_total: int
+    communications_total: int

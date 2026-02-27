@@ -13,7 +13,7 @@
     const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
-      ? `<div class="dash-table-wrap"><table class="dash-table"><thead><tr><th>Asunto</th><th>Taller</th><th>Historial</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((c) => `<tr><td><strong>${esc(c.subject)}</strong><br><span class="dash-page-subtitle">${esc(c.preview)}</span></td><td>${esc(c.workshop_name || 'Taller')}</td><td>${esc(c.sent || 0)} enviados · ${esc(c.failed || 0)} fallidos</td><td>${esc(c.created_at_label || '—')}</td><td class="text-right"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-c-resend="${esc(c.id)}" ${c.failed > 0 ? '' : 'disabled'}>Reenviar fallidos</button></td></tr>`).join('')}</tbody></table></div>${pagination}`
+      ? `<div class="dash-table-wrap"><table class="dash-table dash-table-compact"><thead><tr><th>Asunto</th><th>Taller</th><th>Historial</th><th>Creado</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((c) => `<tr><td><strong>${esc(c.subject)}</strong><br><span class="dash-page-subtitle">${esc(c.preview)}</span></td><td>${esc(c.workshop_name || 'Taller')}</td><td>${esc(c.sent || 0)} enviados · ${esc(c.failed || 0)} fallidos</td><td>${esc(c.created_at_label || '—')}</td><td class="text-right"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-c-resend="${esc(c.id)}" ${c.failed > 0 ? '' : 'disabled'}>Reenviar fallidos</button></td></tr>`).join('')}</tbody></table></div>${pagination}`
       : UI.EmptyState({ title: 'Sin comunicaciones', message: 'No hay resultados para los filtros actuales.' });
 
     root.innerHTML = `
@@ -43,7 +43,7 @@
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${UI.Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-c-apply="1"' })}
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Filtrar', attrs: 'type="button" data-c-apply="1"' })}
                 ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-c-reset="1"' })}
               </div>
             </div>
@@ -87,5 +87,4 @@
 
   window.CommunicationsPage = { render };
 })();
-
 

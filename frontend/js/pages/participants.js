@@ -51,7 +51,7 @@
         </td>
       </tr>
     `).join('');
-    return `<div class="dash-table-wrap"><table class="dash-table">${head}<tbody>${body}</tbody></table></div>`;
+    return `<div class="dash-table-wrap"><table class="dash-table dash-table-compact">${head}<tbody>${body}</tbody></table></div>`;
   }
 
   function collectFilters(root) {
@@ -170,7 +170,7 @@
               </div>
               <div class="dash-filter-actions">
                 ${UI.Button({ variant: 'primary', size: 'md', label: 'Buscar', attrs: 'type="button" data-p-apply="1"' })}
-                ${UI.Button({ variant: 'ghost', size: 'md', label: 'Reset', attrs: 'type="button" data-p-reset="1"' })}
+                ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-p-reset="1"' })}
               </div>
             </div>
           </section>
@@ -189,34 +189,6 @@
             </div>`
     })}
 
-          ${UI.Section({
-      key: 'participants_demo',
-      title: 'Distribuciones',
-      description: 'Lectura demográfica sin ruido.',
-      collapsible: true,
-      collapsed: Boolean(store.state.collapsed.participants_demo),
-      content: `<div class="dash-grid">
-              <div class="dash-col-6">${renderChartOrEmpty({
-        title: 'Género',
-        subtitle: 'Composición actual',
-        chartId: 'p-chart-gender',
-        chartType: 'doughnut',
-        chartHeight: '320px',
-        ariaLabel: 'Distribución de participantes por género',
-        rows: genders,
-        valueLabel: 'Participantes',
-      })}</div>
-              <div class="dash-col-6">${renderChartOrEmpty({
-        title: 'Edad',
-        subtitle: 'Composición por franjas',
-        chartId: 'p-chart-age',
-        chartType: 'bar',
-        ariaLabel: 'Distribución de participantes por rango etario',
-        rows: ages,
-        valueLabel: 'Participantes',
-      })}</div>
-            </div>`
-    })}
 
           ${UI.Section({
       key: 'participants_table',
@@ -231,29 +203,6 @@
       </div>
     `;
 
-    if (useCanvasCharts) {
-      const chartSpecs = [];
-      if (hasChartData(genders)) {
-        chartSpecs.push(charts?.makeDoughnutSpec?.({
-          key: 'p-gender-doughnut',
-          selector: '#p-chart-gender',
-          rows: genders,
-        }));
-      }
-      if (hasChartData(ages)) {
-        chartSpecs.push(charts?.makeBarSpec?.({
-          key: 'p-age-bar',
-          selector: '#p-chart-age',
-          rows: ages,
-          datasetLabel: 'Participantes',
-          horizontal: false,
-          rowColorMode: 'single',
-          singleColor: charts?.semanticColor?.('primary'),
-          yLabel: 'Participantes',
-        }));
-      }
-      charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
-    }
 
     renderHost.querySelectorAll('[data-section-toggle]').forEach((btn) => btn.addEventListener('click', () => {
       const key = btn.getAttribute('data-section-toggle');

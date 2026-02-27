@@ -13,7 +13,7 @@
     const delta = (key) => String(kpiDeltas[key] ?? '0%');
 
     const table = rows.length
-      ? `<div class="dash-table-wrap"><table class="dash-table dash-table-workshops"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="dash-row-actions"><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
+      ? `<div class="dash-table-wrap"><table class="dash-table dash-table-compact dash-table-workshops"><thead><tr><th>Nombre</th><th>Año</th><th>Estado</th><th>Inicio</th><th>Fin</th><th class="text-right">Acciones</th></tr></thead><tbody>${rows.map((w) => `<tr><td><strong>${esc(w.name)}</strong></td><td>${esc(w.cohort_year)}</td><td><select class="dash-filter-control" data-w-status="${esc(w.id)}"><option value="planned" ${w.status === 'planned' ? 'selected' : ''}>Planificado</option><option value="active" ${w.status === 'active' ? 'selected' : ''}>Activo</option><option value="finished" ${w.status === 'finished' ? 'selected' : ''}>Finalizado</option></select></td><td>${esc(w.start_date || '—')}</td><td>${esc(w.end_date || '—')}</td><td class="text-right"><div class="dash-row-actions"><button class="dash-btn dash-btn-primary dash-btn-sm" type="button" data-w-agenda="${esc(w.id)}">Agenda</button><button class="dash-btn dash-btn-secondary dash-btn-sm" type="button" data-w-enrollments="${esc(w.id)}">Inscripciones</button><button class="dash-btn dash-btn-secondary dash-btn-sm" type="button" data-w-comm="${esc(w.id)}">Comunicar</button><button class="dash-btn dash-btn-ghost dash-btn-sm" type="button" data-w-edit="${esc(w.id)}">Editar</button><button class="dash-btn dash-btn-danger dash-btn-sm" type="button" data-w-delete="${esc(w.id)}" aria-label="Eliminar">${UI.icon('trash')}</button></div></td></tr>`).join('')}</tbody></table></div>${pagination}`
       : UI.EmptyState({
         title: 'Sin talleres',
         message: 'No hay talleres para el filtro actual.',
@@ -47,7 +47,7 @@
                 </select>
               </div>
               <div class="dash-filter-actions">
-                ${UI.Button({ variant: 'primary', size: 'md', label: 'Aplicar', attrs: 'type="button" data-w-apply="1"' })}
+                ${UI.Button({ variant: 'primary', size: 'md', label: 'Filtrar', attrs: 'type="button" data-w-apply="1"' })}
                 ${UI.Button({ variant: 'ghost', size: 'md', label: 'Limpiar', attrs: 'type="button" data-w-reset="1"' })}
               </div>
             </div>
@@ -81,7 +81,7 @@
     root.onclick = (e) => {
       const source = e.target instanceof Element ? e.target : null;
       if (!source) return;
-      const target = source.closest('button,[data-w-enrollments],[data-w-comm],[data-w-edit],[data-w-delete]');
+      const target = source.closest('button,[data-w-agenda],[data-w-enrollments],[data-w-comm],[data-w-edit],[data-w-delete]');
       if (!target) return;
       if (target.matches('[data-w-new]')) { opts.onNew?.(); return; }
       if (target.matches('[data-w-apply]')) {
@@ -93,6 +93,7 @@
       }
       if (target.matches('[data-w-reset]')) { opts.onFilterChange?.({ q: '', density: 'regular', reset: true }); return; }
       if (target.matches('[data-w-enrollments]')) { opts.onOpenEnrollments?.(target.getAttribute('data-w-enrollments')); return; }
+      if (target.matches('[data-w-agenda]')) { opts.onAgenda?.(target.getAttribute('data-w-agenda')); return; }
       if (target.matches('[data-w-comm]')) { opts.onCommunicate?.(target.getAttribute('data-w-comm')); return; }
       if (target.matches('[data-w-edit]')) { opts.onEdit?.(target.getAttribute('data-w-edit')); return; }
       if (target.matches('[data-w-delete]')) { opts.onDelete?.(target.getAttribute('data-w-delete')); }
@@ -108,5 +109,4 @@
 
   window.WorkshopsPage = { render };
 })();
-
 

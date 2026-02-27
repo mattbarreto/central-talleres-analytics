@@ -11,6 +11,7 @@ from app.models.report_job import ReportJobRecord
 from app.models.team_member import TeamMember
 from app.models.workshop import Workshop
 from app.models.workshop_staff_assignment import WorkshopStaffAssignment
+from app.models.workshop_session import WorkshopSession
 
 __all__ = [
     "Admin",
@@ -26,4 +27,5 @@ __all__ = [
     "TeamMember",
     "Workshop",
     "WorkshopStaffAssignment",
+    "WorkshopSession",
 ]

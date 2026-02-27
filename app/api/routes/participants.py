@@ -27,6 +27,8 @@ from app.services.participants_service import (
     group_profiles_by_workshop,
     import_participants_csv,
     serialize_profile,
+    build_overview_sql,
+    get_profiles_sql,
 )
 
 
@@ -45,8 +47,7 @@ def list_participants(
 
 @router.get("/overview", response_model=ParticipantOverviewOut)
 def participants_overview(db: Session = Depends(get_db), _: str = Depends(get_current_admin)):
-    profiles = build_profiles(db)
-    return build_overview(profiles)
+    return build_overview_sql(db)
 
 
 @router.post("/", response_model=ParticipantOut)
@@ -69,16 +70,22 @@ def list_participant_profiles(
     age_min: int | None = Query(default=None, ge=0, le=120),
     age_max: int | None = Query(default=None, ge=0, le=120),
     population: Literal["all", "current", "graduated", "inactive", "no_history"] = Query(default="all"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db),
     _: str = Depends(get_current_admin),
 ):
     if age_min is not None and age_max is not None and age_min > age_max:
         raise HTTPException(status_code=422, detail="age_min no puede ser mayor que age_max")
-    profiles = build_profiles(db)
-    filtered = apply_profile_filters(
-        profiles, q, workshop_id, enrollment_status, engagement, gender, age_min, age_max, population, active_days
+    
+    profiles = get_profiles_sql(
+        db=db, skip=skip, limit=limit, q=q,
+        workshop_id=workshop_id, enrollment_status=enrollment_status,
+        engagement=engagement, gender=gender,
+        age_min=age_min, age_max=age_max,
+        population=population, active_days=active_days
     )
-    return [serialize_profile(p, include_workshops=False) for p in filtered]
+    return [serialize_profile(p, include_workshops=False) for p in profiles]
 
 
 @router.get("/profiles/{participant_id}", response_model=ParticipantProfileOut)

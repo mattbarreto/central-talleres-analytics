@@ -9,6 +9,8 @@ __pycache__/
 *.sqlite3
 .env
 .env.*
+!.env.example
+!.env.example.prod
 generated/
 docs/
 .agent/
@@ -20,4 +22,17 @@ docs/
 .kilocode/
 .windsurf/
 *.log
-
+frontend/node_modules/
+frontend/dist/
+AGENTS.md
+skills-lock.json
+contexto_agente/
+*.backup.*
+*.bak
+*.orig
+*_temp.*
+workshop_agenda_raw.js
+workshop_agenda_clean.js
+workshop_agenda_temp.js
+frontend/js/core/workshop_agenda_raw.js
+frontend/js/**/*.backup.*

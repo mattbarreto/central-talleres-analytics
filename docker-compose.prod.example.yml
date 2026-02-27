@@ -1,12 +1,9 @@
-version: '3.8'
-
 services:
   app:
     build: .
-    container_name: dashboard_talleres_api
     restart: unless-stopped
     networks:
-      - root_default
+      - proxy_network
     env_file:
       - .env
     healthcheck:
@@ -16,14 +13,15 @@ services:
       retries: 3
       start_period: 40s
     labels:
-      - "traefik.docker.network=root_default"
+      - "traefik.docker.network=${PROXY_NETWORK:-proxy_network}"
       - "traefik.enable=true"
-      - "traefik.http.routers.dashboard-talleres.rule=Host(`dashboard.example.com`)"
-      - "traefik.http.routers.dashboard-talleres.entrypoints=websecure"
-      - "traefik.http.routers.dashboard-talleres.tls=true"
-      - "traefik.http.routers.dashboard-talleres.tls.certresolver=mytlschallenge"
-      - "traefik.http.services.dashboard-talleres.loadbalancer.server.port=8000"
+      - "traefik.http.routers.app.rule=Host(`${APP_DOMAIN:-app.example.com}`)"
+      - "traefik.http.routers.app.entrypoints=${TRAEFIK_ENTRYPOINT:-websecure}"
+      - "traefik.http.routers.app.tls=true"
+      - "traefik.http.routers.app.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
+      - "traefik.http.services.app.loadbalancer.server.port=8000"
 
 networks:
-  root_default:
+  proxy_network:
     external: true
+    name: ${PROXY_NETWORK:-proxy_network}

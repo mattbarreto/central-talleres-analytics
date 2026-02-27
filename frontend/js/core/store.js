@@ -1,3 +1,5 @@
+// @ts-check
+
 export const state = {
     workshops: [],
     participants: [],
@@ -23,6 +25,7 @@ export const state = {
     teamHasLoaded: false,
     teamProfiles: [],
     teamOverview: null,
+    adminSearch: '',
     dashboardYear: '',
     dashboardStatus: '',
     dashboardWorkshop: '',

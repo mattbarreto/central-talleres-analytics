@@ -63,6 +63,11 @@ cd central-talleres-analytics
 python -m venv venv
 .\venv\Scripts\python.exe -m pip install -r requirements.txt
 
+# 2.1 Instalar dependencias del frontend
+cd frontend
+npm install
+cd ..
+
 # 3. Configurar variables de entorno
 Copy-Item .env.example .env
 # Editar .env con tus valores (DATABASE_URL, SECRET_KEY, etc.)
@@ -75,12 +80,34 @@ Copy-Item .env.example .env
 
 # 6. Iniciar servidor de desarrollo
 .\venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
+
+# (Opcional) Frontend con HMR
+cd frontend
+npm run dev
 ```
 
 ### Con Docker
 
 ```bash
 docker compose up --build
+```
+
+La imagen Docker compila el frontend con Vite y sirve `frontend/dist` en runtime.
+
+### Compose de producción (portable)
+
+```bash
+cp docker-compose.prod.example.yml docker-compose.prod.yml
+cp .env.example.prod .env
+
+# Editar .env con valores reales antes de desplegar:
+# - DATABASE_URL
+# - SECRET_KEY
+# - APP_DOMAIN
+# - PROXY_NETWORK
+
+docker compose -f docker-compose.prod.yml up -d --build --force-recreate
+docker compose -f docker-compose.prod.yml exec app alembic upgrade head
 ```
 
 ### Endpoints locales
@@ -155,7 +182,7 @@ El esquema se gestiona exclusivamente con **Alembic**. No se usa `create_all()` 
 
 ## Producción
 
-La plataforma está diseñada para ser desplegada mediante **Docker**. El stack incluye un proxy reverso (Traefik) y soporte para bases de datos PostgreSQL gestionadas (como Supabase).
+La plataforma está diseñada para desplegarse con **Docker** y adaptarse a distintos entornos de proxy/redes. Los archivos públicos de compose y docs usan placeholders para mantener portabilidad OSS.
 
 ---
 

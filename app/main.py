@@ -1,6 +1,6 @@
+from pathlib import Path
 import logging
 from time import perf_counter
-from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,9 +24,32 @@ app.add_middleware(
 )
 app.include_router(api_router, prefix=settings.api_v1_prefix)
 
-# Serve frontend
+# Serve frontend (prefer Vite build output when available)
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
-app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+FRONTEND_DIST_DIR = FRONTEND_DIR / "dist"
+
+
+def _frontend_index() -> Path:
+    dist_index = FRONTEND_DIST_DIR / "index.html"
+    if dist_index.exists():
+        return dist_index
+    return FRONTEND_DIR / "index.html"
+
+
+if (FRONTEND_DIST_DIR / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST_DIR / "assets")), name="assets")
+
+if (FRONTEND_DIR / "css").exists():
+    app.mount("/css", StaticFiles(directory=str(FRONTEND_DIR / "css")), name="frontend-css")
+
+if (FRONTEND_DIR / "js").exists():
+    app.mount("/js", StaticFiles(directory=str(FRONTEND_DIR / "js")), name="frontend-js")
+
+if (FRONTEND_DIR / "public").exists():
+    app.mount("/public", StaticFiles(directory=str(FRONTEND_DIR / "public")), name="frontend-public")
+
+if (FRONTEND_DIR / "static").exists():
+    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR / "static")), name="static")
 
 
 @app.middleware("http")
@@ -70,4 +93,9 @@ def health():
 
 @app.get("/")
 def root():
-    return FileResponse(str(FRONTEND_DIR / "index.html"))
+    return FileResponse(str(_frontend_index()))
+
+
+@app.get("/styles.css")
+def frontend_styles():
+    return FileResponse(str(FRONTEND_DIR / "styles.css"))

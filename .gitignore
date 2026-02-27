@@ -12,8 +12,9 @@ env/
 
 # Environment and secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+!.env.example.prod
 
 # Databases and local runtime artifacts
 *.db
@@ -42,10 +43,14 @@ docs/internal/
 # Build/package artifacts
 dist/
 build/
+frontend/node_modules/
+frontend/.vite/
 *.egg-info/
 
 # Private documentation and infrastructure details
 docs/
+AGENTS.md
+skills-lock.json
 
 claves.txt
 
@@ -55,6 +60,30 @@ production.yml
 traefik_root_compose.yml
 reset_password.py
 docker-compose.prod.yml
+docker-compose.override.yml
+docker-compose.*.local.yml
+contexto_agente/
+
+# Private keys and cert bundles
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa
+id_rsa.*
+*.ovpn
+
+# Local backups and scratch artifacts
+*.backup.*
+*.bak
+*.orig
+*_temp.*
+workshop_agenda_raw.js
+workshop_agenda_clean.js
+workshop_agenda_temp.js
+frontend/js/core/workshop_agenda_raw.js
+frontend/js/**/*.backup.*
 
 # Temporary scripts
 cache_bust.py

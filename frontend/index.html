@@ -10,9 +10,9 @@
   <title>Central de Talleres</title>
   <link rel="icon" type="image/svg+xml"
     href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%2316364f'/%3E%3Cpath d='M12 23 32 13l20 10-20 10zM22 34v8c0 4 4 7 10 7s10-3 10-7v-8l-10 5z' fill='%23ffffff'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/static/css/tokens.css?v=25">
-  <link rel="stylesheet" href="/static/styles.css?v=25">
-  <link rel="stylesheet" href="/static/css/dashboard.css?v=25">
+  <link rel="stylesheet" href="./css/tokens.css">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./css/dashboard.css">
 </head>
 
 <body>
@@ -152,11 +152,11 @@
               </svg></span>
             <span class="nav-label">Panel</span>
           </a>
-          <a class="nav-item" data-view="insights" data-tooltip="Insights" aria-label="Insights" href="#insights">
+          <a class="nav-item" data-view="insights" data-tooltip="Analítica" aria-label="Analítica" href="#insights">
             <span class="nav-icon" aria-hidden="true"><svg class="ui-icon">
                 <use href="#i-insights"></use>
               </svg></span>
-            <span class="nav-label">Insights</span>
+            <span class="nav-label">Analítica</span>
           </a>
         </div>
         <div class="nav-section">
@@ -289,31 +289,7 @@
 
   <div id="toast-container" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1"
-    integrity="sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ"
-    crossorigin="anonymous"></script>
-  <script defer src="/static/js/ui/state.js?v=25"></script>
-  <script defer src="/static/js/ui/components.js?v=25"></script>
-  <script defer src="/static/js/ui/ai_copilot.js?v=25"></script>
-  <script defer src="/static/js/ui/charts.js?v=25"></script>
-  <script defer src="/static/js/ui/report_jobs.js?v=25"></script>
-  <script defer src="/static/js/core/hash_router.js?v=25"></script>
-  <script defer src="/static/js/core/table_utils.js?v=25"></script>
-  <script defer src="/static/js/core/view_utils.js?v=25"></script>
-  <script defer src="/static/js/core/route_state.js?v=25"></script>
-  <script defer src="/static/js/core/view_shell.js?v=25"></script>
-  <script defer src="/static/js/core/view_loader.js?v=25"></script>
-  <script defer src="/static/js/core/app_shell.js?v=25"></script>
-  <script defer src="/static/js/pages/dashboard.js?v=25"></script>
-  <script defer src="/static/js/pages/participants.js?v=25"></script>
-  <script defer src="/static/js/pages/team.js?v=25"></script>
-  <script defer src="/static/js/pages/insights.js?v=25"></script>
-  <script defer src="/static/js/pages/workshops.js?v=25"></script>
-  <script defer src="/static/js/pages/enrollments.js?v=25"></script>
-  <script defer src="/static/js/pages/communications.js?v=25"></script>
-  <script defer src="/static/js/pages/admins.js?v=25"></script>
-  <script type="module" src="/static/js/core/app_bootstrap.js?v=25"></script>
-  <script defer src="/static/js/core/app_runtime.js?v=25"></script>
+  <script type="module" src="./js/main.js"></script>
 </body>
 
 </html>

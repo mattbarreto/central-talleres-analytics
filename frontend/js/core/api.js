@@ -1,3 +1,5 @@
+// @ts-check
+
 export const API_BASE = '/api/v1';
 
 let isAuthenticated = false;
@@ -9,6 +11,9 @@ export function setIsAuthenticated(val) {
 export function getIsAuthenticated() {
     return isAuthenticated;
 }
+
+const CACHE_TTL_MS = 3 * 60 * 1000;
+const apiCache = new Map();
 
 export const api = {
     /**
@@ -30,9 +35,24 @@ export const api = {
         return res.ok;
     },
     async request(method, path, body = null, allowRefresh = true) {
+        const cacheKey = `${method}:${path}`;
+
+        if (method === 'GET') {
+            const cached = apiCache.get(cacheKey);
+            if (cached && (Date.now() - cached.timestamp < CACHE_TTL_MS)) {
+                // If it's cached, we return a clone or exactly the same object
+                // returning exactly the same object is fast, but just clone it if state mutants break it.
+                // The prompt says caching is to prevent refetching. 
+                return cached.data;
+            }
+        } else if (method !== 'GET') {
+            apiCache.clear(); // invalidate cache on mutations
+        }
+
         const opts = { method, headers: this.headers(), credentials: 'include' };
         if (body) opts.body = JSON.stringify(body);
         const res = await fetch(`${API_BASE}${path}`, opts);
+
         if (res.status === 401) {
             const shouldTryRefresh = allowRefresh && !path.startsWith('/auth/login') && !path.startsWith('/auth/refresh') && !path.startsWith('/auth/me');
             if (shouldTryRefresh) {
@@ -42,14 +62,22 @@ export const api = {
             window.dispatchEvent(new CustomEvent('api:unauthorized'));
             throw new Error('No autorizado');
         }
+
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.detail || `Error ${res.status}`);
         }
-        return res.status === 204 ? null : res.json();
+
+        const data = res.status === 204 ? null : await res.json();
+
+        if (method === 'GET' && data !== null) {
+            apiCache.set(cacheKey, { data, timestamp: Date.now() });
+        }
+
+        return data;
     },
     get: (path) => api.request('GET', path),
     post: (path, body) => api.request('POST', path, body),
     put: (path, body) => api.request('PUT', path, body),
-    del: (path) => api.request('DELETE', path),
+    del: (path, body = null) => api.request('DELETE', path, body),
 };

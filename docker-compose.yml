@@ -1,14 +1,11 @@
-version: '3.8'
-
 services:
   app:
     build: .
-    container_name: dashboard_talleres_api
     restart: unless-stopped
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s

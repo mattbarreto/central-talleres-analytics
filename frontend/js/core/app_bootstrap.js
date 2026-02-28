@@ -7,6 +7,7 @@ const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollment
 const appShell = window.AppShell || null;
 const appViewUtils = window.AppViewUtils || null;
 const appTableUtils = window.AppTableUtils || null;
+const appSurfaces = window.AppSurfaces || null;
 const SIDEBAR_COLLAPSED_KEY = 'tc_sidebar_collapsed';
 const SIDEBAR_LEGACY_MODE_KEY = 'tc_sidebar_mode';
 const THEME_KEY = 'tc_theme';
@@ -142,7 +143,7 @@ function openAboutSystem() {
         </div>
       </div>
     `,
-    `<button class="btn btn-secondary" type="button" data-inline-click="closeModal()">Cerrar</button>`
+    `<button class="btn btn-secondary" type="button" data-action="closeModal">Cerrar</button>`
   );
 }
 
@@ -159,7 +160,49 @@ function toast(message, type = 'info') {
   }, 3000);
 }
 
-const modalState = { previousFocused: null, handler: null, open: false };
+const modalState = { previousFocused: null, handler: null, open: false, surfaceHandle: null };
+const sidebarSurfaceState = { handle: null };
+
+function closeMobileSidebar(options = {}) {
+  const { restoreFocus = false } = options;
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar?.classList.remove('open');
+  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'false');
+  if (overlay) overlay.hidden = true;
+  if (!sidebarSurfaceState.handle?.isOpen?.()) {
+    sidebarSurfaceState.handle = null;
+    return;
+  }
+  const activeHandle = sidebarSurfaceState.handle;
+  sidebarSurfaceState.handle = null;
+  activeHandle.close({ restoreFocus });
+}
+
+function openMobileSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!(sidebar instanceof HTMLElement)) return;
+  sidebar.classList.add('open');
+  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'true');
+  if (overlay) overlay.hidden = false;
+
+  if (!appSurfaces?.open) return;
+  if (sidebarSurfaceState.handle?.isOpen?.()) {
+    sidebarSurfaceState.handle.close({ restoreFocus: false });
+    sidebarSurfaceState.handle = null;
+  }
+  sidebarSurfaceState.handle = appSurfaces.open({
+    kind: 'sidebar',
+    root: sidebar,
+    panel: sidebar,
+    lockScroll: true,
+    trapFocus: false,
+    closeOnEscape: true,
+    closeOnOutside: true,
+    onRequestClose: () => closeMobileSidebar({ restoreFocus: true }),
+  });
+}
 
 function setSidebarCollapsed(collapsed, persist = true) {
   if (appShell?.setSidebarCollapsed) {
@@ -178,6 +221,8 @@ function setSidebarCollapsed(collapsed, persist = true) {
     btn.setAttribute('data-tooltip', label);
   }
   if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, normalized ? '1' : '0');
+  window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+  window.setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
 }
 
 function getInitialSidebarCollapsed() {
@@ -234,15 +279,61 @@ function focusableIn(el) {
     .filter((n) => !n.disabled);
 }
 
+function normalizeModalSize(rawSize, variant = '') {
+  const normalized = String(rawSize || '').trim().toLowerCase();
+  if (normalized === 'compact' || normalized === 'medium' || normalized === 'wide' || normalized === 'full') {
+    return normalized;
+  }
+  if (variant === 'profile') return 'wide';
+  if (variant === 'agenda') return 'wide';
+  return 'medium';
+}
+
+function normalizeModalPresentation(options = {}) {
+  const variant = String(options.variant || '').trim().toLowerCase();
+  const panelClasses = [];
+  if (variant === 'profile') panelClasses.push('modal-profile');
+  if (variant === 'agenda') panelClasses.push('modal-agenda');
+  return {
+    variant,
+    size: normalizeModalSize(options.size, variant),
+    panelClasses,
+  };
+}
+
+function applyModalPresentation(modal, presentation) {
+  if (!(modal instanceof HTMLElement)) return;
+  modal.classList.remove(
+    'modal-profile',
+    'modal-agenda',
+    'surface-modal-complex',
+    'surface-panel-compact',
+    'surface-panel-medium',
+    'surface-panel-wide',
+    'surface-panel-full',
+    'surface-panel-md'
+  );
+  presentation.panelClasses.forEach((name) => modal.classList.add(name));
+  modal.classList.add('surface-modal-complex');
+  modal.classList.add(`surface-panel-${presentation.size}`);
+}
+
 function openModal(title, bodyHTML, footerHTML = '', options = {}) {
   const overlay = document.getElementById('modal-overlay');
+  if (!overlay) return;
   const modal = overlay.querySelector('.modal');
+  if (!modal) return;
+  const presentation = normalizeModalPresentation(options);
+
+  if (modalState.surfaceHandle?.isOpen?.()) {
+    modalState.surfaceHandle.close({ restoreFocus: false });
+    modalState.surfaceHandle = null;
+  }
   if (modalState.handler) {
     document.removeEventListener('keydown', modalState.handler);
     modalState.handler = null;
   }
-  modal.classList.remove('modal-profile');
-  if (options.variant === 'profile') modal.classList.add('modal-profile');
+  applyModalPresentation(modal, presentation);
   modalState.previousFocused = document.activeElement;
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = bodyHTML;
@@ -250,6 +341,24 @@ function openModal(title, bodyHTML, footerHTML = '', options = {}) {
   overlay.classList.add('active');
   overlay.setAttribute('aria-hidden', 'false');
   modalState.open = true;
+
+  if (appSurfaces?.open) {
+    modalState.surfaceHandle = appSurfaces.open({
+      kind: 'modal',
+      size: presentation.size,
+      root: overlay,
+      panel: modal,
+      lockScroll: true,
+      trapFocus: true,
+      closeOnEscape: true,
+      closeOnOutside: true,
+      closeOnBackdrop: true,
+      restoreFocus: false,
+      onRequestClose: () => closeModal(),
+      initialFocus: document.getElementById('modal-close'),
+    });
+    return;
+  }
 
   modalState.handler = (e) => {
     if (!modalState.open) return;
@@ -278,13 +387,14 @@ function openModal(title, bodyHTML, footerHTML = '', options = {}) {
 
 function setModalContent(title, bodyHTML, footerHTML = '', options = {}) {
   const overlay = document.getElementById('modal-overlay');
+  if (!overlay) return;
   if (!overlay.classList.contains('active')) {
     openModal(title, bodyHTML, footerHTML, options);
     return;
   }
   const modal = overlay.querySelector('.modal');
-  modal.classList.remove('modal-profile');
-  if (options.variant === 'profile') modal.classList.add('modal-profile');
+  const presentation = normalizeModalPresentation(options);
+  applyModalPresentation(modal, presentation);
   document.getElementById('modal-title').textContent = title;
   document.getElementById('modal-body').innerHTML = bodyHTML;
   document.getElementById('modal-footer').innerHTML = footerHTML;
@@ -292,26 +402,38 @@ function setModalContent(title, bodyHTML, footerHTML = '', options = {}) {
 
 function closeModal() {
   const overlay = document.getElementById('modal-overlay');
+  if (!overlay) return;
   overlay.classList.remove('active');
   overlay.setAttribute('aria-hidden', 'true');
+  const legacyAgendaRoot = document.getElementById('agenda-drawer-root');
+  if (legacyAgendaRoot) {
+    appSurfaces?.closeByRoot?.(legacyAgendaRoot, { restoreFocus: false });
+    legacyAgendaRoot.innerHTML = '';
+  }
+  if (modalState.surfaceHandle?.isOpen?.()) {
+    modalState.surfaceHandle.close({ restoreFocus: false });
+  }
+  modalState.surfaceHandle = null;
   if (modalState.handler) document.removeEventListener('keydown', modalState.handler);
   modalState.handler = null;
   modalState.open = false;
   modalState.previousFocused?.focus?.();
+  modalState.previousFocused = null;
 }
 
 function modalFooterActions({
   primaryLabel = 'Guardar',
   primaryId = 'save-entity-btn',
   secondaryLabel = 'Cancelar',
-  secondaryAction = 'closeModal()',
+  secondaryAction = 'closeModal',
   dangerLabel = '',
   dangerId = 'delete-entity-btn',
 } = {}) {
+  const normalizedSecondaryAction = String(secondaryAction || 'closeModal').replace(/\(\)$/, '');
   const dangerGroup = dangerLabel
     ? `<div class="modal-footer-group modal-footer-group--left"><button type="button" class="btn btn-danger" id="${dangerId}">${dangerLabel}</button></div>`
     : '';
-  return `${dangerGroup}<div class="modal-footer-group"><button type="button" class="btn btn-secondary" data-inline-click="${secondaryAction}">${secondaryLabel}</button><button type="button" class="btn btn-primary" id="${primaryId}">${primaryLabel}</button></div>`;
+  return `${dangerGroup}<div class="modal-footer-group"><button type="button" class="btn btn-secondary" data-action="${normalizedSecondaryAction}">${secondaryLabel}</button><button type="button" class="btn btn-primary" id="${primaryId}">${primaryLabel}</button></div>`;
 }
 
 window.closeModal = closeModal;
@@ -476,13 +598,15 @@ function tablePaginationHTML(key, pageData, label = 'resultados') {
   if (!pageData.total || pageData.totalPages <= 1) return '';
   const prevDisabled = pageData.page <= 1 ? 'disabled' : '';
   const nextDisabled = pageData.page >= pageData.totalPages ? 'disabled' : '';
+  const prevPayload = `[&quot;${key}&quot;,${pageData.page - 1}]`;
+  const nextPayload = `[&quot;${key}&quot;,${pageData.page + 1}]`;
   return `
     <div class="table-pagination" role="navigation" aria-label="Paginación">
       <span class="table-pagination-meta">Mostrando ${pageData.start}-${pageData.end} de ${pageData.total} ${label}</span>
       <div class="table-pagination-controls">
-        <button class="btn btn-ghost btn-sm" ${prevDisabled} data-inline-click="setListPage('${key}', ${pageData.page - 1})">Anterior</button>
+        <button class="btn btn-ghost btn-sm" ${prevDisabled} data-action="setListPage" data-payload="${prevPayload}">Anterior</button>
         <span class="table-pagination-page">Página ${pageData.page} de ${pageData.totalPages}</span>
-        <button class="btn btn-ghost btn-sm" ${nextDisabled} data-inline-click="setListPage('${key}', ${pageData.page + 1})">Siguiente</button>
+        <button class="btn btn-ghost btn-sm" ${nextDisabled} data-action="setListPage" data-payload="${nextPayload}">Siguiente</button>
       </div>
     </div>
   `;
@@ -604,27 +728,22 @@ initTheme();
 hashRouter?.start?.();
 document.getElementById('mobile-toggle')?.addEventListener('click', () => {
   const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  const next = !sidebar.classList.contains('open');
-  sidebar.classList.toggle('open', next);
-  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', next ? 'true' : 'false');
-  if (overlay) overlay.hidden = !next;
+  const next = !sidebar?.classList.contains('open');
+  if (next) {
+    openMobileSidebar();
+    return;
+  }
+  closeMobileSidebar({ restoreFocus: false });
 });
-document.getElementById('sidebar-overlay')?.addEventListener('click', () => {
-  document.getElementById('sidebar')?.classList.remove('open');
-  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'false');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (overlay) overlay.hidden = true;
-});
-document.addEventListener('keydown', (e) => {
-  if (e.key !== 'Escape') return;
-  const sidebar = document.getElementById('sidebar');
-  if (!sidebar?.classList.contains('open')) return;
-  sidebar.classList.remove('open');
-  document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'false');
-  const overlay = document.getElementById('sidebar-overlay');
-  if (overlay) overlay.hidden = true;
-});
+if (!appSurfaces?.open) {
+  document.getElementById('sidebar-overlay')?.addEventListener('click', () => closeMobileSidebar({ restoreFocus: false }));
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const sidebar = document.getElementById('sidebar');
+    if (!sidebar?.classList.contains('open')) return;
+    closeMobileSidebar({ restoreFocus: false });
+  });
+}
 document.getElementById('sidebar-collapse-btn')?.addEventListener('click', () => {
   const collapsed = !document.getElementById('app-layout')?.classList.contains('sidebar-collapsed');
   setSidebarCollapsed(collapsed, true);
@@ -1968,6 +2087,8 @@ window.openWorkshopAgenda = async function (workshopId) {
 
     let bulkPreviewWarnings = [];
 
+    let agendaDrawerSurface = null;
+
 
 
 
@@ -2221,12 +2342,12 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        listHTML = `<div class="dash-table-wrap" style="overflow-x: auto;">
+        listHTML = `<div class="agenda-modal-table-block">
 
 
 
 
-          <table style="width: 100%; border-collapse: collapse;">
+          <table class="agenda-modal-table">
 
 
 
@@ -2236,32 +2357,32 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-              <tr style="border-bottom: 1px solid var(--border-color);">
+              <tr>
 
 
 
 
-                <th style="padding: 12px; width: 40px; text-align: center;"><input type="checkbox" onchange="window.AgendaState.toggleAll(this.checked)" ${allSelected ? 'checked' : ''}></th>
+                <th class="agenda-checkbox-col"><input type="checkbox" data-agenda-toggle-all="1" ${allSelected ? 'checked' : ''}></th>
 
 
 
 
-                <th style="padding: 12px; text-align: left;">Encuentro / Tema</th>
+                <th>Encuentro / Tema</th>
 
 
 
 
-                <th style="padding: 12px; text-align: left;">Fecha y Hora</th>
+                <th>Fecha y Hora</th>
 
 
 
 
-                <th style="padding: 12px; text-align: left;">Docente</th>
+                <th>Docente</th>
 
 
 
 
-                <th style="padding: 12px; text-align: right;">Acciones</th>
+                <th class="agenda-cell-actions">Acciones</th>
 
 
 
@@ -2301,27 +2422,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          const bgStyle = isSelected ? 'background: rgba(99, 102, 241, 0.08);' : '';
+          return `<tr class="${isSelected ? 'agenda-row-selected' : ''}">
 
 
 
 
+                  <td data-label="Seleccion" class="agenda-cell-check">
 
 
 
 
-
-          return `<tr style="border-bottom: 1px solid var(--border-color); ${bgStyle}">
-
-
-
-
-                  <td style="padding: 12px; text-align: center; vertical-align: middle;">
-
-
-
-
-                    <input type="checkbox" value="${s.id}" ${isSelected ? 'checked' : ''} onchange="window.AgendaState.toggleSelection('${s.id}')">
+                    <input type="checkbox" value="${s.id}" ${isSelected ? 'checked' : ''} data-agenda-toggle-session="${s.id}">
 
 
 
@@ -2331,37 +2442,37 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-                  <td style="padding: 12px;"><strong>${esc(s.topic || 'Sin tema')}</strong><br><small class="dash-page-subtitle">Encuentro ${s.session_order || idx + 1}</small></td>
+                  <td data-label="Encuentro / Tema"><strong>${esc(s.topic || 'Sin tema')}</strong><br><small class="dash-page-subtitle">Encuentro ${s.session_order || idx + 1}</small></td>
 
 
 
 
-                  <td style="padding: 12px;">${esc(s.date)}<br><small class="dash-page-subtitle">${esc((s.start_time || '').slice(0, 5))} - ${esc((s.end_time || '').slice(0, 5))}</small></td>
+                  <td data-label="Fecha y Hora">${esc(s.date)}<br><small class="dash-page-subtitle">${esc((s.start_time || '').slice(0, 5))} - ${esc((s.end_time || '').slice(0, 5))}</small></td>
 
 
 
 
-                  <td style="padding: 12px;">${esc(facName)}</td>
+                  <td data-label="Docente">${esc(facName)}</td>
 
 
 
 
-                  <td style="padding: 12px; text-align: right;">
+                  <td data-label="Acciones" class="agenda-cell-actions">
 
 
 
 
-                    <div style="display:flex; gap:8px; justify-content:flex-end;">
+                    <div class="agenda-row-actions">
 
 
 
 
-                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" onclick="editSession('${s.id}')">Editar</button>
+                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-agenda-edit="${s.id}">Editar</button>
 
 
 
 
-                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm dash-page-subtitle" onclick="deleteSession('${s.id}')">Eliminar</button>
+                      <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm dash-page-subtitle" data-agenda-delete="${s.id}">Eliminar</button>
 
 
 
@@ -2426,27 +2537,27 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-            <div style="background: var(--bg-card-hover); padding: 12px 16px; margin-top: 1rem; border-radius: 8px; border: 1px dashed var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+            <div class="agenda-selection-bar">
 
 
 
 
-              <span style="font-weight: 500; color: var(--color-primary, #6366f1);">${selCount} encuentro${selCount > 1 ? 's' : ''} seleccionado${selCount > 1 ? 's' : ''}</span>
+              <span class="agenda-selection-count">${selCount} encuentro${selCount > 1 ? 's' : ''} seleccionado${selCount > 1 ? 's' : ''}</span>
 
 
 
 
-              <div style="display: flex; gap: 8px;">
+              <div class="agenda-selection-actions">
 
 
 
 
-                <button class="dash-btn dash-btn-ghost dash-btn-sm" onclick="window.AgendaState.clearSelection()">Cancelar selección</button>
+                <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-agenda-clear-selection="1">Cancelar selección</button>
 
 
 
 
-                <button class="dash-btn dash-btn-danger dash-btn-sm" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid #ef4444;" onclick="window.AgendaState.confirmBulkDelete()">Eliminar seleccionados</button>
+                <button type="button" class="dash-btn dash-btn-danger dash-btn-sm agenda-selection-danger" data-agenda-confirm-bulk-delete="1">Eliminar seleccionados</button>
 
 
 
@@ -2506,17 +2617,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        <div style="display: flex; gap: 12px; margin-top: 1rem; flex-wrap: wrap;">
+        <div class="agenda-list-actions">
 
 
 
 
-          <button class="dash-btn dash-btn-primary" onclick="setAgendaView('bulk')">Generar cursada automática</button>
+          <button type="button" class="dash-btn dash-btn-primary" data-agenda-open="bulk">Generar cursada automática</button>
 
 
 
 
-          <button class="btn btn-ghost" onclick="setAgendaView('single')">Agregar encuentro individual</button>
+          <button type="button" class="btn btn-ghost" data-agenda-open="single">Agregar encuentro individual</button>
 
 
 
@@ -2541,22 +2652,22 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        <form id="new-session-form" data-session-id="${editModeData?.id || ''}" style="margin-top: 1rem;">
+        <form id="new-session-form" data-session-id="${editModeData?.id || ''}" class="agenda-edit-form">
 
 
 
 
-          <div style="margin-bottom: 1.5rem;">
+          <div class="agenda-edit-inline-head">
 
 
 
 
-            <h4 style="margin: 0;">${editModeData ? 'Editar encuentro' : 'Encuentro individual'}</h4>
+            <h4 class="agenda-edit-inline-title">${editModeData ? 'Editar encuentro' : 'Encuentro individual'}</h4>
 
 
 
 
-            <p class="dash-page-subtitle" style="margin-top: 4px; font-size: 0.9rem;">Completa la información del encuentro.</p>
+            <p class="dash-page-subtitle agenda-edit-inline-subtitle">Completa la información del encuentro.</p>
 
 
 
@@ -2566,7 +2677,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div class="form-row" style="display:flex; flex-direction:column; gap:16px;">
+          <div class="form-row agenda-edit-stack">
 
 
 
@@ -2576,17 +2687,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-            <div style="display:flex; gap:16px;">
+            <div class="agenda-edit-time-row">
 
 
 
 
-              <div class="form-group" style="flex:1"><label class="form-label">Inicio</label><input class="form-input" name="start_time" type="time" value="${esc((editModeData?.start_time || '').slice(0, 5))}" required></div>
+              <div class="form-group agenda-edit-time-col"><label class="form-label">Inicio</label><input class="form-input" name="start_time" type="time" value="${esc((editModeData?.start_time || '').slice(0, 5))}" required></div>
 
 
 
 
-              <div class="form-group" style="flex:1"><label class="form-label">Fin</label><input class="form-input" name="end_time" type="time" value="${esc((editModeData?.end_time || '').slice(0, 5))}" required></div>
+              <div class="form-group agenda-edit-time-col"><label class="form-label">Fin</label><input class="form-input" name="end_time" type="time" value="${esc((editModeData?.end_time || '').slice(0, 5))}" required></div>
 
 
 
@@ -2601,7 +2712,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div class="form-row" style="display:flex; flex-direction:column; gap:16px; margin-top: 16px;">
+          <div class="form-row agenda-edit-stack agenda-edit-stack-spaced">
 
 
 
@@ -2651,7 +2762,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div style="text-align: right; margin-top: 2rem;"><button type="submit" class="dash-btn dash-btn-primary">Guardar encuentro</button></div>
+          <div class="agenda-edit-actions"><button type="submit" class="dash-btn dash-btn-primary">Guardar encuentro</button></div>
 
 
 
@@ -2701,17 +2812,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        <form id="bulk-session-form" style="margin-top: 1rem;">
+        <form id="bulk-session-form" class="agenda-edit-form">
 
 
 
 
-          <div style="margin-bottom: 1.5rem;">
+          <div class="agenda-edit-inline-head">
 
 
 
 
-            <h4 style="margin: 0;">Generador masivo de cursada</h4>
+            <h4 class="agenda-edit-inline-title">Generador masivo de cursada</h4>
 
 
 
@@ -2726,7 +2837,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div class="dash-card-body" style="padding: 0;">
+          <div class="dash-card-body agenda-bulk-body">
 
 
 
@@ -2741,37 +2852,37 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+              <div class="agenda-bulk-days">
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="1"> Lunes</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="1"> Lunes</label>
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="2"> Martes</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="2"> Martes</label>
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="3"> Miércoles</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="3"> Miércoles</label>
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="4"> Jueves</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="4"> Jueves</label>
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="5"> Viernes</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="5"> Viernes</label>
 
 
 
 
-                <label style="display:flex; align-items:center; gap:4px;"><input type="checkbox" name="days" value="6"> Sábado</label>
+                <label class="agenda-bulk-day"><input type="checkbox" name="days" value="6"> Sábado</label>
 
 
 
@@ -2851,7 +2962,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-              <div class="dash-helper-note" style="margin-bottom: 8px; font-size: 0.85rem; color: var(--dash-page-subtitle)">El sistema creará las fechas de los encuentros guiándose por el inicio y fin del taller. A cada fecha le asignará consecutivamente el tema leído línea por línea.</div>
+              <div class="dash-helper-note agenda-bulk-note">El sistema creará las fechas de los encuentros guiándose por el inicio y fin del taller. A cada fecha le asignará consecutivamente el tema leído línea por línea.</div>
 
 
 
@@ -2866,7 +2977,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-            <div style="text-align: right; margin-top: 1rem;"><button type="submit" class="dash-btn dash-btn-primary">Generar encuentros base</button></div>
+            <div class="agenda-edit-actions agenda-edit-actions-compact"><button type="submit" class="dash-btn dash-btn-primary">Generar encuentros base</button></div>
 
 
 
@@ -2896,17 +3007,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        <div style="margin-top: 1rem;">
+        <div class="agenda-preview-shell">
 
 
 
 
-          <div style="margin-bottom: 1.5rem;">
+          <div class="agenda-preview-head">
 
 
 
 
-            <h4 style="margin: 0;">Previsualización de cursada</h4>
+            <h4 class="agenda-edit-inline-title">Previsualización de cursada</h4>
 
 
 
@@ -2931,17 +3042,17 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-            <div style="background: var(--bg-warning); color: var(--text-warning); padding: 12px; border-radius: 6px; margin-bottom: 1rem; font-size: 0.9rem;">
+            <div class="agenda-preview-warning">
 
 
 
 
-              <strong style="display:block; margin-bottom: 4px;">Atención:</strong>
+              <strong class="agenda-preview-warning-title">Atención:</strong>
 
 
 
 
-              <ul style="margin: 0; padding-left: 1.5rem;">
+              <ul class="agenda-preview-warning-list">
 
 
 
@@ -2971,42 +3082,42 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div class="dash-table-wrap" style="max-height: 400px; overflow-y: auto; margin-bottom: 1rem;">
+          <div class="agenda-modal-table-block agenda-modal-table-block-preview">
 
 
 
 
-            <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+            <table class="agenda-modal-table agenda-modal-table-preview">
 
 
 
 
-              <thead style="position: sticky; top: 0; background: var(--color-surface); z-index: 10;">
+              <thead>
 
 
 
 
-                <tr style="border-bottom: 1px solid var(--border-color);">
+                <tr>
 
 
 
 
-                  <th style="padding: 12px; text-align: left;">N°</th>
+                  <th>N°</th>
 
 
 
 
-                  <th style="padding: 12px; text-align: left;">Fecha y Hora</th>
+                  <th>Fecha y Hora</th>
 
 
 
 
-                  <th style="padding: 12px; text-align: left;">Tema</th>
+                  <th>Tema</th>
 
 
 
 
-                  <th style="padding: 12px; text-align: left;">Docente</th>
+                  <th>Docente</th>
 
 
 
@@ -3041,27 +3152,27 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        return `<tr style="border-bottom: 1px solid var(--border-color);">
+        return `<tr>
 
 
 
 
-                    <td style="padding: 8px 12px;" class="dash-page-subtitle">${p.session_order}</td>
+                    <td data-label="N°" style="padding: 8px 12px;" class="dash-page-subtitle">${p.session_order}</td>
 
 
 
 
-                    <td style="padding: 8px 12px;"><strong>${p.date}</strong><br><small class="dash-page-subtitle">${p.start_time.slice(0, 5)} - ${p.end_time.slice(0, 5)}</small></td>
+                    <td data-label="Fecha y Hora" style="padding: 8px 12px;"><strong>${p.date}</strong><br><small class="dash-page-subtitle">${p.start_time.slice(0, 5)} - ${p.end_time.slice(0, 5)}</small></td>
 
 
 
 
-                    <td style="padding: 8px 12px; ${isMissingTopic ? 'color: var(--dash-page-subtitle); font-style: italic;' : ''}">${esc(p.topic)}</td>
+                    <td data-label="Tema" style="padding: 8px 12px; ${isMissingTopic ? 'color: var(--dash-page-subtitle); font-style: italic;' : ''}">${esc(p.topic)}</td>
 
 
 
 
-                    <td style="padding: 8px 12px;">${fac ? esc(fac.name) : '<span class="dash-page-subtitle">Sin asignar</span>'}</td>
+                    <td data-label="Docente" style="padding: 8px 12px;">${fac ? esc(fac.name) : '<span class="dash-page-subtitle">Sin asignar</span>'}</td>
 
 
 
@@ -3096,7 +3207,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-          <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div class="agenda-preview-footer">
 
 
 
@@ -3176,37 +3287,43 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-        const withDrawer = (content, width = '440px') => `
+        const withDrawer = (content, width = '440px') => {
+          const drawerSize = width === '700px' ? 'lg' : width === '500px' ? 'md' : 'sm';
+          const drawerMode = viewMode === 'bulk-preview' ? 'bulk-preview' : viewMode === 'bulk' ? 'bulk' : 'single';
+          const drawerTitle = drawerMode === 'bulk-preview'
+            ? 'Previsualización de cursada'
+            : drawerMode === 'bulk'
+              ? 'Generador de cursada'
+              : editModeData
+                ? 'Editar encuentro'
+                : 'Encuentro individual';
+          const drawerSubtitle = drawerMode === 'bulk-preview'
+            ? 'Validá fechas, temas y docentes antes de confirmar.'
+            : drawerMode === 'bulk'
+              ? 'Configurá días, horarios y temario base del taller.'
+              : 'Completá los datos del encuentro y guardá cambios.';
+          const closeTarget = drawerMode === 'bulk-preview' ? 'bulk' : 'list';
+          return `
 
 
 
 
-          <div class="dash-drawer-backdrop" onclick="setAgendaView('list')" style="display: block; z-index: 10400;"></div>
+          <div class="dash-drawer-backdrop surface-backdrop" data-agenda-drawer-backdrop="1"></div>
 
 
 
 
-          <div class="dash-drawer" style="width: min(${width}, 95vw); display: block; z-index: 10500; right: 0; box-shadow: -4px 0 24px rgba(0,0,0,0.15); animation: dashDrawerSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);">
-
-
-
-
-            <div style="display:flex; justify-content:flex-end; margin-bottom: 1rem;">
-
-
-
-
-              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" onclick="setAgendaView('${viewMode === 'bulk-preview' ? 'bulk' : 'list'}')">Cerrar</button>
-
-
-
-
+          <div class="dash-drawer surface-panel surface-panel-drawer surface-panel-drawer-${drawerSize} surface-panel-shell surface-drawer-edit dash-drawer-legacy" data-surface-size="${drawerSize === 'sm' ? 'compact' : drawerSize === 'md' ? 'medium' : 'wide'}" role="dialog" aria-modal="true" aria-label="Configuración de agenda">
+            <header class="surface-panel-header agenda-edit-drawer-header">
+              <div class="surface-panel-header-main">
+                <h3 class="surface-panel-title">${drawerTitle}</h3>
+                <p class="dash-page-subtitle">${drawerSubtitle}</p>
+              </div>
+              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-agenda-close-drawer="${closeTarget}">Cerrar</button>
+            </header>
+            <div class="surface-panel-body agenda-edit-drawer-body">
+              ${content}
             </div>
-
-
-
-
-            ${content}
 
 
 
@@ -3217,6 +3334,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
         `;
+        };
 
 
 
@@ -3366,7 +3484,34 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
+      if (agendaDrawerSurface?.isOpen?.()) {
+        agendaDrawerSurface.close({ restoreFocus: false });
+      }
+      agendaDrawerSurface = null;
+
+
+
+
       drawerRoot.innerHTML = states.drawer;
+
+      const drawerPanel = drawerRoot.querySelector('.dash-drawer');
+      if (appSurfaces?.open && drawerPanel instanceof HTMLElement) {
+        const requestedSize = drawerPanel.getAttribute('data-surface-size') || 'medium';
+        agendaDrawerSurface = appSurfaces.open({
+          kind: 'drawer',
+          size: requestedSize,
+          root: drawerRoot,
+          panel: drawerPanel,
+          lockScroll: true,
+          trapFocus: true,
+          closeOnEscape: true,
+          closeOnOutside: true,
+          restoreFocus: false,
+          onRequestClose: () => {
+            window.setAgendaView(viewMode === 'bulk-preview' ? 'bulk' : 'list');
+          },
+        });
+      }
 
 
 
@@ -3482,6 +3627,63 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
     const attachFormListeners = () => {
+
+      document.querySelectorAll('[data-agenda-toggle-all="1"]').forEach((input) => {
+        input.onchange = (event) => {
+          window.AgendaState.toggleAll(Boolean(event.target?.checked));
+        };
+      });
+
+      document.querySelectorAll('[data-agenda-toggle-session]').forEach((input) => {
+        input.onchange = () => {
+          const sessionId = input.getAttribute('data-agenda-toggle-session');
+          if (!sessionId) return;
+          window.AgendaState.toggleSelection(sessionId);
+        };
+      });
+
+      document.querySelectorAll('[data-agenda-edit]').forEach((button) => {
+        button.onclick = () => {
+          const sessionId = button.getAttribute('data-agenda-edit');
+          if (!sessionId) return;
+          window.editSession(sessionId);
+        };
+      });
+
+      document.querySelectorAll('[data-agenda-delete]').forEach((button) => {
+        button.onclick = () => {
+          const sessionId = button.getAttribute('data-agenda-delete');
+          if (!sessionId) return;
+          window.deleteSession(sessionId);
+        };
+      });
+
+      document.querySelectorAll('[data-agenda-clear-selection="1"]').forEach((button) => {
+        button.onclick = () => window.AgendaState.clearSelection();
+      });
+
+      document.querySelectorAll('[data-agenda-confirm-bulk-delete="1"]').forEach((button) => {
+        button.onclick = () => window.AgendaState.confirmBulkDelete();
+      });
+
+      document.querySelectorAll('[data-agenda-open]').forEach((button) => {
+        button.onclick = () => {
+          const mode = button.getAttribute('data-agenda-open');
+          if (!mode) return;
+          window.setAgendaView(mode);
+        };
+      });
+
+      document.querySelectorAll('[data-agenda-drawer-backdrop="1"]').forEach((backdrop) => {
+        backdrop.onclick = () => window.setAgendaView('list');
+      });
+
+      document.querySelectorAll('[data-agenda-close-drawer]').forEach((button) => {
+        button.onclick = () => {
+          const targetMode = button.getAttribute('data-agenda-close-drawer') || 'list';
+          window.setAgendaView(targetMode);
+        };
+      });
 
 
 
@@ -4021,7 +4223,7 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
-    openModal(`Agenda del taller: ${workshop.name}`, `<div id="agenda-modal-content">${renderStates().list}</div>`, '');
+    openModal(`Agenda del taller: ${workshop.name}`, `<div id="agenda-modal-content">${renderStates().list}</div>`, '', { variant: 'agenda' });
 
 
 
@@ -4320,7 +4522,7 @@ async function importParticipantsCSV(file) {
       openModal(
         'Importación CSV completada',
         `<p class="muted mb-md">${escapeHTML(summary)}</p><div class="preview-card"><p class="muted mb-md">Errores detectados (máx 50):</p><ul>${result.errors.map((e) => `<li>${escapeHTML(e)}</li>`).join('')}</ul></div>`,
-        `<button class="btn btn-primary" data-inline-click="closeModal()">Cerrar</button>`
+        `<button class="btn btn-primary" data-action="closeModal">Cerrar</button>`
       );
     } else {
       toast(`Importación completada. ${summary}`, 'success');
@@ -4740,24 +4942,24 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
               <button class="btn btn-secondary btn-sm" id="tpl-closing" type="button">Plantilla cierre</button>
             </div>
             
-            <div class="ai-copilot-box mt-md" style="background:var(--bg-card); padding:1rem; border-radius:12px; border:1px solid var(--border-color); box-shadow: 0 4px 20px rgba(0,0,0,0.15);">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.75rem;">
-                <strong style="color:var(--color-primary); display:flex; align-items:center; gap:0.5rem;">
+            <div class="ai-copilot-box mt-md">
+              <div class="ai-copilot-head">
+                <strong class="ai-copilot-title">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
                   Copiloto IA
                 </strong>
-                <button type="button" class="btn btn-ghost btn-sm" id="ai-settings-btn" style="font-size:0.8rem; padding:0.2rem 0.6rem;">⚙️ Preferencias</button>
+                <button type="button" class="btn btn-ghost btn-sm ai-settings-trigger" id="ai-settings-btn">⚙️ Preferencias</button>
               </div>
               
-              <div class="ai-chips" style="display:flex; gap:0.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+              <div class="ai-chips ai-chip-list">
                 <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Invitación" data-format="Email HTML">✉️ E-mail Formal</button>
                 <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Aviso urgente" data-format="WhatsApp con emojis">📱 WhatsApp Flash</button>
                 <button type="button" class="btn btn-secondary btn-sm ai-chip" data-intention="Agradecimiento" data-format="Instagram Story">💖 IG Story</button>
               </div>
 
-              <div style="display:flex; gap:0.5rem; align-items:center;">
-                <input type="text" id="ai-custom-prompt" class="form-input" style="flex:1; background:rgba(255,255,255,0.03); border-color:var(--border-color); border-radius:24px; padding-left:1rem;" placeholder="Escribe instrucciones personalizadas o haz clic en un chip...">
-                <button type="button" class="btn btn-primary" id="ai-generate-btn" style="border-radius:50%; width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+              <div class="ai-copilot-compose">
+                <input type="text" id="ai-custom-prompt" class="form-input ai-prompt-input" placeholder="Escribe instrucciones personalizadas o haz clic en un chip...">
+                <button type="button" class="btn btn-primary ai-generate-btn" id="ai-generate-btn">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                 </button>
               </div>
@@ -4769,7 +4971,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
             </div>
             <div class="form-group">
               <label for="wiz-body" class="form-label">Mensaje</label>
-              <textarea id="wiz-body" class="form-textarea" style="min-height: 180px;">${escapeHTML(wizard.body)}</textarea>
+              <textarea id="wiz-body" class="form-textarea wiz-body-input">${escapeHTML(wizard.body)}</textarea>
             </div>
             <p class="muted">Destinatarios: ${wizard.recipients.length} del taller ${escapeHTML(workshopName)}.</p>
           </div>`;
@@ -4779,7 +4981,7 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         body = `<div class="wizard-step"><h4>Paso 3: Vista previa</h4><div class="preview-card"><div><strong>Taller:</strong> ${escapeHTML(workshopName)}</div><div><strong>Destinatarios:</strong> ${wizard.recipients.length}</div><div><strong>Asunto:</strong> ${escapeHTML(wizard.subject)}</div><hr><p class="text-prewrap">${escapeHTML(wizard.body)}</p></div></div>`;
         footer = `<button class="btn btn-secondary" id="wiz-back">Atrás</button><button class="btn btn-primary" id="wiz-send">Enviar</button>`;
       }
-      openModal('Nueva comunicación', body, footer);
+      openModal('Nueva comunicación', body, footer, { size: 'wide' });
 
       document.getElementById('wiz-cancel')?.addEventListener('click', closeModal);
       document.getElementById('wiz-workshop')?.addEventListener('change', async (e) => { wizard.workshopId = e.target.value; await render(); });
@@ -4793,81 +4995,121 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         const adminEmail = localStorage.getItem('tc_email') || 'unknown';
         const settings = window.AICopilot.getSettings(adminEmail);
 
-        const modalBody = `
-          <div class="form-group">
-            <label class="form-label">Motor de Inteligencia Artificial</label>
-            <select id="ai-provider-select" class="form-select">
-              <option value="gemini" ${settings.provider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
-              <option value="openai" ${settings.provider === 'openai' ? 'selected' : ''}>OpenAI (GPT)</option>
-              <option value="anthropic" ${settings.provider === 'anthropic' ? 'selected' : ''}>Anthropic (Claude)</option>
-              <option value="ollama" ${settings.provider === 'ollama' ? 'selected' : ''}>Ollama (Local/Cloud)</option>
-            </select>
-          </div>
-          <div class="form-group" id="ai-endpoint-group" style="${settings.provider === 'ollama' ? 'display:block;' : 'display:none;'}">
-            <label class="form-label">URL del Servidor Ollama</label>
-            <input type="text" id="ai-endpoint-input" class="form-input" value="${escapeHTML(settings.endpoint || 'http://localhost:11434')}" placeholder="http://localhost:11434">
-            <small class="muted">Asegúrate de configurar CORS en tu servidor Ollama (OLLAMA_ORIGINS="*").</small>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Modelo Específico</label>
-            <input type="text" id="ai-model-input" class="form-input" value="${escapeHTML(settings.model || 'gemini-1.5-pro')}" placeholder="ej. gemini-1.5-pro, claude-3-5-sonnet-20240620 o llama3">
-          </div>
-          <div class="form-group" id="ai-apikey-group" style="${settings.provider === 'ollama' ? 'display:none;' : 'display:block;'}">
-            <label class="form-label">API Key Secreta</label>
-            <input type="password" id="ai-apikey-input" class="form-input" value="${escapeHTML(settings.apiKey || '')}" placeholder="Pega tu clave secreta aquí...">
-            <small class="muted">La clave se guarda localmente encriptada a tu sesión: <b>${escapeHTML(adminEmail)}</b>.</small>
-          </div>
+        const layer = document.createElement('div');
+        layer.className = 'surface-layer surface-layer-modal ai-config-layer';
+        layer.innerHTML = `
+          <div class="surface-backdrop" data-ai-cfg-close="1"></div>
+          <section class="surface-panel surface-panel-medium ai-config-panel" role="dialog" aria-modal="true" aria-labelledby="ai-cfg-title">
+            <header class="ai-config-header">
+              <h3 id="ai-cfg-title" class="modal-title">Configuración avanzada</h3>
+              <button type="button" class="btn btn-ghost" data-ai-cfg-close="1" aria-label="Cerrar preferencias">×</button>
+            </header>
+            <div class="ai-config-body">
+              <div class="form-group">
+                <label class="form-label" for="ai-provider-select">Motor de Inteligencia Artificial</label>
+                <select id="ai-provider-select" class="form-select">
+                  <option value="gemini" ${settings.provider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+                  <option value="openai" ${settings.provider === 'openai' ? 'selected' : ''}>OpenAI (GPT)</option>
+                  <option value="anthropic" ${settings.provider === 'anthropic' ? 'selected' : ''}>Anthropic (Claude)</option>
+                  <option value="ollama" ${settings.provider === 'ollama' ? 'selected' : ''}>Ollama (Local/Cloud)</option>
+                </select>
+              </div>
+              <div class="form-group" id="ai-endpoint-group" ${settings.provider === 'ollama' ? '' : 'hidden'}>
+                <label class="form-label" for="ai-endpoint-input">URL del Servidor Ollama</label>
+                <input type="text" id="ai-endpoint-input" class="form-input" value="${escapeHTML(settings.endpoint || 'http://localhost:11434')}" placeholder="http://localhost:11434">
+                <small class="muted">Asegurate de configurar CORS en tu servidor Ollama (OLLAMA_ORIGINS="*").</small>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="ai-model-input">Modelo Específico</label>
+                <input type="text" id="ai-model-input" class="form-input" value="${escapeHTML(settings.model || 'gemini-1.5-pro')}" placeholder="ej. gemini-1.5-pro, claude-3-5-sonnet-20240620 o llama3">
+              </div>
+              <div class="form-group" id="ai-apikey-group" ${settings.provider === 'ollama' ? 'hidden' : ''}>
+                <label class="form-label" for="ai-apikey-input">API Key Secreta</label>
+                <input type="password" id="ai-apikey-input" class="form-input" value="${escapeHTML(settings.apiKey || '')}" placeholder="Pega tu clave secreta acá...">
+                <small class="muted">La clave se guarda localmente para tu sesión: <b>${escapeHTML(adminEmail)}</b>.</small>
+              </div>
+            </div>
+            <footer class="ai-config-footer">
+              <button type="button" class="btn btn-secondary" data-ai-cfg-close="1">Cancelar</button>
+              <button type="button" class="btn btn-primary" id="ai-cfg-save">Guardar preferencias</button>
+            </footer>
+          </section>
         `;
 
-        const overlay = document.createElement('div');
-        overlay.id = 'ai-cfg-backdrop';
-        // HARDCODED OVERLAY STYLES TO BYPASS INHERITED DISPLAY ISSUES
-        overlay.style.cssText = 'position: fixed; inset: 0; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; z-index: 999999; backdrop-filter: blur(4px);';
+        document.body.appendChild(layer);
 
-        overlay.innerHTML = `
-          <div class="modal" style="width: 100%; max-width: 480px; background: var(--bg-card); border-radius: 12px; border: 1px solid var(--color-primary); box-shadow: 0 0 40px rgba(123, 75, 255, 0.2); padding: 1.5rem;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-              <h3 class="modal-title" style="margin: 0; font-size: 1.25rem; display: flex; align-items: center; gap: 0.5rem; color: var(--text-main);">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/></svg>
-                Configuración Avanzada
-              </h3>
-              <button class="btn btn-ghost" id="ai-cfg-close" style="padding: 0.25rem 0.5rem; font-size: 1.2rem;">&times;</button>
-            </div>
-            <div class="modal-body" style="margin-bottom: 1.5rem;">${modalBody}</div>
-            <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 0.5rem;">
-              <button class="btn btn-secondary" id="ai-cfg-cancel">Cancelar</button>
-              <button class="btn btn-primary" id="ai-cfg-save">Guardar Preferencias</button>
-            </div>
-          </div>
-        `;
+        let surfaceHandle = null;
+        const closeCfg = () => {
+          if (surfaceHandle?.isOpen?.()) {
+            const activeHandle = surfaceHandle;
+            surfaceHandle = null;
+            activeHandle.close();
+            return;
+          }
+          layer.remove();
+        };
 
-        document.body.appendChild(overlay);
+        const panel = layer.querySelector('.ai-config-panel');
+        const providerSelect = layer.querySelector('#ai-provider-select');
+        const modelInput = layer.querySelector('#ai-model-input');
+        const endpointGroup = layer.querySelector('#ai-endpoint-group');
+        const endpointInput = layer.querySelector('#ai-endpoint-input');
+        const apiKeyGroup = layer.querySelector('#ai-apikey-group');
+        const apiKeyInput = layer.querySelector('#ai-apikey-input');
 
-        const closeCfg = () => overlay.remove();
-        document.getElementById('ai-cfg-close').addEventListener('click', closeCfg);
-        document.getElementById('ai-cfg-cancel').addEventListener('click', closeCfg);
-
-        document.getElementById('ai-provider-select').addEventListener('change', (e) => {
-          const m = document.getElementById('ai-model-input');
-          const p = e.target.value;
-          const endptGroup = document.getElementById('ai-endpoint-group');
-          const apiKeyGroup = document.getElementById('ai-apikey-group');
-
-          if (p === 'gemini') { m.value = 'gemini-1.5-pro'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
-          else if (p === 'openai') { m.value = 'gpt-4o'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
-          else if (p === 'anthropic') { m.value = 'claude-3-5-sonnet-20240620'; endptGroup.style.display = 'none'; apiKeyGroup.style.display = 'block'; }
-          else if (p === 'ollama') { m.value = 'llama3'; endptGroup.style.display = 'block'; apiKeyGroup.style.display = 'none'; }
+        layer.querySelectorAll('[data-ai-cfg-close="1"]').forEach((button) => {
+          button.addEventListener('click', closeCfg);
         });
 
-        document.getElementById('ai-cfg-save').addEventListener('click', () => {
-          const p = document.getElementById('ai-provider-select').value;
-          const m = document.getElementById('ai-model-input').value.trim();
-          const k = document.getElementById('ai-apikey-input').value.trim();
-          const ep = document.getElementById('ai-endpoint-input').value.trim();
-          window.AICopilot.setSettings(adminEmail, p, m, k, ep);
+        providerSelect?.addEventListener('change', (event) => {
+          const provider = event.target.value;
+          if (provider === 'gemini') {
+            modelInput.value = 'gemini-1.5-pro';
+            endpointGroup.hidden = true;
+            apiKeyGroup.hidden = false;
+          } else if (provider === 'openai') {
+            modelInput.value = 'gpt-4o';
+            endpointGroup.hidden = true;
+            apiKeyGroup.hidden = false;
+          } else if (provider === 'anthropic') {
+            modelInput.value = 'claude-3-5-sonnet-20240620';
+            endpointGroup.hidden = true;
+            apiKeyGroup.hidden = false;
+          } else if (provider === 'ollama') {
+            modelInput.value = 'llama3';
+            endpointGroup.hidden = false;
+            apiKeyGroup.hidden = true;
+          }
+        });
+
+        layer.querySelector('#ai-cfg-save')?.addEventListener('click', () => {
+          const provider = providerSelect?.value || 'gemini';
+          const model = modelInput?.value.trim() || '';
+          const apiKey = apiKeyInput?.value.trim() || '';
+          const endpoint = endpointInput?.value.trim() || '';
+          window.AICopilot.setSettings(adminEmail, provider, model, apiKey, endpoint);
           toast('Preferencias de IA actualizadas. ¡Listo para crear!', 'success');
           closeCfg();
         });
+
+        if (appSurfaces?.open && panel) {
+          surfaceHandle = appSurfaces.open({
+            kind: 'modal',
+            root: layer,
+            panel,
+            lockScroll: true,
+            trapFocus: true,
+            closeOnEscape: true,
+            closeOnOutside: true,
+            onRequestClose: () => closeCfg(),
+            onAfterClose: () => {
+              layer.remove();
+            },
+            initialFocus: providerSelect,
+          });
+        } else {
+          providerSelect?.focus();
+        }
       });
 
       // Handle Chip UX

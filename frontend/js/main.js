@@ -3,6 +3,7 @@ import './ui/components.js';
 import './ui/charts.js';
 import './ui/report_jobs.js';
 import './ui/ai_copilot.js';
+import './ui/dialogs.js';
 
 import './core/hash_router.js';
 import './core/table_utils.js';

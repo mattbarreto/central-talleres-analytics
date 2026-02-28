@@ -9,6 +9,8 @@
     hashRouter,
   }) => {
     const API_BASE = '/api/v1';
+    const surfaces = window.AppSurfaces || null;
+    const sidebarSurfaceState = { handle: null };
 
     const showApp = (email) => {
       document.getElementById('login-page').classList.add('hidden');
@@ -33,11 +35,43 @@
       history.replaceState(null, '', `${window.location.pathname}${window.location.search}#dashboard`);
     };
 
-    const closeMobileSidebar = () => {
+    const closeMobileSidebar = (options = {}) => {
+      const { restoreFocus = false } = options;
       document.getElementById('sidebar')?.classList.remove('open');
       document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'false');
       const overlay = document.getElementById('sidebar-overlay');
       if (overlay) overlay.hidden = true;
+      if (!sidebarSurfaceState.handle?.isOpen?.()) {
+        sidebarSurfaceState.handle = null;
+        return;
+      }
+      const activeHandle = sidebarSurfaceState.handle;
+      sidebarSurfaceState.handle = null;
+      activeHandle.close({ restoreFocus });
+    };
+
+    const openMobileSidebar = () => {
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+      if (!(sidebar instanceof HTMLElement)) return;
+      sidebar.classList.add('open');
+      document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', 'true');
+      if (overlay) overlay.hidden = false;
+      if (!surfaces?.open) return;
+      if (sidebarSurfaceState.handle?.isOpen?.()) {
+        sidebarSurfaceState.handle.close({ restoreFocus: false });
+        sidebarSurfaceState.handle = null;
+      }
+      sidebarSurfaceState.handle = surfaces.open({
+        kind: 'sidebar',
+        root: sidebar,
+        panel: sidebar,
+        lockScroll: true,
+        trapFocus: false,
+        closeOnEscape: true,
+        closeOnOutside: true,
+        onRequestClose: () => closeMobileSidebar({ restoreFocus: true }),
+      });
     };
 
     const bind = () => {
@@ -79,19 +113,22 @@
 
       document.getElementById('mobile-toggle')?.addEventListener('click', () => {
         const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('sidebar-overlay');
         const next = !sidebar?.classList.contains('open');
-        sidebar?.classList.toggle('open', Boolean(next));
-        document.getElementById('mobile-toggle')?.setAttribute('aria-expanded', next ? 'true' : 'false');
-        if (overlay) overlay.hidden = !next;
+        if (next) {
+          openMobileSidebar();
+          return;
+        }
+        closeMobileSidebar({ restoreFocus: false });
       });
-      document.getElementById('sidebar-overlay')?.addEventListener('click', closeMobileSidebar);
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const sidebar = document.getElementById('sidebar');
-        if (!sidebar?.classList.contains('open')) return;
-        closeMobileSidebar();
-      });
+      if (!surfaces?.open) {
+        document.getElementById('sidebar-overlay')?.addEventListener('click', () => closeMobileSidebar({ restoreFocus: false }));
+        document.addEventListener('keydown', (e) => {
+          if (e.key !== 'Escape') return;
+          const sidebar = document.getElementById('sidebar');
+          if (!sidebar?.classList.contains('open')) return;
+          closeMobileSidebar({ restoreFocus: false });
+        });
+      }
       document.getElementById('sidebar-collapse-btn')?.addEventListener('click', () => {
         const collapsed = !document.getElementById('app-layout')?.classList.contains('sidebar-collapsed');
         setSidebarCollapsed(collapsed, true);

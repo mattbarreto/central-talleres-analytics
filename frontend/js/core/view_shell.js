@@ -1,5 +1,7 @@
 (function () {
   function activate({ views = [], view = '', doc = document } = {}) {
+    const surfaces = window.AppSurfaces || null;
+    surfaces?.closeAll?.({ restoreFocus: false });
     const safeViews = Array.isArray(views) ? views : [];
     safeViews.forEach((v) => doc.getElementById(`view-${v}`)?.classList.toggle('hidden', v !== view));
     doc.querySelectorAll('.nav-item').forEach((btn) => {

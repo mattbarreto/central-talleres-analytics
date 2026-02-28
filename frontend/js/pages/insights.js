@@ -1,7 +1,8 @@
-﻿(function () {
+(function () {
   const UI = window.DashboardUI || {};
   const store = window.DashboardState;
   const charts = window.DashboardCharts;
+  const surfaces = window.AppSurfaces || null;
 
   const viewState = {
     rankingSortKey: 'enrollments_total',
@@ -262,7 +263,7 @@
               ${UI.Button({ variant: 'secondary', size: 'md', label: 'Camino de persona', attrs: 'type="button" data-i-journey="1"' })}
               <div class="dash-export-menu" data-i-export-menu="1">
                 ${UI.Button({ variant: 'secondary', size: 'md', label: 'Exportar', attrs: 'type="button" data-i-export-toggle="1" aria-haspopup="true" aria-expanded="false" aria-controls="i-export-list"' })}
-                <div class="dash-export-menu-list hidden" id="i-export-list" aria-hidden="true" data-i-export-list="1">
+                <div class="dash-export-menu-list surface-popover hidden" id="i-export-list" aria-hidden="true" data-i-export-list="1">
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'CSV', attrs: 'type="button" data-i-export-csv="1"' })}
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Excel', attrs: 'type="button" data-i-export-excel="1"' })}
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'JSON', attrs: 'type="button" data-i-export-json="1"' })}
@@ -532,17 +533,36 @@
     const exportMenu = renderHost.querySelector('[data-i-export-menu="1"]');
     const exportToggle = renderHost.querySelector('[data-i-export-toggle="1"]');
     const exportList = renderHost.querySelector('[data-i-export-list="1"]');
+    let exportSurface = null;
     const exportActions = () => Array.from(exportList?.querySelectorAll('button') || []);
     const closeExportMenu = (focusToggle = false) => {
+      if (exportSurface?.isOpen?.()) {
+        const activeSurface = exportSurface;
+        exportSurface = null;
+        activeSurface.close({ restoreFocus: false });
+      }
       exportList?.classList.add('hidden');
       exportToggle?.setAttribute('aria-expanded', 'false');
       exportList?.setAttribute('aria-hidden', 'true');
       if (focusToggle) exportToggle?.focus();
     };
     const openExportMenu = () => {
+      if (!(exportList?.classList.contains('hidden')) && exportSurface?.isOpen?.()) return;
       exportList?.classList.remove('hidden');
       exportToggle?.setAttribute('aria-expanded', 'true');
       exportList?.setAttribute('aria-hidden', 'false');
+      if (!surfaces?.open || !(exportMenu instanceof HTMLElement) || !(exportList instanceof HTMLElement)) return;
+      exportSurface = surfaces.open({
+        kind: 'dropdown',
+        root: exportMenu,
+        panel: exportList,
+        lockScroll: false,
+        trapFocus: false,
+        closeOnEscape: true,
+        closeOnOutside: true,
+        restoreFocus: false,
+        onRequestClose: () => closeExportMenu(true),
+      });
     };
     exportToggle?.addEventListener('click', (e) => {
       e.preventDefault();
@@ -581,27 +601,6 @@
         actions[prev]?.focus();
       }
     });
-    if (!renderHost.dataset.exportCloseBound) {
-      renderHost.dataset.exportCloseBound = '1';
-      renderHost.addEventListener('click', (e) => {
-        const menu = renderHost.querySelector('[data-i-export-menu="1"]');
-        const list = renderHost.querySelector('[data-i-export-list="1"]');
-        const toggle = renderHost.querySelector('[data-i-export-toggle="1"]');
-        if (!menu || !list || !toggle) return;
-        if (menu.contains(e.target)) return;
-        list.classList.add('hidden');
-        toggle.setAttribute('aria-expanded', 'false');
-        list.setAttribute('aria-hidden', 'true');
-      });
-      renderHost.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape') return;
-        const list = renderHost.querySelector('[data-i-export-list="1"]');
-        const toggle = renderHost.querySelector('[data-i-export-toggle="1"]');
-        list?.classList.add('hidden');
-        list?.setAttribute('aria-hidden', 'true');
-        toggle?.setAttribute('aria-expanded', 'false');
-      });
-    }
     renderHost.querySelector('[data-i-apply="1"]')?.addEventListener('click', () => {
       opts.onApply?.({
         period: renderHost.querySelector('#i-period')?.value || 'monthly',

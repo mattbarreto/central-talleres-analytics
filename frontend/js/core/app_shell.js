@@ -65,6 +65,8 @@
       btn.setAttribute('data-tooltip', label);
     }
     if (persist) localStorage.setItem(SIDEBAR_COLLAPSED_KEY, normalized ? '1' : '0');
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));
+    window.setTimeout(() => window.dispatchEvent(new Event('resize')), 260);
   };
 
   const getInitialSidebarCollapsed = () => {

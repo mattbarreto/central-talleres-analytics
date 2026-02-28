@@ -1,9 +1,24 @@
 (function () {
   const store = window.DashboardState;
   const charts = window.DashboardCharts;
+  const surfaces = window.AppSurfaces || null;
   const localState = {
     trendMetric: 'enrollments',
   };
+
+  const drawerUiState = {
+    handle: null,
+  };
+
+  function clearDrawerUiState({ restoreFocus = false } = {}) {
+    if (!drawerUiState.handle?.isOpen?.()) {
+      drawerUiState.handle = null;
+      return;
+    }
+    const activeHandle = drawerUiState.handle;
+    drawerUiState.handle = null;
+    activeHandle.close({ restoreFocus });
+  }
 
   function rangeDays(rangeKey) {
     if (rangeKey === '7d') return 7;
@@ -44,6 +59,59 @@
     return 'is-scheduled';
   }
 
+  function timeToMinutes(raw) {
+    const value = String(raw || '').trim();
+    const match = value.match(/^(\d{1,2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
+    return (hours * 60) + minutes;
+  }
+
+  function classifyTodayRows(rows = [], limit = 3, now = new Date()) {
+    const currentMinutes = (now.getHours() * 60) + now.getMinutes();
+    const operative = (rows || []).reduce((acc, row) => {
+      if (row.status === 'completed' || row.status === 'cancelled') return acc;
+      const startMinutes = timeToMinutes(row.startTime);
+      const endMinutes = timeToMinutes(row.endTime);
+      if (endMinutes !== null && endMinutes <= currentMinutes) return acc;
+      const temporalState = (
+        startMinutes !== null
+        && endMinutes !== null
+        && startMinutes <= currentMinutes
+        && currentMinutes < endMinutes
+      )
+        ? 'live'
+        : 'next';
+      acc.push({ ...row, temporalState });
+      return acc;
+    }, []);
+
+    const liveRows = operative.filter((row) => row.temporalState === 'live');
+    const nextRows = operative.filter((row) => row.temporalState === 'next');
+    const visibleRows = liveRows.length > limit
+      ? liveRows
+      : [...liveRows, ...nextRows.slice(0, Math.max(0, limit - liveRows.length))];
+
+    return {
+      visibleRows,
+      overflowCount: Math.max(0, operative.length - visibleRows.length),
+      hasOperativeRows: operative.length > 0,
+    };
+  }
+
+  function temporalBadgeClass(state) {
+    if (state === 'live') return 'is-live';
+    if (state === 'next') return 'is-next';
+    return 'is-next';
+  }
+
+  function temporalBadgeLabel(state) {
+    if (state === 'live') return 'En curso';
+    return 'Proximo';
+  }
+
   function explainKpi(kpiId) {
     const dict = {
       workshops: 'Talleres con actividad efectiva en el periodo comparado.',
@@ -57,6 +125,8 @@
   function agendaRows(rows = []) {
     return (rows || []).map((session) => ({
       workshopId: session.workshop_id,
+      startTime: (session.start_time || '').slice(0, 5),
+      endTime: (session.end_time || '').slice(0, 5),
       timeRange: `${(session.start_time || '').slice(0, 5)} - ${(session.end_time || '').slice(0, 5)}`,
       workshop: session.workshop_name || 'Taller sin nombre',
       facilitator: session.facilitator_name || 'Sin asignar',
@@ -65,8 +135,13 @@
     }));
   }
 
-  function agendaCard({ title, rows, esc }) {
+  function agendaCard({ title, rows, esc, dayKey }) {
+    const isToday = dayKey === 'today';
+    const visibleLimit = isToday ? 3 : 5;
     if (!rows.length) {
+      const emptyFooter = isToday
+        ? `<div class="dash-agenda-footer"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-open-agenda="${esc(dayKey)}">Ver agenda completa</button></div>`
+        : '';
       return `
         <article class="dash-card dash-agenda-card">
           <header class="dash-card-header">
@@ -77,20 +152,55 @@
               <h3>Sin agenda cargada</h3>
               <p>No hay encuentros programados para este bloque.</p>
             </div>
+            ${emptyFooter}
           </div>
         </article>
       `;
     }
 
-    const body = rows.map((row) => `
-      <tr>
-        <td data-label="Hora">${esc(row.timeRange)}</td>
-        <td data-label="Taller"><button type="button" class="dash-link-btn" data-workshop-detail="${esc(row.workshopId)}">${esc(row.workshop)}</button></td>
-        <td data-label="Docente">${esc(row.facilitator)}</td>
-        <td data-label="Tema"><span class="dash-topic-text ${row.topic === 'Sin tema' ? 'is-missing' : ''}">${esc(row.topic)}</span></td>
-        <td data-label="Estado"><span class="dash-status-badge ${statusClass(row.status)}">${esc(statusLabel(row.status))}</span></td>
-      </tr>
+    const todaySelection = isToday ? classifyTodayRows(rows, visibleLimit) : null;
+    const visibleRows = isToday ? todaySelection.visibleRows : rows.slice(0, visibleLimit);
+    const overflowCount = isToday
+      ? todaySelection.overflowCount
+      : Math.max(0, rows.length - visibleRows.length);
+    const hasOperativeRows = isToday ? todaySelection.hasOperativeRows : visibleRows.length > 0;
+
+    if (isToday && !hasOperativeRows) {
+      return `
+        <article class="dash-card dash-agenda-card">
+          <header class="dash-card-header">
+            <div class="dash-card-title-wrap"><h3 class="dash-card-title">${esc(title)}</h3></div>
+          </header>
+          <div class="dash-card-body">
+            <div class="dash-empty" role="status">
+              <h3>Sin actividad operativa inmediata</h3>
+              <p>No hay encuentros en curso ni proximos para hoy.</p>
+            </div>
+            <div class="dash-agenda-footer">
+              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-open-agenda="${esc(dayKey)}">Ver agenda completa</button>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    const body = visibleRows.map((row) => `
+      <li class="dash-agenda-item ${isToday ? `is-${esc(row.temporalState || 'next')}` : ''}">
+        <div class="dash-agenda-item-time">${esc(row.timeRange)}</div>
+        <div class="dash-agenda-item-main">
+          <button type="button" class="dash-link-btn" data-workshop-detail="${esc(row.workshopId)}">${esc(row.workshop)}</button>
+          <div class="dash-agenda-item-meta">
+            <span>${esc(row.facilitator)}</span>
+            <span aria-hidden="true">&middot;</span>
+            <span class="dash-topic-text ${row.topic === 'Sin tema' ? 'is-missing' : ''}">${esc(row.topic)}</span>
+          </div>
+        </div>
+        <div class="dash-agenda-item-status"><span class="dash-status-badge ${isToday ? temporalBadgeClass(row.temporalState) : statusClass(row.status)}">${esc(isToday ? temporalBadgeLabel(row.temporalState) : statusLabel(row.status))}</span></div>
+      </li>
     `).join('');
+    const overflowHtml = overflowCount > 0
+      ? `<p class="dash-agenda-overflow">+${esc(String(overflowCount))} encuentros restantes en agenda completa.</p>`
+      : '';
 
     return `
       <article class="dash-card dash-agenda-card">
@@ -98,16 +208,106 @@
           <div class="dash-card-title-wrap"><h3 class="dash-card-title">${esc(title)}</h3></div>
         </header>
         <div class="dash-card-body">
-          <div class="dash-table-wrap" role="region" aria-label="${esc(`Agenda de ${title}`)}">
-            <table class="dash-table dash-table-operational">
-              <thead>
-                <tr><th>Hora</th><th>Taller</th><th>Docente</th><th>Tema</th><th>Estado</th></tr>
-              </thead>
-              <tbody>${body}</tbody>
-            </table>
+          <div class="dash-agenda-list-wrap" role="region" aria-label="${esc(`Agenda de ${title}`)}">
+            <ul class="dash-agenda-list">${body}</ul>
+            ${overflowHtml}
+            <div class="dash-agenda-footer">
+              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-open-agenda="${esc(dayKey)}">Ver agenda completa</button>
+            </div>
           </div>
         </div>
       </article>
+    `;
+  }
+
+  function agendaPeakSlot(rows = []) {
+    const slotCount = new Map();
+    (rows || []).forEach((row) => {
+      const slot = String(row?.timeRange || '').trim();
+      if (!slot) return;
+      slotCount.set(slot, (slotCount.get(slot) || 0) + 1);
+    });
+    let peakSlot = '';
+    let peakCount = 0;
+    slotCount.forEach((count, slot) => {
+      if (count > peakCount) {
+        peakCount = count;
+        peakSlot = slot;
+      }
+    });
+    return peakSlot || 'Sin dato';
+  }
+
+  function assignedFacilitators(rows = []) {
+    const names = new Set();
+    (rows || []).forEach((row) => {
+      const name = String(row?.facilitator || '').trim();
+      if (!name || name === 'Sin asignar') return;
+      names.add(name);
+    });
+    return names.size;
+  }
+
+  function agendaDateLabel(dayKey) {
+    const date = new Date();
+    if (dayKey === 'tomorrow') date.setDate(date.getDate() + 1);
+    return new Intl.DateTimeFormat('es-AR', {
+      weekday: 'long',
+      day: '2-digit',
+      month: 'long',
+    }).format(date);
+  }
+
+  function agendaDrawerLayout({ title, dateLabel, rows, expectedParticipants, esc }) {
+    const facilitatorCount = assignedFacilitators(rows);
+    const peakSlot = agendaPeakSlot(rows);
+    const participantsLabel = expectedParticipants > 0
+      ? String(expectedParticipants)
+      : 'Sin estimacion';
+    const listRows = rows.length
+      ? `<table class="dash-table dash-table-agenda-drawer">
+          <thead>
+            <tr><th>Hora</th><th>Taller</th><th>Docente</th><th>Tema</th><th>Estado</th></tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td data-label="Hora">${esc(row.timeRange)}</td>
+                <td data-label="Taller">${esc(row.workshop)}</td>
+                <td data-label="Docente">${esc(row.facilitator)}</td>
+                <td data-label="Tema"><span class="dash-topic-text ${row.topic === 'Sin tema' ? 'is-missing' : ''}">${esc(row.topic)}</span></td>
+                <td data-label="Estado"><span class="dash-status-badge ${statusClass(row.status)}">${esc(statusLabel(row.status))}</span></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>`
+      : `<div class="dash-empty" role="status">
+          <h3>Sin agenda cargada</h3>
+          <p>No hay encuentros programados para este dia.</p>
+        </div>`;
+
+    return `
+      <div class="dash-drawer-backdrop surface-backdrop surface-backdrop-operational" data-drawer-close="1"></div>
+      <aside class="dash-drawer dash-agenda-drawer surface-panel surface-panel-wide surface-panel-shell surface-reading-operational" data-surface-kind="sheet" data-surface-size="wide" role="dialog" aria-modal="true" aria-labelledby="agenda-drawer-title">
+        <header class="dash-drawer-header dash-agenda-drawer-header surface-panel-header">
+          <div class="surface-panel-header-main">
+            <h3 id="agenda-drawer-title">${esc(title)}</h3>
+            <p class="dash-page-subtitle">${esc(dateLabel)}</p>
+          </div>
+          <button class="dash-drawer-close" type="button" data-drawer-close="1" aria-label="Cerrar">&times;</button>
+        </header>
+        <div class="surface-panel-body dash-agenda-drawer-body">
+          <section class="dash-agenda-drawer-summary" aria-label="Resumen diario">
+            <article class="dash-agenda-summary-item"><span>Encuentros</span><strong>${esc(String(rows.length))}</strong></article>
+            <article class="dash-agenda-summary-item"><span>Docentes implicados</span><strong>${esc(String(facilitatorCount))}</strong></article>
+            <article class="dash-agenda-summary-item"><span>Participantes estimados</span><strong>${esc(participantsLabel)}</strong></article>
+            <article class="dash-agenda-summary-item"><span>Franja pico</span><strong>${esc(peakSlot)}</strong></article>
+          </section>
+          <section class="dash-agenda-drawer-detail" aria-label="Detalle de encuentros">
+            ${listRows}
+          </section>
+        </div>
+      </aside>
     `;
   }
 
@@ -158,40 +358,42 @@
     return items;
   }
 
-  function drawerBody(kpi, esc) {
+  function drawerBody(kpi, explanation, esc) {
     return `
-      <div class="dash-kpi-detail-box">
-        <div>
-          <div class="dash-kpi-detail-label">Periodo actual</div>
-          <strong class="dash-kpi-detail-value">${esc(String(kpi.value))}</strong>
-        </div>
-        <div class="dash-kpi-detail-prev">
-          <div class="dash-kpi-detail-label">Periodo anterior</div>
-          <strong class="dash-kpi-detail-value-prev">${esc(String(kpi.previous))}</strong>
-          <div class="dash-kpi-detail-delta">${esc(kpi.delta)}</div>
-        </div>
-      </div>
+      <section class="dash-operational-summary-grid" aria-label="Resumen del indicador">
+        <article class="dash-operational-summary-item"><span>Periodo actual</span><strong>${esc(String(kpi.value))}</strong></article>
+        <article class="dash-operational-summary-item"><span>Periodo anterior</span><strong>${esc(String(kpi.previous))}</strong></article>
+        <article class="dash-operational-summary-item"><span>Variacion</span><strong>${esc(kpi.delta)}</strong></article>
+        <article class="dash-operational-summary-item"><span>Lectura</span><strong>${esc(kpi.trend || 'Sin clasificacion')}</strong></article>
+      </section>
+      <section class="dash-operational-detail-block" aria-label="Detalle operativo del indicador">
+        <table class="dash-table-operational-detail">
+          <tbody>
+            <tr><th scope="row">Indicador</th><td>${esc(kpi.label)}</td></tr>
+            <tr><th scope="row">Interpretacion</th><td>${esc(kpi.trend || 'Sin clasificacion')}</td></tr>
+            <tr><th scope="row">Definicion</th><td>${esc(explanation)}</td></tr>
+          </tbody>
+        </table>
+      </section>
     `;
   }
 
-  function drawerLayout({ title, subtitle, explanation, body }) {
+  function drawerLayout({ title, subtitle, body }) {
     const { Button } = window.DashboardUI || {};
     return `
-      <div class="dash-drawer-backdrop" data-drawer-close="1"></div>
-      <aside class="dash-drawer" role="dialog" aria-modal="true" aria-labelledby="kpi-drawer-title">
-        <header class="dash-drawer-header">
-          <div>
+      <div class="dash-drawer-backdrop surface-backdrop surface-backdrop-operational" data-drawer-close="1"></div>
+      <aside class="dash-drawer dash-kpi-drawer surface-panel surface-panel-wide surface-panel-shell surface-reading-operational" data-surface-kind="sheet" data-surface-size="wide" role="dialog" aria-modal="true" aria-labelledby="kpi-drawer-title">
+        <header class="dash-drawer-header surface-panel-header">
+          <div class="surface-panel-header-main">
             <h3 id="kpi-drawer-title">${title}</h3>
             <p class="dash-page-subtitle">${subtitle}</p>
           </div>
-          <button class="dash-drawer-close" type="button" data-drawer-close="1">Cerrar</button>
+          <button class="dash-drawer-close" type="button" data-drawer-close="1" aria-label="Cerrar">&times;</button>
         </header>
-        <p>${explanation}</p>
-        ${body}
-        <div class="dash-row-actions section-stack-top">
+        <div class="surface-panel-body dash-kpi-drawer-body">${body}</div>
+        <footer class="surface-panel-footer dash-kpi-drawer-footer">
           ${Button ? Button({ variant: 'secondary', size: 'md', label: 'Ir a vista filtrada', attrs: 'type="button" data-kpi-cta="1"' }) : ''}
-          ${Button ? Button({ variant: 'ghost', size: 'md', label: 'Cerrar', attrs: 'type="button" data-drawer-close="1"' }) : ''}
-        </div>
+        </footer>
       </aside>
     `;
   }
@@ -218,6 +420,8 @@
       renderHost = root.querySelector('[data-dashboard-render-host="1"]');
     }
 
+    clearDrawerUiState();
+
     charts?.destroyRootCharts?.(renderHost);
 
     if (opts.dashboardLoading) {
@@ -230,8 +434,11 @@
         title: 'Error cargando panel',
         message: 'Ocurrio un error al consultar las metricas. Intente recargar.',
         actionLabel: 'Reintentar',
-        actionAttrs: 'onclick="window.location.reload()"'
+        actionAttrs: 'type="button" data-dashboard-retry="1"'
       })}</div></div>`;
+      renderHost.querySelector('[data-dashboard-retry="1"]')?.addEventListener('click', () => {
+        window.location.reload();
+      });
       return true;
     }
 
@@ -308,8 +515,8 @@
           </article>
         </div>
         <div class="dash-operational-agenda">
-          ${agendaCard({ title: 'Hoy', rows: todayRows, esc })}
-          ${agendaCard({ title: 'Manana', rows: tomorrowRows, esc })}
+          ${agendaCard({ title: 'Hoy', rows: todayRows, esc, dayKey: 'today' })}
+          ${agendaCard({ title: 'Manana', rows: tomorrowRows, esc, dayKey: 'tomorrow' })}
         </div>
         <article class="dash-card dash-week-summary-card">
           <header class="dash-card-header">
@@ -498,9 +705,57 @@
       opts.onFilterChange?.({ year: '', status: '', workshop: '' });
     });
 
+    const drawerRoot = renderHost.querySelector('#dash-drawer-root');
+    const closeDrawer = () => {
+      clearDrawerUiState({ restoreFocus: true });
+      if (drawerRoot) drawerRoot.innerHTML = '';
+    };
+
+    const openDrawer = (markup) => {
+      if (!drawerRoot) return;
+      clearDrawerUiState();
+      drawerRoot.innerHTML = '';
+      drawerRoot.innerHTML = markup;
+      drawerRoot.querySelectorAll('[data-drawer-close="1"]').forEach((closeBtn) => closeBtn.addEventListener('click', closeDrawer));
+      const panel = drawerRoot.querySelector('.dash-drawer');
+      if (!surfaces?.open || !(panel instanceof HTMLElement)) return;
+      const requestedKind = panel.getAttribute('data-surface-kind') || 'drawer';
+      const requestedSize = panel.getAttribute('data-surface-size') || 'medium';
+      drawerUiState.handle = surfaces.open({
+        kind: requestedKind,
+        size: requestedSize,
+        root: drawerRoot,
+        panel,
+        lockScroll: true,
+        trapFocus: true,
+        closeOnEscape: true,
+        closeOnOutside: true,
+        onRequestClose: () => closeDrawer(),
+      });
+    };
+
     renderHost.querySelector('[data-dashboard-export="1"]')?.addEventListener('click', () => opts.onExport?.());
     renderHost.querySelector('[data-dashboard-report="1"]')?.addEventListener('click', () => opts.onReport?.());
     renderHost.querySelector('[data-dashboard-new="1"]')?.addEventListener('click', () => opts.onNewActivity?.());
+
+    renderHost.querySelectorAll('[data-open-agenda]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const dayKey = btn.getAttribute('data-open-agenda') === 'tomorrow' ? 'tomorrow' : 'today';
+        const rows = dayKey === 'tomorrow' ? tomorrowRows : todayRows;
+        const expectedParticipants = dayKey === 'tomorrow'
+          ? Number(pulse.tomorrow_expected_participants_estimate) || 0
+          : Number(pulse.today_expected_participants_estimate) || 0;
+        const title = dayKey === 'tomorrow' ? 'Agenda de manana' : 'Agenda de hoy';
+        const dateLabel = agendaDateLabel(dayKey);
+        openDrawer(agendaDrawerLayout({
+          title,
+          dateLabel,
+          rows,
+          expectedParticipants,
+          esc,
+        }));
+      });
+    });
 
     renderHost.querySelectorAll('[data-open-workshops="1"]').forEach((btn) => {
       btn.addEventListener('click', () => opts.onNewActivity?.());
@@ -534,19 +789,15 @@
         if (!currentKpi) return;
 
         store.setSelectedKpi(kpiId);
-        const drawerRoot = renderHost.querySelector('#dash-drawer-root');
-        drawerRoot.innerHTML = drawerLayout({
+        const explanation = explainKpi(kpiId);
+        openDrawer(drawerLayout({
           title: `Detalle de ${currentKpi.label}`,
           subtitle: `Rango aplicado: ${activeRange}`,
-          explanation: explainKpi(kpiId),
-          body: drawerBody(currentKpi, esc),
-        });
-
-        const close = () => { drawerRoot.innerHTML = ''; };
-        drawerRoot.querySelectorAll('[data-drawer-close="1"]').forEach((btn) => btn.addEventListener('click', close));
-        drawerRoot.querySelector('[data-kpi-cta="1"]')?.addEventListener('click', () => {
+          body: drawerBody(currentKpi, explanation, esc),
+        }));
+        drawerRoot?.querySelector('[data-kpi-cta="1"]')?.addEventListener('click', () => {
+          closeDrawer();
           opts.onKpiDrilldown?.(kpiId);
-          close();
         });
       });
     });

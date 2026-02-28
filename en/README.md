@@ -209,7 +209,7 @@ The platform is ready for Docker-based deployment with portable configuration fo
 
 The project is currently in **Release / Stable Beta**. Core modules (workshops, participants, team, security, and operational analytics) are hardened for real-world usage.
 
-As a differentiator, it includes a **100% client-side conversational assistant** with a multi-provider architecture (Gemini, OpenAI, Anthropic, and Ollama) integrated into communications workflows.
+As a differentiator, it includes a **100% client-side conversational assistant** with a multi-provider architecture (Gemini, OpenAI, Anthropic, Ollama, and OpenRouter) integrated into communications workflows. If the user provides an API key, they can set any model they want.
 
 ---
 

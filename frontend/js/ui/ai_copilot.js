@@ -4,20 +4,32 @@ Vas a recibir el contexto sociodemográfico del taller. Usa un tono que conecte 
 Nunca agregues saludos robóticos ni asumas un rol de IA. Escribí directamente el texto final listo para enviar.`;
 
 const STORE_PREFIX = 'tc_ai_settings_';
+const DEFAULT_SETTINGS = { provider: 'gemini', model: 'gemini-1.5-pro', apiKey: '', endpoint: '' };
+
+function normalizeSettings(rawSettings = {}) {
+    const provider = String(rawSettings.provider || DEFAULT_SETTINGS.provider).trim().toLowerCase();
+    const allowedProviders = new Set(['gemini', 'openai', 'anthropic', 'openrouter', 'ollama']);
+    return {
+        provider: allowedProviders.has(provider) ? provider : DEFAULT_SETTINGS.provider,
+        model: String(rawSettings.model || DEFAULT_SETTINGS.model),
+        apiKey: String(rawSettings.apiKey || ''),
+        endpoint: String(rawSettings.endpoint || ''),
+    };
+}
 
 function getSettings(adminEmail) {
-    if (!adminEmail) return { provider: 'gemini', model: 'gemini-1.5-pro', apiKey: '', endpoint: '' };
+    if (!adminEmail) return { ...DEFAULT_SETTINGS };
     try {
         const saved = localStorage.getItem(STORE_PREFIX + adminEmail);
-        return saved ? JSON.parse(saved) : { provider: 'gemini', model: 'gemini-1.5-pro', apiKey: '', endpoint: '' };
+        return saved ? normalizeSettings(JSON.parse(saved)) : { ...DEFAULT_SETTINGS };
     } catch {
-        return { provider: 'gemini', model: 'gemini-1.5-pro', apiKey: '', endpoint: '' };
+        return { ...DEFAULT_SETTINGS };
     }
 }
 
 function setSettings(adminEmail, provider, model, apiKey, endpoint = '') {
     if (!adminEmail) return;
-    localStorage.setItem(STORE_PREFIX + adminEmail, JSON.stringify({ provider, model, apiKey, endpoint }));
+    localStorage.setItem(STORE_PREFIX + adminEmail, JSON.stringify(normalizeSettings({ provider, model, apiKey, endpoint })));
 }
 
 async function generateCompletion(adminEmail, promptText, onChunk = null) {
@@ -68,6 +80,28 @@ async function generateCompletion(adminEmail, promptText, onChunk = null) {
         });
         if (!res.ok) throw new Error((await res.json())?.error?.message || 'Error en Anthropic API');
         fullText = (await res.json()).content?.[0]?.text || '';
+
+    } else if (settings.provider === 'openrouter') {
+        if (!settings.apiKey) throw new Error('No has configurado tu API Key para OpenRouter');
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${settings.apiKey}`,
+                'HTTP-Referer': window.location.origin,
+                'X-Title': 'Central de Talleres'
+            },
+            body: JSON.stringify({
+                model: settings.model || 'openrouter/auto',
+                messages: [{ role: 'system', content: SYS_PROMPT }, { role: 'user', content: promptText }]
+            })
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload?.error?.message || payload?.message || 'Error en OpenRouter API');
+        const content = payload?.choices?.[0]?.message?.content;
+        fullText = Array.isArray(content)
+            ? content.map((part) => (typeof part === 'string' ? part : part?.text || '')).join('')
+            : (content || '');
 
     } else if (settings.provider === 'ollama') {
         const endpoint = settings.endpoint || 'http://localhost:11434';

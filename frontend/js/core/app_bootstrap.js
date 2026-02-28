@@ -4994,6 +4994,15 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
         if (!window.AICopilot) return toast('El módulo de IA no cargó correctamente.', 'error');
         const adminEmail = localStorage.getItem('tc_email') || 'unknown';
         const settings = window.AICopilot.getSettings(adminEmail);
+        const defaultModelByProvider = {
+          gemini: 'gemini-1.5-pro',
+          openai: 'gpt-4o',
+          anthropic: 'claude-3-5-sonnet-20240620',
+          openrouter: 'openrouter/auto',
+          ollama: 'llama3',
+        };
+        const selectedProvider = defaultModelByProvider[settings.provider] ? settings.provider : 'gemini';
+        const initialModel = settings.model || defaultModelByProvider[selectedProvider];
 
         const layer = document.createElement('div');
         layer.className = 'surface-layer surface-layer-modal ai-config-layer';
@@ -5008,22 +5017,24 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
               <div class="form-group">
                 <label class="form-label" for="ai-provider-select">Motor de Inteligencia Artificial</label>
                 <select id="ai-provider-select" class="form-select">
-                  <option value="gemini" ${settings.provider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
-                  <option value="openai" ${settings.provider === 'openai' ? 'selected' : ''}>OpenAI (GPT)</option>
-                  <option value="anthropic" ${settings.provider === 'anthropic' ? 'selected' : ''}>Anthropic (Claude)</option>
-                  <option value="ollama" ${settings.provider === 'ollama' ? 'selected' : ''}>Ollama (Local/Cloud)</option>
+                  <option value="gemini" ${selectedProvider === 'gemini' ? 'selected' : ''}>Google Gemini</option>
+                  <option value="openai" ${selectedProvider === 'openai' ? 'selected' : ''}>OpenAI (GPT)</option>
+                  <option value="anthropic" ${selectedProvider === 'anthropic' ? 'selected' : ''}>Anthropic (Claude)</option>
+                  <option value="openrouter" ${selectedProvider === 'openrouter' ? 'selected' : ''}>OpenRouter (Multi-modelo)</option>
+                  <option value="ollama" ${selectedProvider === 'ollama' ? 'selected' : ''}>Ollama (Local/Cloud)</option>
                 </select>
               </div>
-              <div class="form-group" id="ai-endpoint-group" ${settings.provider === 'ollama' ? '' : 'hidden'}>
+              <div class="form-group" id="ai-endpoint-group" ${selectedProvider === 'ollama' ? '' : 'hidden'}>
                 <label class="form-label" for="ai-endpoint-input">URL del Servidor Ollama</label>
                 <input type="text" id="ai-endpoint-input" class="form-input" value="${escapeHTML(settings.endpoint || 'http://localhost:11434')}" placeholder="http://localhost:11434">
                 <small class="muted">Asegurate de configurar CORS en tu servidor Ollama (OLLAMA_ORIGINS="*").</small>
               </div>
               <div class="form-group">
                 <label class="form-label" for="ai-model-input">Modelo Específico</label>
-                <input type="text" id="ai-model-input" class="form-input" value="${escapeHTML(settings.model || 'gemini-1.5-pro')}" placeholder="ej. gemini-1.5-pro, claude-3-5-sonnet-20240620 o llama3">
+                <input type="text" id="ai-model-input" class="form-input" value="${escapeHTML(initialModel)}" placeholder="ej. gemini-1.5-pro, openrouter/auto, openai/gpt-4o-mini o llama3">
+                <small class="muted">Con OpenRouter podés usar cualquier slug de modelo (por ejemplo: <code>openai/gpt-4o-mini</code>).</small>
               </div>
-              <div class="form-group" id="ai-apikey-group" ${settings.provider === 'ollama' ? 'hidden' : ''}>
+              <div class="form-group" id="ai-apikey-group" ${selectedProvider === 'ollama' ? 'hidden' : ''}>
                 <label class="form-label" for="ai-apikey-input">API Key Secreta</label>
                 <input type="password" id="ai-apikey-input" class="form-input" value="${escapeHTML(settings.apiKey || '')}" placeholder="Pega tu clave secreta acá...">
                 <small class="muted">La clave se guarda localmente para tu sesión: <b>${escapeHTML(adminEmail)}</b>.</small>
@@ -5073,6 +5084,10 @@ window.openCommunicationWizard = async function (initialWorkshopId = '') {
             apiKeyGroup.hidden = false;
           } else if (provider === 'anthropic') {
             modelInput.value = 'claude-3-5-sonnet-20240620';
+            endpointGroup.hidden = true;
+            apiKeyGroup.hidden = false;
+          } else if (provider === 'openrouter') {
+            modelInput.value = 'openrouter/auto';
             endpointGroup.hidden = true;
             apiKeyGroup.hidden = false;
           } else if (provider === 'ollama') {

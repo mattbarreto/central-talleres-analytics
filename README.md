@@ -209,7 +209,7 @@ La plataforma está preparada para despliegue con Docker y configuración portab
 
 El proyecto se encuentra en **Release / Stable Beta**. Los módulos core (talleres, participantes, equipo, seguridad y analítica operativa) están robustecidos para operación real.
 
-Como diferencial, incluye un **asistente conversacional 100% client-side** con arquitectura multi-proveedor (Gemini, OpenAI, Anthropic y Ollama) integrado al flujo de comunicaciones.
+Como diferencial, incluye un **asistente conversacional 100% client-side** con arquitectura multi-proveedor (Gemini, OpenAI, Anthropic, Ollama y OpenRouter) integrado al flujo de comunicaciones. Si el usuario aporta su API key, puede configurar el modelo que quiera.
 
 ---
 

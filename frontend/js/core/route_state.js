@@ -1,11 +1,17 @@
 (function () {
   const VALID_INSIGHTS_PERIODS = ['monthly', 'quarterly', 'semesterly', 'yearly'];
   const VALID_DASHBOARD_TABS = ['status', 'trends', 'recent'];
+  const VALID_OPERATION_PENDING_GROUPS = ['today', 'tomorrow', 'week', 'overdue', 'unmanaged', 'unanswered'];
+  const VALID_OPERATION_PENDING_VIEWS = ['horizon', 'management'];
+  const VALID_OPERATION_PENDING_MANAGEMENT = ['new', 'unanswered', 'tracking', 'resolved'];
 
   function paramsForView(state, targetView, hooks = {}) {
     const safeHooks = hooks || {};
     let params = {};
-    if (targetView === 'dashboard') params = { year: state.dashboardYear, status: state.dashboardStatus, workshop: state.dashboardWorkshop, mode: state.dashboardMode, adv: state.dashboardAdvancedTab };
+    if (targetView === 'dashboard') params = {
+      mode: state.dashboardMode,
+      adv: state.dashboardAdvancedTab,
+    };
     if (targetView === 'insights') params = {
       period: state.insightsPeriod,
       workshop: state.insightsWorkshop,
@@ -25,6 +31,14 @@
     };
     if (targetView === 'enrollments') params = { workshop: state.enrollmentWorkshop || safeHooks.getEnrollmentWorkshop?.() || '', p: state.tablePages.enrollments };
     if (targetView === 'communications') params = { q: state.communicationSearch, workshop: state.communicationWorkshop, p: state.tablePages.communications };
+    if (targetView === 'operations') {
+      params = {
+        pg: state.operationsPendingGroup,
+        pv: state.operationsPendingView,
+        pm: state.operationsPendingManagement,
+        p: state.tablePages.operations,
+      };
+    }
     if (targetView === 'team') params = {
       q: state.teamSearch,
       role: state.teamRole,
@@ -42,9 +56,9 @@
     const safeHooks = hooks || {};
 
     if (view === 'dashboard') {
-      state.dashboardYear = safeParams.year || '';
-      state.dashboardStatus = safeParams.status || '';
-      state.dashboardWorkshop = safeParams.workshop || '';
+      state.dashboardYear = '';
+      state.dashboardStatus = '';
+      state.dashboardWorkshop = '';
       state.dashboardMode = safeParams.mode === 'advanced' ? 'advanced' : 'summary';
       state.dashboardAdvancedTab = VALID_DASHBOARD_TABS.includes(safeParams.adv) ? safeParams.adv : 'status';
       safeHooks.onDashboardMode?.();
@@ -85,6 +99,15 @@
       state.communicationSearch = safeParams.q || '';
       state.communicationWorkshop = safeParams.workshop || '';
       state.tablePages.communications = Math.max(1, Number(safeParams.p) || 1);
+    }
+
+    if (view === 'operations') {
+      state.operationsPendingGroup = VALID_OPERATION_PENDING_GROUPS.includes(safeParams.pg) ? safeParams.pg : 'today';
+      state.operationsPendingView = VALID_OPERATION_PENDING_VIEWS.includes(safeParams.pv) ? safeParams.pv : 'horizon';
+      state.operationsPendingManagement = VALID_OPERATION_PENDING_MANAGEMENT.includes(safeParams.pm)
+        ? safeParams.pm
+        : 'new';
+      state.tablePages.operations = Math.max(1, Number(safeParams.p) || 1);
     }
 
     if (view === 'team') {

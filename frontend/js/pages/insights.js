@@ -11,6 +11,11 @@
     rankingPageSize: 10,
   };
 
+  const staffRoleLabels = {
+    teacher: 'Docente',
+    coordinator: 'Coordinacion',
+  };
+
   const esc = UI.esc;
 
   function mapSeries(series, key) {
@@ -152,6 +157,48 @@
     ];
 
     const topWs = data.top_workshops_by_enrollments || [];
+    const topWsByAttendees = data.top_workshops_by_attendees || [];
+    const topStaff = data.top_staff_by_activity || [];
+    const topParticipants = data.top_participants_by_activity || [];
+    const alerts = data.alerts || [];
+    const funnelRows = (data.funnel || []).map((row) => ({ label: row.label, value: Number(row.total || 0) }));
+    const retentionRows = (data.retention || [])
+      .slice()
+      .reverse()
+      .map((row) => ({
+        label: row.cohort_period || '-',
+        value: Number(row.retained_next_pct || 0),
+        retainedNext: Number(row.retained_next || 0),
+        retained3: Number(row.retained_3 || 0),
+        cohortSize: Number(row.cohort_size || 0),
+      }));
+    const genderRows = Object.entries(data.gender_distribution || {})
+      .map(([key, value]) => ({
+        label: ({
+          female: 'Femenino',
+          male: 'Masculino',
+          non_binary: 'No binario',
+          other: 'Otro',
+          undisclosed: 'Sin declarar',
+        })[key] || key,
+        value: Number(value || 0),
+      }))
+      .filter((row) => row.value > 0);
+    const ageRows = Object.entries(data.age_distribution || {})
+      .map(([key, value]) => ({
+        label: ({
+          '0_17': '0-17',
+          '18_24': '18-24',
+          '25_34': '25-34',
+          '35_44': '35-44',
+          '45_54': '45-54',
+          '55_64': '55-64',
+          '65_plus': '65+',
+          unknown: 'Sin dato',
+        })[key] || key,
+        value: Number(value || 0),
+      }))
+      .filter((row) => row.value > 0);
     const sortedTopWs = sortRows(topWs, viewState.rankingSortKey, viewState.rankingSortDir);
     const rankingTotalPages = Math.max(1, Math.ceil(sortedTopWs.length / viewState.rankingPageSize));
     if (viewState.rankingPage > rankingTotalPages) viewState.rankingPage = rankingTotalPages;
@@ -172,6 +219,12 @@
       label: w.workshop_name,
       value: Number(w.enrollments_total || 0),
     }));
+    const topWsAttendeesRows = sortRows(topWsByAttendees, 'attendees_estimated', 'desc').slice(0, 8).map((w) => ({
+      id: String(w.workshop_id || w.workshop_name || ''),
+      colorKey: String(w.workshop_id || w.workshop_name || ''),
+      label: w.workshop_name,
+      value: Number(w.attendees_estimated || 0),
+    }));
     const tableWs = sortedTopWs.length
       ? `
         <div class="dash-table-wrap">
@@ -191,6 +244,19 @@
         </div>
       `
       : UI.EmptyState({ title: 'Sin ranking', message: 'No hay talleres en el período.' });
+
+    const alertsHtml = alerts.length
+      ? `<div class="insights-alert-list" role="list" aria-label="Alertas del periodo">${alerts.map((alert) => `<article class="insights-alert-card is-${esc(alert.severity || 'info')}" role="listitem"><h3>${esc(alert.title || 'Alerta')}</h3><p>${esc(alert.message || '')}</p></article>`).join('')}</div>`
+      : UI.EmptyState({ title: 'Sin alertas', message: 'No se detectaron alertas para este período.' });
+    const retentionTableHtml = retentionRows.length
+      ? `<div class="dash-table-wrap" role="region" aria-label="Detalle de retencion"><table class="dash-table dash-table-compact"><thead><tr><th>Cohorte</th><th>Tamano</th><th>Retencion prox. periodo</th><th>Retencion a 3 periodos</th></tr></thead><tbody>${retentionRows.map((row) => `<tr><td>${esc(row.label)}</td><td>${esc(row.cohortSize)}</td><td>${esc(`${row.retainedNext} (${row.value.toFixed(1)}%)`)}</td><td>${esc(`${row.retained3} (${Number((row.retained3 / Math.max(1, row.cohortSize)) * 100).toFixed(1)}%)`)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="dash-page-subtitle">Sin cohorte suficiente para calcular retencion.</p>';
+    const topStaffTable = topStaff.length
+      ? `<div class="dash-table-wrap" role="region" aria-label="Ranking de equipo"><table class="dash-table dash-table-compact"><thead><tr><th>Perfil</th><th>Rol</th><th>Talleres</th><th>Alcance</th></tr></thead><tbody>${topStaff.slice(0, 10).map((row) => `<tr><td><strong>${esc(row.name || '-')}</strong></td><td>${esc(staffRoleLabels[row.role] || row.role || '-')}</td><td>${esc(row.workshops_count || 0)}</td><td>${esc(row.participants_reached || 0)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="dash-page-subtitle">Sin actividad de equipo para mostrar.</p>';
+    const topParticipantsTable = topParticipants.length
+      ? `<div class="dash-table-wrap" role="region" aria-label="Participantes con mayor actividad"><table class="dash-table dash-table-compact"><thead><tr><th>Participante</th><th>Talleres</th><th>Activos</th><th>Finalizados</th></tr></thead><tbody>${topParticipants.slice(0, 10).map((row) => `<tr><td><strong>${esc(row.name || '-')}</strong></td><td>${esc(row.workshops_total || 0)}</td><td>${esc(row.active_workshops || 0)}</td><td>${esc(row.finished_workshops || 0)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<p class="dash-page-subtitle">Sin trayectorias destacadas para mostrar.</p>';
 
     const useCanvasCharts = Boolean(UI.ChartCanvasCard && charts?.isAvailable?.());
     const chartCard = useCanvasCharts ? UI.ChartCanvasCard : UI.ChartCard;
@@ -267,10 +333,10 @@
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'CSV', attrs: 'type="button" data-i-export-csv="1"' })}
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Excel', attrs: 'type="button" data-i-export-excel="1"' })}
                   ${UI.Button({ variant: 'ghost', size: 'sm', label: 'JSON', attrs: 'type="button" data-i-export-json="1"' })}
-                  ${UI.Button({ variant: 'ghost', size: 'sm', label: 'Imprimir reporte', attrs: 'type="button" data-i-print="1"' })}
                 </div>
               </div>
-              ${UI.Button({ variant: 'primary', size: 'md', label: mode === 'advanced' ? 'Volver a resumen' : 'Ir a vista avanzada', attrs: 'type="button" data-i-mode="1"' })}
+              ${UI.Button({ variant: 'primary', size: 'md', label: 'Generar reporte', attrs: 'type="button" data-i-generate-report="1"' })}
+              ${UI.Button({ variant: 'secondary', size: 'md', label: mode === 'advanced' ? 'Volver a resumen' : 'Ir a vista avanzada', attrs: 'type="button" data-i-mode="1"' })}
             </div>
           </header>
 
@@ -332,6 +398,14 @@
       description: 'Resumen narrativo automático.',
       collapsible: false,
       content: `<div class="insights-narrative-card"><p class="insights-narrative-text">${narrativeText}</p></div>`,
+    })}
+
+          ${UI.Section({
+      key: 'insights_alerts_summary',
+      title: 'Riesgos y alertas',
+      description: 'Senales del periodo para priorizar coordinacion.',
+      collapsible: false,
+      content: alertsHtml,
     })}
 
           ${UI.Section({
@@ -442,6 +516,96 @@
               </div>
             `,
     })}
+
+          ${UI.Section({
+      key: 'insights_funnel_retention',
+      title: 'Embudo y retencion',
+      description: 'Conversion de participantes y permanencia por cohorte.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_funnel_retention),
+      content: `
+              <div class="dash-grid">
+                <div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Embudo de avance',
+        subtitle: 'Inscriptos -> activos -> finalizados -> certificables',
+        chartId: 'i-chart-funnel',
+        chartType: 'bar',
+        chartHeight: '300px',
+        ariaLabel: 'Embudo de avance de participantes',
+        rows: funnelRows,
+        valueLabel: 'Personas',
+      })}</div>
+                <div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Retencion al siguiente periodo',
+        subtitle: 'Por cohorte de ingreso',
+        chartId: 'i-chart-retention',
+        chartType: 'line',
+        chartHeight: '300px',
+        ariaLabel: 'Retencion por cohorte al siguiente periodo',
+        rows: retentionRows,
+        valueLabel: 'Retencion %',
+      })}</div>
+                <div class="dash-col-12">${retentionTableHtml}</div>
+              </div>
+            `,
+    })}
+
+          ${UI.Section({
+      key: 'insights_demographics',
+      title: 'Distribucion de personas',
+      description: 'Composicion por genero y tramos de edad.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_demographics),
+      content: `
+              <div class="dash-grid">
+                <div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Genero',
+        subtitle: 'Distribucion de participantes',
+        chartId: 'i-chart-gender',
+        chartType: 'doughnut',
+        chartHeight: '320px',
+        ariaLabel: 'Distribucion por genero',
+        rows: genderRows,
+        valueLabel: 'Personas',
+      })}</div>
+                <div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Edad',
+        subtitle: 'Tramos etarios',
+        chartId: 'i-chart-age',
+        chartType: 'bar',
+        chartHeight: '320px',
+        ariaLabel: 'Distribucion por tramos etarios',
+        rows: ageRows,
+        valueLabel: 'Personas',
+      })}</div>
+              </div>
+            `,
+    })}
+
+          ${UI.Section({
+      key: 'insights_rankings_extended',
+      title: 'Rankings de gestion',
+      description: 'Talleres por asistencia, equipo con mayor alcance y participantes con mayor actividad.',
+      collapsible: true,
+      collapsed: Boolean(store.state.collapsed.insights_rankings_extended),
+      content: `
+              <div class="dash-grid">
+                <div class="dash-col-6">${renderChartOrEmpty({
+        title: 'Top talleres por asistencia',
+        subtitle: 'Estimacion de asistentes por taller',
+        chartId: 'i-chart-top-attendees',
+        chartType: 'bar',
+        chartHeight: '320px',
+        ariaLabel: 'Top talleres por asistencia',
+        rows: topWsAttendeesRows,
+        valueLabel: 'Asistentes',
+      })}</div>
+                <div class="dash-col-6">${alertsHtml}</div>
+                <div class="dash-col-6"><article class="dash-card"><header class="dash-card-header"><div class="dash-card-title-wrap"><h3 class="dash-card-title">Top equipo por alcance</h3></div></header><div class="dash-card-body">${topStaffTable}</div></article></div>
+                <div class="dash-col-6"><article class="dash-card"><header class="dash-card-header"><div class="dash-card-title-wrap"><h3 class="dash-card-title">Participantes mas activos</h3></div></header><div class="dash-card-body">${topParticipantsTable}</div></article></div>
+              </div>
+            `,
+    })}
           `}
         </div>
       </div>
@@ -495,6 +659,53 @@
           rowColorMode: 'single',
           singleColor: charts?.semanticColor?.('primary'),
           yLabel: 'Inscripciones',
+        }));
+      }
+      if (mode === 'advanced' && hasChartData(funnelRows)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 'i-funnel-bar',
+          selector: '#i-chart-funnel',
+          rows: funnelRows,
+          datasetLabel: 'Personas',
+          yLabel: 'Personas',
+        }));
+      }
+      if (mode === 'advanced' && hasChartData(retentionRows)) {
+        chartSpecs.push(charts?.makeLineSpec?.({
+          key: 'i-retention-line',
+          selector: '#i-chart-retention',
+          rows: retentionRows,
+          datasetLabel: 'Retencion siguiente periodo',
+          yLabel: 'Porcentaje',
+        }));
+      }
+      if (mode === 'advanced' && hasChartData(genderRows)) {
+        chartSpecs.push(charts?.makeDoughnutSpec?.({
+          key: 'i-gender-doughnut',
+          selector: '#i-chart-gender',
+          rows: genderRows,
+          rowColorMode: 'categorical',
+        }));
+      }
+      if (mode === 'advanced' && hasChartData(ageRows)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 'i-age-bar',
+          selector: '#i-chart-age',
+          rows: ageRows,
+          datasetLabel: 'Personas',
+          yLabel: 'Personas',
+        }));
+      }
+      if (mode === 'advanced' && hasChartData(topWsAttendeesRows)) {
+        chartSpecs.push(charts?.makeBarSpec?.({
+          key: 'i-top-attendees-bar',
+          selector: '#i-chart-top-attendees',
+          rows: topWsAttendeesRows,
+          datasetLabel: 'Asistentes',
+          horizontal: true,
+          rowColorMode: 'single',
+          singleColor: charts?.semanticColor?.('info'),
+          yLabel: 'Asistentes',
         }));
       }
       charts?.mount?.(renderHost, chartSpecs.filter(Boolean));
@@ -616,7 +827,7 @@
     renderHost.querySelector('[data-i-export-csv="1"]')?.addEventListener('click', () => { closeExportMenu(); opts.onExportCSV?.(); });
     renderHost.querySelector('[data-i-export-json="1"]')?.addEventListener('click', () => { closeExportMenu(); opts.onExportJSON?.(); });
     renderHost.querySelector('[data-i-export-excel="1"]')?.addEventListener('click', () => { closeExportMenu(); opts.onExportExcel?.(); });
-    renderHost.querySelector('[data-i-print="1"]')?.addEventListener('click', () => { closeExportMenu(); opts.onPrint?.(); });
+    renderHost.querySelector('[data-i-generate-report="1"]')?.addEventListener('click', () => { opts.onGenerateReport?.() || opts.onPrint?.(); });
     renderHost.querySelector('[data-i-journey="1"]')?.addEventListener('click', () => opts.onJourney?.());
     return true;
   }

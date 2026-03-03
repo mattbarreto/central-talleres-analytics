@@ -3,7 +3,13 @@
     const surfaces = window.AppSurfaces || null;
     surfaces?.closeAll?.({ restoreFocus: false });
     const safeViews = Array.isArray(views) ? views : [];
-    safeViews.forEach((v) => doc.getElementById(`view-${v}`)?.classList.toggle('hidden', v !== view));
+    safeViews.forEach((v) => {
+      const section = doc.getElementById(`view-${v}`);
+      if (!section) return;
+      const isActiveView = v === view;
+      section.classList.toggle('hidden', !isActiveView);
+      section.classList.toggle('active', isActiveView);
+    });
     doc.querySelectorAll('.nav-item').forEach((btn) => {
       const isActive = btn.dataset.view === view;
       btn.classList.toggle('active', isActive);

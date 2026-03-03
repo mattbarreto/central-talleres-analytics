@@ -20,6 +20,12 @@
 
 ---
 
+## Version actual
+
+- **v2026.03.03** - Convergencia Dashboard/Operaciones/Insights, recupero de `Generar reporte` en Insights y base de dominios operativos fase 1.
+
+---
+
 ## Qué es
 
 **Central de Talleres** ayuda a organizaciones educativas y culturales a gestionar la operación diaria y la lectura analítica de talleres desde una sola plataforma.
@@ -29,7 +35,9 @@
 | 🎓 Talleres y Cohortes | Crear, programar y seguir el ciclo de vida de cada taller. |
 | 👥 Participantes | Gestionar inscripciones, estados (activo/finalizado/baja) y perfiles. |
 | 📢 Comunicaciones | Enviar mensajes y mantener historial operativo. |
-| 📊 Dashboard e Insights | Monitorear KPIs operativos, tendencias y reportes narrativos. |
+| 📊 Dashboard institucional | Lectura inmediata del pulso: ahora, mañana y salud del período. |
+| 🧭 Operaciones | Coordinar atención táctica diaria con pendientes, preparación y contexto semanal. |
+| 📈 Insights y Reportes | Analítica de período, exportaciones y generación de reporte PDF. |
 | 📜 Certificados | Emitir certificados PDF con verificación por código único. |
 | 👤 Equipo | Administrar docentes, coordinadores y administradores. |
 | 🔒 Seguridad | Auditoría global, hardening de exportaciones y revocación de tokens. |
@@ -141,9 +149,10 @@ node --check frontend/js/pages/dashboard.js
 
 ## Novedades UI recientes
 
-- **Radar operativo en card "Hoy"**: la card prioriza encuentros en curso, luego próximos, excluye finalizados, limita la vista inmediata y deriva el resto a **Ver agenda completa**.
-- **Superficies de lectura operativa**: drawers y paneles de inspección fueron unificados con mejor jerarquía visual, spacing de header y contención consistente.
-- **Sidebar colapsada refinada**: mejor legibilidad de navegación, sin barras de desplazamiento en estado colapsado y footer inferior alineado.
+- **Dashboard institucional reordenado**: `Pulso ahora` queda inmediatamente debajo de `Panel de Control`, seguido por `Mañana`, `Salud institucional del período`, `Tendencia subordinada` y `Visión acumulada`.
+- **Dashboard sin filtro intermedio**: se retiró el bloque `Rango/Aplicar/Limpiar` para mantener lectura ejecutiva directa en la entrada institucional.
+- **Reporte reubicado en Insights**: se recuperó la acción **Generar reporte** en la cabecera de Insights, integrada al flujo de exportación y PDF.
+- **Dominio operativo fase 1**: se incorporaron rutas y servicios para `operations`, `work-items`, `resource-terms`, `session resource requirements`, `interests` y `executive snapshots`.
 
 ---
 
@@ -207,7 +216,7 @@ La plataforma está preparada para despliegue con Docker y configuración portab
 
 ## Estado del proyecto
 
-El proyecto se encuentra en **Release / Stable Beta**. Los módulos core (talleres, participantes, equipo, seguridad y analítica operativa) están robustecidos para operación real.
+El proyecto se encuentra en **Release / Stable Beta** y actualizado a **v2026.03.03**. Los módulos core (talleres, participantes, equipo, seguridad y analítica operativa) están robustecidos para operación real.
 
 Como diferencial, incluye un **asistente conversacional 100% client-side** con arquitectura multi-proveedor (Gemini, OpenAI, Anthropic, Ollama y OpenRouter) integrado al flujo de comunicaciones. Si el usuario aporta su API key, puede configurar el modelo que quiera.
 

@@ -20,6 +20,12 @@
 
 ---
 
+## Current version
+
+- **v2026.03.03** - Dashboard/Operations/Insights convergence, restored `Generate report` action in Insights, and stage 1 operational domain foundation.
+
+---
+
 ## What is it
 
 **Central de Talleres** helps educational and cultural organizations manage daily workshop operations and analytics from a single platform.
@@ -29,7 +35,9 @@
 | 🎓 Workshops and Cohorts | Create, schedule, and track each workshop lifecycle. |
 | 👥 Participants | Manage enrollments, statuses (active/finished/dropped), and participant profiles. |
 | 📢 Communications | Send messages and keep operational communication history. |
-| 📊 Dashboard and Insights | Monitor operational KPIs, trends, and narrative reports. |
+| 📊 Institutional Dashboard | Immediate pulse reading: now, tomorrow, and period health. |
+| 🧭 Operations | Coordinate daily tactical attention, preparation, and weekly context. |
+| 📈 Insights and Reports | Period analytics, exports, and PDF report generation. |
 | 📜 Certificates | Issue PDF certificates with unique-code verification. |
 | 👤 Team | Manage instructors, coordinators, and administrators. |
 | 🔒 Security | Global audit trail, export hardening, and token revocation. |
@@ -141,9 +149,10 @@ node --check frontend/js/pages/dashboard.js
 
 ## Recent UI updates
 
-- **"Today" operational radar card**: prioritizes live sessions, then upcoming ones, excludes completed items, limits immediate view, and routes remaining items to **View full agenda**.
-- **Operational reading surfaces**: drawers and inspection panels were unified with stronger hierarchy, improved header spacing, and consistent containment.
-- **Refined collapsed sidebar**: clearer navigation, no scrollbars in collapsed state, and aligned lower footer actions.
+- **Reordered institutional dashboard**: `Pulse now` is now placed immediately below `Control Panel`, followed by `Tomorrow`, `Period institutional health`, `Subordinate trend`, and `Accumulated view`.
+- **Dashboard without filter barrier**: the `Range/Apply/Clear` block was removed from Dashboard to preserve direct executive reading at entry.
+- **Report action moved to Insights**: the **Generate report** action was restored in the Insights header and aligned with export/PDF flows.
+- **Operational domain stage 1**: new routes/services were added for `operations`, `work-items`, `resource-terms`, `session resource requirements`, `interests`, and `executive snapshots`.
 
 ---
 
@@ -207,7 +216,7 @@ The platform is ready for Docker-based deployment with portable configuration fo
 
 ## Project status
 
-The project is currently in **Release / Stable Beta**. Core modules (workshops, participants, team, security, and operational analytics) are hardened for real-world usage.
+The project is currently in **Release / Stable Beta** and updated to **v2026.03.03**. Core modules (workshops, participants, team, security, and operational analytics) are hardened for real-world usage.
 
 As a differentiator, it includes a **100% client-side conversational assistant** with a multi-provider architecture (Gemini, OpenAI, Anthropic, Ollama, and OpenRouter) integrated into communications workflows. If the user provides an API key, they can set any model they want.
 

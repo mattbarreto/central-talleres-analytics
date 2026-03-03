@@ -1,11 +1,22 @@
 from __future__ import annotations
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, time, timezone, timedelta
 import zoneinfo
 from unittest.mock import patch
 
 from tests.test_api_base import APITestCase
 from app.api.deps import get_db
-from app.models import Workshop, Enrollment, Communication, Participant, WorkshopStaffAssignment
+from app.models import (
+    Communication,
+    Enrollment,
+    Participant,
+    ResourceTerm,
+    SessionResourceRequirement,
+    TeamMember,
+    WorkItem,
+    Workshop,
+    WorkshopSession,
+    WorkshopStaffAssignment,
+)
 
 TZ = zoneinfo.ZoneInfo("America/Argentina/Buenos_Aires")
 
@@ -107,3 +118,147 @@ class DashboardApiTests(APITestCase):
         
         resp_too_large = self.client.get("/api/v1/dashboard/metrics?range_days=5000")
         self.assertEqual(resp_too_large.status_code, 422)
+
+
+class OperationsTacticalApiTests(APITestCase):
+    def setUp(self):
+        super().setUp()
+        self.credentials = self.create_admin()
+        self.login(self.credentials["email"], self.credentials["password"])
+
+    def test_operations_tactical_returns_today_tomorrow_week_and_attention(self):
+        today = date.today()
+        tomorrow = today + timedelta(days=1)
+        now = datetime.now(timezone.utc)
+
+        workshop = Workshop(
+            name="Taller Coordinacion",
+            cohort_year=today.year,
+            status="active",
+            start_date=today - timedelta(days=10),
+            end_date=today + timedelta(days=60),
+        )
+        teacher = TeamMember(name="Docente Operativo", role="teacher", email="docente@ops.test")
+        participant = Participant(name="Participante Ops", email="ops@example.com", phone="123")
+
+        self.db.add_all([workshop, teacher, participant])
+        self.db.flush()
+
+        self.db.add(
+            Enrollment(
+                workshop_id=workshop.id,
+                participant_id=participant.id,
+                status="active",
+            )
+        )
+
+        today_session = WorkshopSession(
+            workshop_id=workshop.id,
+            date=today,
+            start_time=time(10, 0),
+            end_time=time(12, 0),
+            topic="Laboratorio",
+            facilitator_id=teacher.id,
+            status="scheduled",
+        )
+        tomorrow_session = WorkshopSession(
+            workshop_id=workshop.id,
+            date=tomorrow,
+            start_time=time(9, 0),
+            end_time=time(11, 0),
+            topic="Sin tema",
+            facilitator_id=None,
+            status="scheduled",
+        )
+        self.db.add_all([today_session, tomorrow_session])
+        self.db.flush()
+
+        term = ResourceTerm(
+            label="Proyector",
+            normalized_key="proyector",
+            scope="global",
+            governance_status="approved",
+            owner_admin_id=None,
+        )
+        self.db.add(term)
+        self.db.flush()
+
+        self.db.add(
+            SessionResourceRequirement(
+                workshop_session_id=today_session.id,
+                resource_term_id=term.id,
+                quantity_required=1,
+                unit="unidad",
+                requirement_mode="fixed",
+                criticality="high",
+                source="manual",
+            )
+        )
+
+        self.db.add_all(
+            [
+                WorkItem(
+                    kind="task",
+                    status="in_progress",
+                    priority="high",
+                    title="Pendiente vencido",
+                    description="Atender urgente",
+                    response_required=False,
+                    due_at=now - timedelta(days=1),
+                    first_managed_at=now - timedelta(days=2),
+                    first_response_at=None,
+                    resolved_at=None,
+                    closed_at=None,
+                    reopened_at=None,
+                    reopen_count=0,
+                    last_status_change_at=now - timedelta(days=1),
+                    workshop_id=workshop.id,
+                    workshop_session_id=today_session.id,
+                ),
+                WorkItem(
+                    kind="query",
+                    status="triaged",
+                    priority="medium",
+                    title="Pendiente sin responder",
+                    description="Responder hoy",
+                    response_required=True,
+                    due_at=now,
+                    first_managed_at=now - timedelta(hours=3),
+                    first_response_at=None,
+                    resolved_at=None,
+                    closed_at=None,
+                    reopened_at=None,
+                    reopen_count=0,
+                    last_status_change_at=now - timedelta(hours=2),
+                    workshop_id=workshop.id,
+                    workshop_session_id=tomorrow_session.id,
+                ),
+            ]
+        )
+
+        self.db.commit()
+
+        response = self.client.get("/api/v1/operations/tactical")
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+
+        self.assertIn("today", payload)
+        self.assertIn("tomorrow", payload)
+        self.assertIn("week", payload)
+        self.assertIn("attention_required", payload)
+        self.assertIn("pending", payload)
+
+        self.assertEqual(payload["today"]["summary"]["sessions_count"], 1)
+        self.assertEqual(payload["tomorrow"]["summary"]["sessions_count"], 1)
+        self.assertGreaterEqual(payload["week"]["summary"]["sessions_count"], 2)
+
+        today_sessions = payload["today"]["sessions"]
+        self.assertEqual(len(today_sessions), 1)
+        self.assertEqual(today_sessions[0]["resources"][0]["resource_label"], "Proyector")
+
+        attention_kinds = {item["kind"] for item in payload["attention_required"]}
+        self.assertIn("missing_facilitator", attention_kinds)
+        self.assertIn("overdue_work_item", attention_kinds)
+
+        self.assertGreaterEqual(payload["pending"]["overdue"]["count"], 1)
+        self.assertGreaterEqual(payload["pending"]["unanswered"]["count"], 1)

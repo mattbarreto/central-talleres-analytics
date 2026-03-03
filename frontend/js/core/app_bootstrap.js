@@ -3,7 +3,7 @@
 import { API_BASE, api, getIsAuthenticated, setIsAuthenticated } from './api.js';
 import { state, resetTablePage, buildKpiDeltas } from './store.js';
 
-const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollments', 'communications', 'team', 'admins'];
+const views = ['dashboard', 'insights', 'workshops', 'participants', 'enrollments', 'communications', 'operations', 'team', 'admins'];
 const appShell = window.AppShell || null;
 const appViewUtils = window.AppViewUtils || null;
 const appTableUtils = window.AppTableUtils || null;
@@ -620,6 +620,7 @@ window.setListPage = async function (key, page) {
     if (wid) await loadEnrollments(wid);
   }
   if (key === 'communications') await loadCommunications();
+  if (key === 'operations') await loadOperations();
   if (key === 'team') await loadTeam();
   if (key === 'admins') await loadAdmins();
   const { view } = parseHash();
@@ -633,6 +634,14 @@ window.setListPage = async function (key, page) {
     };
     if (view === 'enrollments') return { workshop: state.enrollmentWorkshop || '', p: state.tablePages.enrollments };
     if (view === 'communications') return { q: state.communicationSearch, workshop: state.communicationWorkshop, p: state.tablePages.communications };
+    if (view === 'operations') {
+      return {
+        pg: state.operationsPendingGroup,
+        pv: state.operationsPendingView,
+        pm: state.operationsPendingManagement,
+        p: state.tablePages.operations,
+      };
+    }
     if (view === 'team') return { q: state.teamSearch, role: state.teamRole, year: state.teamYear, wstatus: state.teamWorkshopStatus, mode: state.teamMode, p: state.tablePages.team };
     if (view === 'admins') return { p: state.tablePages.admins };
     return {};
@@ -863,88 +872,6 @@ function setDashboardMode(mode, sync = true) {
   if (sync) syncViewParams();
 }
 
-function inDashboardRange(dateValue, rangeKey) {
-  if (!rangeKey || rangeKey === 'all') return true;
-  const d = dateValue ? new Date(dateValue) : null;
-  if (!d || Number.isNaN(d.getTime())) return false;
-  const now = new Date();
-  const days = rangeKey === '7d' ? 7 : rangeKey === '30d' ? 30 : rangeKey === '90d' ? 90 : 0;
-  if (!days) return true;
-  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days);
-  return d >= from;
-}
-
-function getDashboardFilteredData(workshops, communications, enrollments) {
-  const range = window.DashboardState?.state?.filters?.range || '30d';
-  const filteredWorkshops = (workshops || []).filter((w) => {
-    if (state.dashboardYear && String(w.cohort_year) !== String(state.dashboardYear)) return false;
-    if (state.dashboardStatus && w.status !== state.dashboardStatus) return false;
-    if (state.dashboardWorkshop && String(w.id) !== String(state.dashboardWorkshop)) return false;
-    return inDashboardRange(w.created_at, range);
-  });
-  const workshopIds = new Set(filteredWorkshops.map((w) => String(w.id)));
-  const filteredEnrollments = (enrollments || []).filter((e) => workshopIds.has(String(e.workshop_id)) && inDashboardRange(e.created_at, range));
-  const filteredCommunications = (communications || []).filter((c) => workshopIds.has(String(c.workshop_id)) && inDashboardRange(c.created_at, range));
-  return { range, filteredWorkshops, filteredEnrollments, filteredCommunications };
-}
-
-function downloadDashboardCSV(payload) {
-  const { range, filteredWorkshops, filteredEnrollments, filteredCommunications } = payload;
-  const byWorkshopEnrollments = new Map();
-  const byWorkshopCommunications = new Map();
-  filteredEnrollments.forEach((e) => byWorkshopEnrollments.set(String(e.workshop_id), (byWorkshopEnrollments.get(String(e.workshop_id)) || 0) + 1));
-  filteredCommunications.forEach((c) => byWorkshopCommunications.set(String(c.workshop_id), (byWorkshopCommunications.get(String(c.workshop_id)) || 0) + 1));
-  const lines = [
-    ['reporte', 'dashboard'],
-    ['rango', range],
-    ['fecha_exportacion', new Date().toISOString()],
-    [],
-    ['workshop_id', 'nombre', 'cohorte', 'estado', 'inscripciones', 'comunicaciones', 'creado'],
-  ];
-  filteredWorkshops.forEach((w) => {
-    lines.push([
-      w.id,
-      `"${String(w.name || '').replace(/"/g, '""')}"`,
-      w.cohort_year || '',
-      w.status || '',
-      byWorkshopEnrollments.get(String(w.id)) || 0,
-      byWorkshopCommunications.get(String(w.id)) || 0,
-      w.created_at || '',
-    ]);
-  });
-  const csv = lines.map((row) => Array.isArray(row) ? row.join(',') : '').join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `dashboard_${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-async function printDashboardExecutiveReport() {
-  const range = window.DashboardState?.state?.filters?.range || '30d';
-  const query = toQuery({
-    range,
-    year: state.dashboardYear || '',
-    status: state.dashboardStatus || '',
-    workshop_id: state.dashboardWorkshop || '',
-  });
-  try {
-    toast('Generando reporte del panel...', 'info');
-    await window.ReportJobs.createAndDownload({
-      createUrl: `${API_BASE}/metrics/dashboard-report-jobs/pdf${query ? `?${query}` : ''}`,
-      headers: api.headers(false),
-      filename: `panel_${new Date().toISOString().slice(0, 10)}.pdf`,
-    });
-    toast('Reporte PDF del panel descargado', 'success');
-  } catch (err) {
-    toast(err.message || 'No se pudo generar el reporte del panel', 'error');
-  }
-}
-
 async function loadDashboard() {
   try {
     if (!window.DashboardPage?.render) {
@@ -953,13 +880,12 @@ async function loadDashboard() {
     renderViewLoading('dashboard', 'Panel');
     const root = document.querySelector('#view-dashboard .page-body');
 
-    // For filters we still want the basic list of workshops, but not all participants or enrollments
-    // In a fully optimized future, even the workshop filter list might be a dedicated lean endpoint.
+    // Se usa para resolver nombre de taller al abrir detalle desde agenda.
     let filterWorkshops = [];
     try {
       filterWorkshops = await fetchWorkshops();
     } catch {
-      // Soft fail on filter setup
+      // Soft fail en navegación contextual de detalle.
     }
 
     const renderDashboardV2 = async () => {
@@ -973,73 +899,14 @@ async function loadDashboard() {
         root,
         workshops: filterWorkshops,
         dashboardMode: state.dashboardMode,
-        dashboardFilters: {
-          year: state.dashboardYear,
-          status: state.dashboardStatus,
-          workshop: state.dashboardWorkshop,
+        onOpenInsights: () => setHash('insights', { mode: 'summary' }),
+        onOpenOperations: (focus = 'attention') => {
+          const pendingGroup = focus === 'prepare' ? 'tomorrow' : 'today';
+          setHash('operations', { pv: 'horizon', pg: pendingGroup });
         },
-        onFilterChange: (next) => {
-          state.dashboardYear = next.year || '';
-          state.dashboardStatus = next.status || '';
-          state.dashboardWorkshop = next.workshop || '';
-          state.filters = state.filters || {};
-          state.filters.range = next.range || state.filters.range || '30d';
-          syncViewParamsSilent();
-          renderDashboardV2();
-        },
-        onExport: async () => {
-          // Ideally backend will generate this CSV, using old mock logic in the meantime. 
-          // In a full implementation, you'd add an export endpoint.
-          toast('En proceso de migración de descargas al backend', 'info');
-        },
-        onReport: () => {
-          printDashboardExecutiveReport();
-        },
-        onNewActivity: () => setHash('workshops', {}),
         onWorkshopDetail: (workshopId) => {
           const workshop = filterWorkshops.find((row) => row.id === workshopId);
           setHash('workshops', { q: workshop?.name || '' });
-        },
-        onKpiDrilldown: (kpiId) => {
-          if (kpiId === 'communications') {
-            setHash('communications', { workshop: state.dashboardWorkshop || '' });
-            return;
-          }
-
-          let rangeDays = 30; // default for dashboard 30d
-          const rangeKey = state.filters?.range || '30d';
-          if (rangeKey === '7d') rangeDays = 7;
-          else if (rangeKey === '90d') rangeDays = 90;
-          else if (rangeKey === '180d') rangeDays = 180;
-          else if (rangeKey === '365d') rangeDays = 365;
-
-          if (kpiId === 'participants') {
-            setHash('participants', {
-              mode: 'advanced',
-              workshop: state.dashboardWorkshop || '',
-              active_days: rangeKey === 'all' ? '' : rangeDays
-            });
-            return;
-          }
-          setHash('participants', {
-            mode: 'advanced',
-            workshop: state.dashboardWorkshop || '',
-            status: kpiId === 'active' ? 'active' : kpiId === 'finished' ? 'finished' : 'all',
-            active_days: rangeKey === 'all' ? '' : rangeDays
-          });
-        },
-        onStatusDrilldown: (enrollmentStatus) => {
-          let rangeDays = 30;
-          const rangeKey = state.filters?.range || '30d';
-          if (rangeKey === '7d') rangeDays = 7;
-          else if (rangeKey === '90d') rangeDays = 90;
-          else if (rangeKey === '180d') rangeDays = 180;
-          else if (rangeKey === '365d') rangeDays = 365;
-          setHash('participants', {
-            mode: 'advanced',
-            status: enrollmentStatus || 'all',
-            active_days: rangeKey === 'all' ? '' : rangeDays
-          });
         },
       };
 
@@ -1047,19 +914,9 @@ async function loadDashboard() {
       await window.DashboardPage.render({ ...renderOpts, dashboardLoading: true });
 
       try {
-        const rangeKey = state.filters?.range || '30d';
-        let rangeDays = 30;
-        if (rangeKey === '7d') rangeDays = 7;
-        else if (rangeKey === '90d') rangeDays = 90;
-        else if (rangeKey === '180d') rangeDays = 180;
-        else if (rangeKey === '365d') rangeDays = 365;
-
         const [metricsResponse, pulseResponse, ytdResponse] = await Promise.all([
           fetchDashboardMetrics({
-            range_days: rangeDays,
-            cohort_year: state.dashboardYear || '',
-            status: state.dashboardStatus || '',
-            workshop_id: state.dashboardWorkshop || ''
+            range_days: 30,
           }),
           fetchDashboardPulse().catch((err) => {
             console.error('Failed to fetch dashboard pulse:', err);
@@ -1431,6 +1288,7 @@ async function loadInsights() {
       onExportCSV: () => exportInsightsReport(),
       onExportJSON: () => exportInsightsReportJSON(),
       onExportExcel: () => exportInsightsReportExcel(),
+      onGenerateReport: () => printInsightsReportPDF(),
       onPrint: () => printInsightsReportPDF(),
       onJourney: async () => openInsightsJourneyPicker(),
     });
@@ -2472,6 +2330,11 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
+                      <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" data-agenda-resources="${s.id}" data-agenda-topic="${esc(s.topic || 'Sin tema')}">Recursos</button>
+
+
+
+
                       <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm dash-page-subtitle" data-agenda-delete="${s.id}">Eliminar</button>
 
 
@@ -3242,6 +3105,55 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
 
+      const resourceRows = normalizeResourceEditorRows(editModeData?.rows || []);
+
+      const resourceFormHTML = `
+        <form id="agenda-resource-form" class="agenda-edit-form" autocomplete="off">
+          <div class="agenda-edit-inline-head">
+            <h4 class="agenda-edit-inline-title">Recursos tecnicos del encuentro</h4>
+            <p class="dash-page-subtitle agenda-edit-inline-subtitle">${esc(editModeData?.session_topic || 'Encuentro sin tema')}</p>
+          </div>
+          <div class="dash-helper-note">Defini los insumos necesarios para este encuentro. Cada fila se guarda como requerimiento tecnico.</div>
+          <div class="agenda-resource-toolbar">
+            <span class="dash-page-subtitle">Etiqueta, cantidad y criticidad por recurso.</span>
+            <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" id="agenda-resource-add-row">Agregar recurso</button>
+          </div>
+          <div class="agenda-modal-table-block agenda-resource-table-block">
+            <table class="agenda-modal-table agenda-resource-table">
+              <thead>
+                <tr>
+                  <th>Recurso</th>
+                  <th>Cantidad</th>
+                  <th>Unidad</th>
+                  <th>Modo</th>
+                  <th>Criticidad</th>
+                  <th>Nota</th>
+                  <th class="agenda-resource-col-actions">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${resourceRows.map((rawRow, idx) => {
+        const row = buildResourceEditorRow(rawRow);
+        return `<tr data-resource-row="${idx}">
+                    <td data-label="Recurso"><input type="text" class="form-input" data-resource-field="label" value="${esc(row.label)}" placeholder="Ej: Proyector" maxlength="120"></td>
+                    <td data-label="Cantidad"><input type="number" class="form-input" data-resource-field="quantity_required" value="${esc(String(row.quantity_required))}" min="0" step="0.1"></td>
+                    <td data-label="Unidad"><input type="text" class="form-input" data-resource-field="unit" value="${esc(row.unit)}" placeholder="unidad" maxlength="30"></td>
+                    <td data-label="Modo"><select class="form-select" data-resource-field="requirement_mode"><option value="fixed" ${row.requirement_mode === 'fixed' ? 'selected' : ''}>Fijo</option><option value="per_participant" ${row.requirement_mode === 'per_participant' ? 'selected' : ''}>Por participante</option></select></td>
+                    <td data-label="Criticidad"><select class="form-select" data-resource-field="criticality"><option value="low" ${row.criticality === 'low' ? 'selected' : ''}>Baja</option><option value="medium" ${row.criticality === 'medium' ? 'selected' : ''}>Media</option><option value="high" ${row.criticality === 'high' ? 'selected' : ''}>Alta</option></select></td>
+                    <td data-label="Nota"><input type="text" class="form-input" data-resource-field="notes" value="${esc(row.notes)}" placeholder="Opcional" maxlength="1000"></td>
+                    <td data-label="Acciones" class="agenda-resource-col-actions"><div class="agenda-resource-actions"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-resource-remove-row="${idx}">Quitar</button></div></td>
+                  </tr>`;
+      }).join('')}
+              </tbody>
+            </table>
+          </div>
+          <div class="agenda-edit-actions agenda-edit-actions-compact agenda-resource-footer-actions">
+            <button type="button" class="dash-btn dash-btn-ghost" data-agenda-close-drawer="list">Volver</button>
+            <button type="button" class="dash-btn dash-btn-primary" id="agenda-resource-save">Guardar recursos</button>
+          </div>
+        </form>
+      `;
+
       // Helper para renderizar listado
 
 
@@ -3289,19 +3201,29 @@ window.openWorkshopAgenda = async function (workshopId) {
 
         const withDrawer = (content, width = '440px') => {
           const drawerSize = width === '700px' ? 'lg' : width === '500px' ? 'md' : 'sm';
-          const drawerMode = viewMode === 'bulk-preview' ? 'bulk-preview' : viewMode === 'bulk' ? 'bulk' : 'single';
+          const drawerMode = viewMode === 'bulk-preview'
+            ? 'bulk-preview'
+            : viewMode === 'bulk'
+              ? 'bulk'
+              : viewMode === 'resources'
+                ? 'resources'
+                : 'single';
           const drawerTitle = drawerMode === 'bulk-preview'
             ? 'Previsualización de cursada'
             : drawerMode === 'bulk'
               ? 'Generador de cursada'
-              : editModeData
-                ? 'Editar encuentro'
-                : 'Encuentro individual';
+              : drawerMode === 'resources'
+                ? 'Recursos del encuentro'
+                : editModeData
+                  ? 'Editar encuentro'
+                  : 'Encuentro individual';
           const drawerSubtitle = drawerMode === 'bulk-preview'
             ? 'Validá fechas, temas y docentes antes de confirmar.'
             : drawerMode === 'bulk'
               ? 'Configurá días, horarios y temario base del taller.'
-              : 'Completá los datos del encuentro y guardá cambios.';
+              : drawerMode === 'resources'
+                ? `Configura los requerimientos tecnicos para: ${editModeData?.session_topic || 'encuentro seleccionado'}.`
+                : 'Completá los datos del encuentro y guardá cambios.';
           const closeTarget = drawerMode === 'bulk-preview' ? 'bulk' : 'list';
           return `
 
@@ -3350,6 +3272,11 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 
         if (viewMode === 'bulk') return withDrawer(bulkFormHTML, '500px');
+
+
+
+
+        if (viewMode === 'resources') return withDrawer(resourceFormHTML, '700px');
 
 
 
@@ -3650,6 +3577,15 @@ window.openWorkshopAgenda = async function (workshopId) {
         };
       });
 
+      document.querySelectorAll('[data-agenda-resources]').forEach((button) => {
+        button.onclick = () => withButtonBusy(button, 'Cargando...', async () => {
+          const sessionId = button.getAttribute('data-agenda-resources');
+          if (!sessionId) return;
+          const topic = button.getAttribute('data-agenda-topic') || '';
+          await window.openSessionResourceEditor?.(normalizedWorkshopId, sessionId, topic);
+        });
+      });
+
       document.querySelectorAll('[data-agenda-delete]').forEach((button) => {
         button.onclick = () => {
           const sessionId = button.getAttribute('data-agenda-delete');
@@ -3684,6 +3620,64 @@ window.openWorkshopAgenda = async function (workshopId) {
           window.setAgendaView(targetMode);
         };
       });
+
+
+
+
+      const collectResourceRowsFromForm = () => {
+        return Array.from(document.querySelectorAll('[data-resource-row]')).map((rowEl) => {
+          const getValue = (field) => {
+            const control = rowEl.querySelector(`[data-resource-field="${field}"]`);
+            return control ? control.value : '';
+          };
+          return buildResourceEditorRow({
+            label: getValue('label'),
+            quantity_required: getValue('quantity_required'),
+            unit: getValue('unit'),
+            requirement_mode: getValue('requirement_mode'),
+            criticality: getValue('criticality'),
+            notes: getValue('notes'),
+          });
+        });
+      };
+
+      const resourceForm = document.getElementById('agenda-resource-form');
+      if (resourceForm && viewMode === 'resources') {
+        const resourceContext = {
+          workshop_id: editModeData?.workshop_id || normalizedWorkshopId,
+          session_id: editModeData?.session_id || '',
+          session_topic: editModeData?.session_topic || '',
+        };
+
+        document.getElementById('agenda-resource-add-row')?.addEventListener('click', () => {
+          const currentRows = collectResourceRowsFromForm();
+          currentRows.push(buildResourceEditorRow());
+          window.setAgendaView('resources', { ...resourceContext, rows: currentRows });
+        });
+
+        document.querySelectorAll('[data-resource-remove-row]').forEach((button) => {
+          button.addEventListener('click', () => {
+            const rowIndex = Number(button.getAttribute('data-resource-remove-row'));
+            const currentRows = collectResourceRowsFromForm();
+            if (Number.isFinite(rowIndex) && rowIndex >= 0) currentRows.splice(rowIndex, 1);
+            const nextRows = currentRows.length ? currentRows : [buildResourceEditorRow()];
+            window.setAgendaView('resources', { ...resourceContext, rows: nextRows });
+          });
+        });
+
+        const saveResourceButton = document.getElementById('agenda-resource-save');
+        if (saveResourceButton) {
+          saveResourceButton.addEventListener('click', () => withButtonBusy(saveResourceButton, 'Guardando...', async () => {
+            const sessionId = String(resourceContext.session_id || '');
+            if (!sessionId) throw new Error('No se encontro el encuentro para guardar recursos.');
+            const currentRows = collectResourceRowsFromForm();
+            const payload = buildSessionResourcePayload(currentRows);
+            await api.put(`/workshops/${normalizedWorkshopId}/sessions/${sessionId}/resource-requirements`, payload);
+            toast('Recursos del encuentro actualizados', 'success');
+            window.openWorkshopAgenda(normalizedWorkshopId);
+          }));
+        }
+      }
 
 
 
@@ -4310,6 +4304,98 @@ window.openWorkshopAgenda = async function (workshopId) {
 
 }
 
+
+function buildResourceEditorRow(row = {}) {
+  const quantityRaw = String(row?.quantity_required ?? '').trim().replace(',', '.');
+  const quantity = quantityRaw === '' ? 1 : Number(quantityRaw);
+  return {
+    resource_term_id: row?.resource_term_id ? String(row.resource_term_id) : '',
+    label: String(row?.resource_label ?? row?.label ?? '').trim(),
+    quantity_required: Number.isFinite(quantity) ? quantity : 1,
+    unit: String(row?.unit ?? '').trim(),
+    requirement_mode: row?.requirement_mode === 'per_participant' ? 'per_participant' : 'fixed',
+    criticality: ['low', 'medium', 'high'].includes(row?.criticality) ? row.criticality : 'medium',
+    notes: String(row?.notes ?? '').trim(),
+  };
+}
+
+function normalizeResourceEditorRows(rows = []) {
+  const normalized = (Array.isArray(rows) ? rows : []).map((row) => buildResourceEditorRow(row));
+  return normalized.length ? normalized : [buildResourceEditorRow()];
+}
+
+function normalizeResourceLabelKey(label = '') {
+  return String(label || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function buildSessionResourcePayload(rows = []) {
+  const payload = [];
+  const seenKeys = new Set();
+
+  rows.forEach((rawRow, index) => {
+    const row = buildResourceEditorRow(rawRow);
+    const label = String(row.label || '').trim();
+    const quantity = Number(row.quantity_required);
+    const unit = String(row.unit || '').trim();
+    const notes = String(row.notes || '').trim();
+    const hasExtendedData = Boolean(
+      unit
+      || notes
+      || row.requirement_mode !== 'fixed'
+      || row.criticality !== 'medium'
+      || quantity !== 1
+    );
+
+    if (!label) {
+      if (!hasExtendedData) return;
+      throw new Error(`La fila ${index + 1} necesita etiqueta de recurso.`);
+    }
+
+    if (!Number.isFinite(quantity) || quantity < 0) {
+      throw new Error(`Cantidad invalida en la fila ${index + 1}.`);
+    }
+
+    const normalizedLabel = normalizeResourceLabelKey(label);
+    if (seenKeys.has(normalizedLabel)) {
+      throw new Error(`La etiqueta "${label}" esta repetida en el mismo encuentro.`);
+    }
+    seenKeys.add(normalizedLabel);
+
+    payload.push({
+      new_tag_label: label,
+      quantity_required: quantity,
+      unit: unit || null,
+      requirement_mode: row.requirement_mode,
+      criticality: row.criticality,
+      notes: notes || null,
+    });
+  });
+
+  return payload;
+}
+
+window.openSessionResourceEditor = async function (workshopId, sessionId, topic = '') {
+  const workshopIdValue = String(workshopId || '');
+  const sessionIdValue = String(sessionId || '');
+  if (!workshopIdValue || !sessionIdValue) return;
+  if (typeof window.setAgendaView !== 'function') {
+    toast('Abrí la agenda del taller para editar recursos.', 'info');
+    return;
+  }
+
+  try {
+    const rows = await api.get(`/workshops/${workshopIdValue}/sessions/${sessionIdValue}/resource-requirements`);
+    const normalizedRows = normalizeResourceEditorRows(rows);
+    window.setAgendaView('resources', {
+      workshop_id: workshopIdValue,
+      session_id: sessionIdValue,
+      session_topic: topic || 'Encuentro sin tema',
+      rows: normalizedRows,
+    });
+  } catch (err) {
+    toast(err.message || 'No se pudieron cargar los recursos del encuentro', 'error');
+  }
+};
 
 function participantFormHTML(p = null) {
   return `<form id="entity-form" autocomplete="off"><div class="form-group"><label for="f-name" class="form-label">Nombre completo</label><input id="f-name" name="name" class="form-input" value="${escapeHTML(p?.name || '')}" required></div><div class="form-row"><div class="form-group"><label for="f-dni" class="form-label">DNI (opcional)</label><input id="f-dni" name="dni" class="form-input" inputmode="numeric" pattern="[0-9]{7,12}" value="${escapeHTML(p?.dni || '')}" placeholder="Solo números"></div><div class="form-group"><label for="f-phone" class="form-label">Teléfono (opcional)</label><input id="f-phone" name="phone" class="form-input" value="${escapeHTML(p?.phone || '')}"></div></div><div class="form-row"><div class="form-group"><label for="f-birth-date" class="form-label">Fecha de nacimiento</label><input id="f-birth-date" name="birth_date" class="form-input" type="date" value="${escapeHTML(p?.birth_date || '')}"></div><div class="form-group"><label for="f-gender" class="form-label">Género</label><select id="f-gender" name="gender" class="form-select"><option value="undisclosed" ${(p?.gender || 'undisclosed') === 'undisclosed' ? 'selected' : ''}>Sin declarar</option><option value="female" ${p?.gender === 'female' ? 'selected' : ''}>Femenino</option><option value="male" ${p?.gender === 'male' ? 'selected' : ''}>Masculino</option><option value="non_binary" ${p?.gender === 'non_binary' ? 'selected' : ''}>No binario</option><option value="other" ${p?.gender === 'other' ? 'selected' : ''}>Otro</option></select></div></div><div class="form-group"><label for="f-email" class="form-label">Correo electrónico</label><input type="email" id="f-email" name="email" class="form-input" value="${escapeHTML(p?.email || '')}" required></div></form>`;
@@ -5594,6 +5680,1468 @@ window.deleteAdmin = async function (id) {
   }
 };
 
+const WORK_ITEM_KIND_LABELS = {
+  task: 'Tarea',
+  query: 'Consulta',
+  report: 'Reporte',
+};
+
+const WORK_ITEM_STATUS_LABELS = {
+  new: 'Nuevo',
+  triaged: 'En revisión',
+  in_progress: 'En curso',
+  waiting_response: 'En espera',
+  resolved: 'Resuelto',
+  closed: 'Cerrado',
+};
+
+const WORK_ITEM_PRIORITY_LABELS = {
+  low: 'Baja',
+  medium: 'Media',
+  high: 'Alta',
+};
+
+function workItemKindLabel(kind) {
+  return WORK_ITEM_KIND_LABELS[kind] || kind || 'Sin tipo';
+}
+
+function workItemStatusLabel(status) {
+  return WORK_ITEM_STATUS_LABELS[status] || status || 'Sin estado';
+}
+
+function workItemPriorityLabel(priority) {
+  return WORK_ITEM_PRIORITY_LABELS[priority] || priority || 'Media';
+}
+
+function nextWorkItemStatus(status) {
+  if (status === 'new') return { status: 'triaged', label: 'Revisar' };
+  if (status === 'triaged') return { status: 'in_progress', label: 'Tomar' };
+  if (status === 'in_progress') return { status: 'resolved', label: 'Resolver' };
+  if (status === 'waiting_response') return { status: 'in_progress', label: 'Retomar' };
+  if (status === 'resolved') return { status: 'closed', label: 'Cerrar' };
+  return { status: 'triaged', label: 'Reabrir' };
+}
+
+function eventTypeLabel(eventType) {
+  const map = {
+    created: 'Creado',
+    updated: 'Actualizado',
+    assigned: 'Asignado',
+    status_changed: 'Cambio de estado',
+    responded: 'Respondido',
+    reopened: 'Reabierto',
+  };
+  return map[eventType] || eventType || 'Evento';
+}
+
+const OPERATION_PENDING_GROUPS = ['today', 'tomorrow', 'week', 'overdue', 'unmanaged', 'unanswered'];
+const OPERATION_PENDING_HORIZON_GROUPS = ['today', 'tomorrow', 'week', 'overdue'];
+const OPERATION_PENDING_MANAGEMENT_GROUPS = ['new', 'unanswered', 'tracking', 'resolved'];
+const OPERATION_PENDING_GROUP_LABELS = {
+  today: 'Hoy',
+  tomorrow: 'Mañana',
+  week: 'Esta semana',
+  overdue: 'Con fecha vencida',
+  unmanaged: 'Sin asignar',
+  unanswered: 'Pendiente de respuesta',
+};
+
+const OPERATION_PENDING_MANAGEMENT_LABELS = {
+  new: 'Por iniciar',
+  unanswered: 'Sin respuesta',
+  tracking: 'En seguimiento',
+  resolved: 'Resueltos recientes',
+};
+
+const OPERATION_SESSION_STATUS_LABELS = {
+  ready: 'Listo',
+  incomplete: 'Información incompleta',
+  at_risk: 'Por revisar',
+  completed: 'Completado',
+  cancelled: 'Cancelado',
+};
+
+const ATTENTION_PRIORITY_LABELS = {
+  high: 'Prioritario',
+  medium: 'Para hoy',
+  low: 'Planificado',
+};
+
+const ATTENTION_KIND_LABELS = {
+  missing_resources: 'Sin recursos asignados',
+  missing_facilitator: 'Sin docente asignado',
+  critical_resources: 'Por confirmar',
+  overdue_work_item: 'Con fecha vencida',
+  unanswered_work_item: 'Pendiente de respuesta',
+  unmanaged_work_item: 'Por iniciar · sin asignar',
+};
+
+const ATTENTION_KIND_TO_PENDING_GROUP = {
+  overdue_work_item: 'overdue',
+  unanswered_work_item: 'unanswered',
+  unmanaged_work_item: 'unmanaged',
+};
+
+const OPS_CONTEXT_SECTION_KEYS = ['tomorrow', 'week'];
+
+let operationsLastUpdatedTimer = null;
+let operationsSessionDrawerHandle = null;
+
+function isOperationsMobileViewport() {
+  return window.innerWidth < 768;
+}
+
+function initializeOperationsContextState() {
+  const viewport = isOperationsMobileViewport() ? 'mobile' : 'desktop';
+  const shouldReset = !state.operationsContextInitialized || state.operationsContextViewport !== viewport;
+  if (!shouldReset) return;
+
+  const collapsedByDefault = viewport === 'mobile';
+  state.operationsContextCollapsed = collapsedByDefault;
+  state.operationsContextSections = {
+    tomorrow: collapsedByDefault,
+    week: collapsedByDefault,
+  };
+  state.operationsContextViewport = viewport;
+  state.operationsContextInitialized = true;
+}
+
+function setOperationsContextCollapsed(collapsed) {
+  state.operationsContextCollapsed = Boolean(collapsed);
+  OPS_CONTEXT_SECTION_KEYS.forEach((key) => {
+    state.operationsContextSections[key] = Boolean(collapsed);
+  });
+}
+
+function toggleOperationsContextSection(sectionKey) {
+  if (!OPS_CONTEXT_SECTION_KEYS.includes(sectionKey)) return;
+  const current = Boolean(state.operationsContextSections?.[sectionKey]);
+  state.operationsContextSections[sectionKey] = !current;
+  state.operationsContextCollapsed = OPS_CONTEXT_SECTION_KEYS.every((key) => Boolean(state.operationsContextSections?.[key]));
+}
+
+function operationSessionStatusLabel(status) {
+  return OPERATION_SESSION_STATUS_LABELS[status] || status || 'Sin estado';
+}
+
+function attentionPriorityLabel(priority) {
+  return ATTENTION_PRIORITY_LABELS[priority] || priority || 'Media';
+}
+
+function attentionKindLabel(kind) {
+  return ATTENTION_KIND_LABELS[kind] || kind || 'Atención';
+}
+
+function parseTimeToMinutes(value) {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return (hour * 60) + minute;
+}
+
+function sessionHasCriticalResources(row) {
+  return Array.isArray(row?.resources) && row.resources.some((resource) => resource?.criticality === 'high');
+}
+
+function sessionHasOperationalRisk(row) {
+  if (!row) return false;
+  if (['incomplete', 'at_risk'].includes(row.operational_status)) return true;
+  return Array.isArray(row.attention_flags) && row.attention_flags.length > 0;
+}
+
+function sessionConditionNote(row) {
+  const flags = Array.isArray(row?.attention_flags) ? row.attention_flags : [];
+  if (flags.includes('missing_resources')) return 'Falta completar recursos del encuentro';
+  if (flags.includes('missing_facilitator')) return 'Falta asignar docente';
+  if (flags.includes('missing_topic')) return 'Falta definir el tema';
+  if (sessionHasCriticalResources(row)) {
+    const labels = (row.resources || [])
+      .filter((resource) => resource?.criticality === 'high')
+      .slice(0, 2)
+      .map((resource) => resource.resource_label || 'Recurso crítico')
+      .join(', ');
+    return labels ? `Recursos a confirmar: ${labels}` : 'Hay recursos a confirmar';
+  }
+  return '';
+}
+
+function sessionTimeRangeLabel(row) {
+  return `${row?.start_time || '--:--'} - ${row?.end_time || '--:--'}`;
+}
+
+function sessionStatusChipHTML(row, nowMinutes = null) {
+  const start = parseTimeToMinutes(row?.start_time);
+  const end = parseTimeToMinutes(row?.end_time);
+  const inProgress = Number.isFinite(nowMinutes)
+    && Number.isFinite(start)
+    && Number.isFinite(end)
+    && row?.session_status === 'scheduled'
+    && nowMinutes >= start
+    && nowMinutes <= end;
+  const upcoming = Number.isFinite(nowMinutes)
+    && Number.isFinite(start)
+    && row?.session_status === 'scheduled'
+    && nowMinutes < start;
+
+  if (inProgress) {
+    return '<span class="dash-status-badge is-live">En curso</span>';
+  }
+  if (upcoming) {
+    return '<span class="dash-status-badge is-next">Próximo</span>';
+  }
+  if (row?.session_status === 'cancelled' || row?.operational_status === 'cancelled') {
+    return '<span class="dash-status-badge is-cancelled">Cancelado</span>';
+  }
+  if (row?.session_status === 'completed' || row?.operational_status === 'completed') {
+    return '<span class="dash-status-badge is-completed">Completado</span>';
+  }
+
+  const risk = sessionHasOperationalRisk(row);
+  if (risk) {
+    return '<span class="dash-status-badge is-risk">Por revisar</span>';
+  }
+  const label = operationSessionStatusLabel(row?.operational_status);
+  return `<span class="dash-status-badge is-ready">${escapeHTML(label)}</span>`;
+}
+
+function closeOperationalSessionDrawer({ restoreFocus = true } = {}) {
+  const drawerRoot = document.getElementById('ops-session-drawer-root');
+  if (operationsSessionDrawerHandle?.isOpen?.()) {
+    operationsSessionDrawerHandle.close({ restoreFocus });
+  }
+  operationsSessionDrawerHandle = null;
+  if (drawerRoot) {
+    drawerRoot.innerHTML = '';
+  }
+}
+
+let operationsDetailSurfaceHandle = null;
+
+function closeOperationalDetailSurface({ restoreFocus = true } = {}) {
+  const root = document.getElementById('ops-detail-surface-root');
+  if (operationsDetailSurfaceHandle?.isOpen?.()) {
+    operationsDetailSurfaceHandle.close({ restoreFocus });
+  }
+  operationsDetailSurfaceHandle = null;
+  if (root) root.innerHTML = '';
+}
+
+function ensureOperationalDetailSurfaceRoot() {
+  let root = document.getElementById('ops-detail-surface-root');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'ops-detail-surface-root';
+    root.className = 'dashboard-v2 dashboard-v2-institutional dashboard-v2-operations';
+    document.body.appendChild(root);
+  }
+  return root;
+}
+
+function openOperationalDetailSurface({ title, subtitle = '', body, footer } = {}) {
+  if (!title) return;
+  const root = ensureOperationalDetailSurfaceRoot();
+  closeOperationalDetailSurface({ restoreFocus: false });
+  const footerMarkup = typeof footer === 'string'
+    ? footer
+    : '<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-detail-close="1">Cerrar</button>';
+  root.innerHTML = `
+    <div class="dash-drawer-backdrop surface-backdrop surface-backdrop-operational" data-op-detail-close="1"></div>
+    <aside class="dash-drawer dash-agenda-drawer ops-detail-surface surface-panel surface-panel-wide surface-panel-shell surface-reading-operational" data-surface-kind="sheet" data-surface-size="wide" role="dialog" aria-modal="true" aria-labelledby="ops-detail-title">
+      <header class="dash-drawer-header dash-agenda-drawer-header surface-panel-header">
+        <div class="surface-panel-header-main">
+          <h3 id="ops-detail-title">${escapeHTML(title)}</h3>
+          ${subtitle ? `<p class="dash-page-subtitle">${escapeHTML(subtitle)}</p>` : ''}
+        </div>
+        <button class="dash-drawer-close" type="button" data-op-detail-close="1" aria-label="Cerrar">&times;</button>
+      </header>
+      <div class="surface-panel-body dash-agenda-drawer-body ops-detail-surface-body">${body || ''}</div>
+      <footer class="surface-panel-footer ops-session-drawer-footer">${footerMarkup}</footer>
+    </aside>
+  `;
+
+  root.querySelectorAll('[data-op-detail-close="1"]').forEach((btn) => {
+    btn.addEventListener('click', () => closeOperationalDetailSurface({ restoreFocus: true }));
+  });
+
+  const panel = root.querySelector('.dash-drawer');
+  const appSurfacesAPI = window.AppSurfaces || window.appSurfaces;
+  if (appSurfacesAPI?.open && panel instanceof HTMLElement) {
+    operationsDetailSurfaceHandle = appSurfacesAPI.open({
+      kind: 'sheet',
+      size: panel.getAttribute('data-surface-size') || 'wide',
+      root,
+      panel,
+      lockScroll: true,
+      trapFocus: true,
+      closeOnEscape: true,
+      closeOnOutside: true,
+      restoreFocus: false,
+      onRequestClose: () => closeOperationalDetailSurface({ restoreFocus: true }),
+    });
+  }
+}
+
+function pendingActionSet(status) {
+  const current = String(status || 'new');
+  const openStatuses = ['new', 'triaged', 'in_progress', 'waiting_response'];
+  if (openStatuses.includes(current)) {
+    const actions = [
+      { status: 'resolved', label: 'Marcar como resuelto', variant: 'success' },
+    ];
+    if (current !== 'triaged') actions.push({ status: 'triaged', label: 'Dejar preparado', variant: 'secondary' });
+    if (!['in_progress', 'waiting_response'].includes(current)) {
+      actions.push({ status: 'in_progress', label: 'Pasar a seguimiento', variant: 'ghost' });
+    }
+    return actions;
+  }
+  if (current === 'resolved') {
+    return [
+      { status: 'triaged', label: 'Reabrir', variant: 'ghost' },
+      { status: 'closed', label: 'Cerrar', variant: 'secondary' },
+    ];
+  }
+  return [{ status: 'triaged', label: 'Reabrir', variant: 'ghost' }];
+}
+
+function dedupeWorkItems(items = []) {
+  const byId = new Map();
+  (items || []).forEach((row) => {
+    if (!row?.id) return;
+    byId.set(String(row.id), row);
+  });
+  return [...byId.values()];
+}
+
+function ensureOperationalSessionDrawerRoot() {
+  let drawerRoot = document.getElementById('ops-session-drawer-root');
+  if (!drawerRoot) {
+    drawerRoot = document.createElement('div');
+    drawerRoot.id = 'ops-session-drawer-root';
+    document.body.appendChild(drawerRoot);
+  }
+  drawerRoot.className = 'dashboard-v2 dashboard-v2-institutional dashboard-v2-operations';
+  return drawerRoot;
+}
+
+function openOperationalSessionDrawer(session, todaySummary = {}) {
+  if (!session) return;
+  const drawerRoot = ensureOperationalSessionDrawerRoot();
+  closeOperationalSessionDrawer({ restoreFocus: false });
+
+  const participants = Number(session.estimated_participants || 0);
+  const todaySessionCount = Number(todaySummary.sessions_count || 0);
+  const resources = Array.isArray(session.resources) ? session.resources : [];
+  const alertCount = Array.isArray(session.attention_flags) ? session.attention_flags.length : 0;
+  const nowMinutes = nowMinutesInOperationsTZ();
+  const statusChip = sessionStatusChipHTML(session, nowMinutes);
+  const notes = sessionConditionNote(session) || 'No hay observaciones pendientes.';
+  const preparationStatus = operationSessionStatusLabel(session.operational_status);
+  const contextualBits = [sessionTimeRangeLabel(session), session.facilitator_name || 'Sin docente asignado'];
+  if (session.cohort_year) contextualBits.push(`Cohorte ${session.cohort_year}`);
+
+  const resourcesRows = resources.length
+    ? resources.map((resource) => {
+      const quantity = Number(resource.effective_quantity ?? 0);
+      const qtyLabel = Number.isInteger(quantity) ? String(quantity) : quantity.toFixed(1);
+      const resourceStatus = resource.criticality === 'high'
+        ? { label: 'A confirmar', cls: 'ops-chip-attention' }
+        : quantity <= 0
+          ? { label: 'Pendiente de preparación', cls: 'ops-chip-next' }
+          : { label: 'Listo', cls: 'ops-chip-now' };
+      const unitSuffix = resource.unit ? ` ${escapeHTML(resource.unit)}` : '';
+      const resourceNote = resource.notes ? `<br><small class="ops-resource-note">${escapeHTML(resource.notes)}</small>` : '';
+      return `
+        <tr>
+          <td><strong>${escapeHTML(resource.resource_label || 'Recurso')}</strong>${resourceNote}</td>
+          <td>${escapeHTML(qtyLabel)}${unitSuffix}</td>
+          <td><span class="dash-chip ${resourceStatus.cls}">${escapeHTML(resourceStatus.label)}</span></td>
+          <td class="text-right"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(session.workshop_id || '')}">Ver en agenda</button></td>
+        </tr>
+      `;
+    }).join('')
+    : '<tr><td colspan="4">No hay recursos requeridos para este encuentro.</td></tr>';
+
+  const ATTENTION_FLAG_LABELS = {
+    critical_resources: {
+      title: 'Recursos a confirmar',
+      reason: 'Hay recursos con validación pendiente para este encuentro.',
+      action: 'Confirmar disponibilidad en agenda',
+    },
+    missing_facilitator: {
+      title: 'Docente pendiente',
+      reason: 'Todavía no hay docente asignado para el encuentro.',
+      action: 'Asignar docente desde agenda',
+    },
+    missing_topic: {
+      title: 'Tema a completar',
+      reason: 'El contenido del encuentro todavía no está definido.',
+      action: 'Completar tema en agenda',
+    },
+    missing_resources: {
+      title: 'Recursos por definir',
+      reason: 'Falta cargar los recursos necesarios.',
+      action: 'Cargar recursos en agenda',
+    },
+    at_risk: {
+      title: 'Seguimiento sugerido',
+      reason: 'El encuentro requiere una revisión de preparación.',
+      action: 'Revisar planificación en agenda',
+    },
+  };
+
+  const attentionFlags = Array.isArray(session.attention_flags) ? session.attention_flags : [];
+  const attentionRows = attentionFlags.length
+    ? attentionFlags.map((flag) => {
+      const info = ATTENTION_FLAG_LABELS[flag] || {
+        title: 'Revisión operativa',
+        reason: 'Este encuentro tiene una condición para revisar.',
+        action: 'Ver detalle en agenda',
+      };
+      return `<tr class="ops-session-flag-row">
+              <td><strong>${escapeHTML(info.title)}</strong><br><small class="dash-page-subtitle">${escapeHTML(info.reason)}</small></td>
+              <td>${escapeHTML(info.action)}</td>
+              <td class="text-right">
+                <div class="dash-row-actions">
+                  <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(session.workshop_id || '')}">Ver en agenda</button>
+                  <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" data-op-dismiss-flag="${escapeHTML(flag)}">Marcar revisado</button>
+                </div>
+              </td>
+            </tr>`;
+    }).join('')
+    : '<tr><td colspan="3">No hay temas adicionales para revisar.</td></tr>';
+
+  drawerRoot.innerHTML = `
+    <div class="dash-drawer-backdrop surface-backdrop surface-backdrop-operational" data-op-session-drawer-close="1"></div>
+    <aside class="dash-drawer dash-agenda-drawer ops-session-drawer surface-panel surface-panel-wide surface-panel-shell surface-reading-operational" data-surface-kind="sheet" data-surface-size="wide" role="dialog" aria-modal="true" aria-labelledby="ops-session-drawer-title">
+      <header class="dash-drawer-header dash-agenda-drawer-header surface-panel-header">
+        <div class="surface-panel-header-main">
+          <h3 id="ops-session-drawer-title">${escapeHTML(session.workshop_name || 'Encuentro operativo')}</h3>
+          <p class="dash-page-subtitle">${escapeHTML(contextualBits.join(' · '))}</p>
+        </div>
+        <div class="dash-drawer-header-actions">
+          ${statusChip}
+          <button class="dash-drawer-close" type="button" data-op-session-drawer-close="1" aria-label="Cerrar">&times;</button>
+        </div>
+      </header>
+      <div class="surface-panel-body dash-agenda-drawer-body ops-session-drawer-body">
+        <section class="dash-agenda-drawer-summary ops-session-summary-strip" aria-label="Resumen operativo del encuentro">
+          <article class="dash-agenda-summary-item"><span>Participantes estimados</span><strong>${escapeHTML(String(participants))}</strong></article>
+          <article class="dash-agenda-summary-item"><span>Estado de preparación</span><strong>${escapeHTML(preparationStatus)}</strong></article>
+          <article class="dash-agenda-summary-item"><span>Recursos requeridos</span><strong>${escapeHTML(String(resources.length))}</strong></article>
+          <article class="dash-agenda-summary-item"><span>Temas a revisar</span><strong>${escapeHTML(String(alertCount))}</strong></article>
+        </section>
+
+        <div class="ops-session-detail-grid">
+          <section class="dash-agenda-drawer-detail ops-session-detail-block" aria-label="Preparación y seguimiento">
+            <header class="ops-session-detail-header">
+              <h4 class="ops-session-detail-title">Preparación y seguimiento</h4>
+              <p class="dash-page-subtitle">Primero lo accionable para este encuentro.</p>
+            </header>
+
+            <div class="ops-session-detail-content">
+              <section class="ops-session-subblock" aria-label="Recursos a confirmar">
+                <header class="ops-subblock-header">
+                  <h5 class="ops-subblock-title">Recursos a confirmar</h5>
+                  <p class="dash-page-subtitle">Validá disponibilidad y preparación antes del inicio.</p>
+                </header>
+                <div class="dash-table-wrap ops-session-table" role="region" aria-label="Recursos del encuentro">
+                  <table class="dash-table dash-table-compact">
+                    <thead><tr><th>Recurso</th><th>Cantidad</th><th>Estado</th><th class="text-right">Acción</th></tr></thead>
+                    <tbody>${resourcesRows}</tbody>
+                  </table>
+                </div>
+              </section>
+
+              <section class="ops-session-subblock" aria-label="Temas a revisar">
+                <header class="ops-subblock-header">
+                  <h5 class="ops-subblock-title">Temas a revisar</h5>
+                  <p class="dash-page-subtitle">Puntos que conviene revisar antes del encuentro.</p>
+                </header>
+                <div class="dash-table-wrap ops-session-table" role="region" aria-label="Temas a revisar del encuentro">
+                  <table class="dash-table dash-table-compact">
+                    <thead><tr><th>Punto</th><th>Acción sugerida</th><th class="text-right">Gestión</th></tr></thead>
+                    <tbody>${attentionRows}</tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="dash-agenda-drawer-detail ops-session-detail-block" aria-label="Contexto del encuentro">
+            <header class="ops-session-detail-header">
+              <h4 class="ops-session-detail-title">Contexto del encuentro</h4>
+              <p class="dash-page-subtitle">Información de apoyo para decidir próximos pasos.</p>
+            </header>
+            <div class="dash-operational-detail-block">
+              <table class="dash-table-operational-detail ops-context-table">
+                <tbody>
+                  <tr><th scope="row">Docente</th><td>${escapeHTML(session.facilitator_name || 'Sin docente asignado')}</td></tr>
+                  <tr><th scope="row">Tema</th><td>${escapeHTML(session.topic || 'Sin tema definido')}</td></tr>
+                  <tr><th scope="row">Estado de preparación</th><td>${escapeHTML(preparationStatus)}</td></tr>
+                  <tr><th scope="row">Observación operativa</th><td class="ops-session-condition">${escapeHTML(notes)}</td></tr>
+                  <tr><th scope="row">Carga del día</th><td>${escapeHTML(String(todaySessionCount))} encuentros activos en centro</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </div>
+      <footer class="surface-panel-footer ops-session-drawer-footer">
+        <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-session-drawer-close="1">Cerrar</button>
+        <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" data-op-open-full-agenda="${escapeHTML(session.workshop_id || '')}">Ir a agenda del taller</button>
+      </footer>
+    </aside>
+  `;
+
+  drawerRoot.querySelectorAll('[data-op-session-drawer-close="1"]').forEach((button) => {
+    button.addEventListener('click', () => closeOperationalSessionDrawer({ restoreFocus: true }));
+  });
+
+  drawerRoot.querySelectorAll('[data-op-open-full-agenda], [data-op-open-agenda]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const workshopId = button.getAttribute('data-op-open-full-agenda') || button.getAttribute('data-op-open-agenda');
+      closeOperationalSessionDrawer({ restoreFocus: false });
+      if (workshopId) {
+        window.openWorkshopAgenda?.(workshopId);
+      }
+    });
+  });
+
+  drawerRoot.querySelectorAll('[data-op-dismiss-flag]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const row = button.closest('tr');
+      if (row) {
+        row.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(8px)';
+        setTimeout(() => row.remove(), 260);
+      }
+      toast('Punto marcado como revisado', 'success');
+    });
+  });
+
+  const panel = drawerRoot.querySelector('.dash-drawer');
+  const appSurfacesAPI = window.AppSurfaces || window.appSurfaces;
+
+  if (appSurfacesAPI?.open && panel instanceof HTMLElement) {
+    operationsSessionDrawerHandle = appSurfacesAPI.open({
+      kind: 'sheet',
+      size: panel.getAttribute('data-surface-size') || 'wide',
+      root: drawerRoot,
+      panel,
+      lockScroll: true,
+      trapFocus: true,
+      closeOnEscape: true,
+      closeOnOutside: true,
+      restoreFocus: false,
+      onRequestClose: () => closeOperationalSessionDrawer({ restoreFocus: true }),
+    });
+    return;
+  }
+}
+
+function uniqueResourceCount(sessions = []) {
+  const unique = new Set();
+  (sessions || []).forEach((session) => {
+    (session.resources || []).forEach((resource) => {
+      const key = resource.resource_term_id || resource.resource_label || '';
+      if (key) unique.add(String(key));
+    });
+  });
+  return unique.size;
+}
+
+function pickTomorrowHighlights(sessions = [], maxItems = 2) {
+  const rows = (Array.isArray(sessions) ? sessions : [])
+    .filter((row) => row?.session_status !== 'cancelled')
+    .slice()
+    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+  if (!rows.length) return [];
+
+  const firstSessionId = rows[0]?.id;
+  const rank = (row) => {
+    const hasCritical = sessionHasCriticalResources(row) ? 0 : 1;
+    const hasRisk = sessionHasOperationalRisk(row) ? 0 : 1;
+    const isFirst = row?.id === firstSessionId ? 0 : 1;
+    return [hasCritical, hasRisk, isFirst, row?.start_time || '99:99'];
+  };
+
+  rows.sort((a, b) => {
+    const left = rank(a);
+    const right = rank(b);
+    for (let i = 0; i < left.length; i += 1) {
+      if (left[i] === right[i]) continue;
+      return left[i] < right[i] ? -1 : 1;
+    }
+    return 0;
+  });
+
+  return rows.slice(0, maxItems);
+}
+
+function pickTodaySessionsForPreview(sessions = [], maxItems = 3) {
+  const now = nowMinutesInOperationsTZ();
+  const rows = (Array.isArray(sessions) ? sessions : [])
+    .filter((row) => row?.session_status !== 'cancelled')
+    .slice()
+    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+  if (!rows.length) return [];
+
+  // Prioritize: in-progress > upcoming > with attention > rest
+  const inProgress = [];
+  const upcoming = [];
+  const withAttention = [];
+  const rest = [];
+
+  rows.forEach((row) => {
+    const start = parseTimeToMinutes(row?.start_time);
+    const end = parseTimeToMinutes(row?.end_time);
+    const isInProgress = Number.isFinite(now) && Number.isFinite(start) && Number.isFinite(end) && now >= start && now <= end;
+    const isUpcoming = Number.isFinite(now) && Number.isFinite(start) && now < start;
+    const hasRisk = sessionHasOperationalRisk(row);
+
+    if (isInProgress) inProgress.push(row);
+    else if (isUpcoming) upcoming.push(row);
+    else if (hasRisk) withAttention.push(row);
+    else rest.push(row);
+  });
+
+  return [...inProgress, ...upcoming, ...withAttention, ...rest].slice(0, maxItems);
+}
+
+function nowMinutesInOperationsTZ() {
+  try {
+    const nowStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false });
+    const parts = nowStr.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+  } catch {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  }
+}
+
+function attentionPriorityClass(priority) {
+  if (priority === 'high') return 'is-high';
+  if (priority === 'medium') return 'is-medium';
+  return 'is-low';
+}
+
+function attentionPriorityChipHTML(priority) {
+  const label = attentionPriorityLabel(priority);
+  return `<span class="dash-chip ops-priority-chip ${attentionPriorityClass(priority)}">${escapeHTML(label)}</span>`;
+}
+
+function attentionPendingGroup(kind) {
+  return ATTENTION_KIND_TO_PENDING_GROUP[kind] || 'today';
+}
+
+function attentionPriorityRank(priority) {
+  if (priority === 'high') return 0;
+  if (priority === 'medium') return 1;
+  return 2;
+}
+
+function sortAttentionRows(rows = []) {
+  return [...rows].sort((left, right) => {
+    const priorityDiff = attentionPriorityRank(left?.priority) - attentionPriorityRank(right?.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    const leftDue = left?.due_at || `${left?.date || ''} ${left?.start_time || ''}`;
+    const rightDue = right?.due_at || `${right?.date || ''} ${right?.start_time || ''}`;
+    return String(leftDue || '').localeCompare(String(rightDue || ''));
+  });
+}
+
+function isSnapshotEmpty(snapshot) {
+  if (!snapshot) return true;
+  return Number(snapshot.work_items_created_count || 0) === 0
+    && Number(snapshot.work_items_resolved_count || 0) === 0
+    && Number(snapshot.backlog_open_end_count || 0) === 0
+    && Number(snapshot.backlog_overdue_end_count || 0) === 0;
+}
+
+function operationsUpdatedAgoLabel(fetchedAt) {
+  const elapsedMs = Math.max(0, Date.now() - fetchedAt.getTime());
+  const elapsedMin = Math.floor(elapsedMs / 60000);
+  if (elapsedMin <= 0) return 'Última actualización: hace instantes';
+  if (elapsedMin === 1) return 'Última actualización: hace 1 min';
+  return `Última actualización: hace ${elapsedMin} min`;
+}
+
+function bindOperationsUpdatedAgo(root, fetchedAt) {
+  const target = root.querySelector('#op-last-updated');
+  if (!target) return;
+
+  if (operationsLastUpdatedTimer) {
+    clearInterval(operationsLastUpdatedTimer);
+    operationsLastUpdatedTimer = null;
+  }
+
+  const syncLabel = () => {
+    target.textContent = operationsUpdatedAgoLabel(fetchedAt);
+  };
+  syncLabel();
+  operationsLastUpdatedTimer = setInterval(syncLabel, 60000);
+}
+
+function operationsAgendaDateLabel(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + Number(offsetDays || 0));
+  return new Intl.DateTimeFormat('es-AR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'long',
+  }).format(date);
+}
+
+function operationsAgendaPeakSlot(rows = []) {
+  const bySlot = new Map();
+  (rows || []).forEach((row) => {
+    const slot = sessionTimeRangeLabel(row);
+    bySlot.set(slot, (bySlot.get(slot) || 0) + 1);
+  });
+  let peakSlot = 'Sin dato';
+  let peakCount = 0;
+  bySlot.forEach((count, slot) => {
+    if (count > peakCount) {
+      peakCount = count;
+      peakSlot = slot;
+    }
+  });
+  return peakSlot;
+}
+
+function operationsAgendaFacilitatorCount(rows = []) {
+  const names = new Set();
+  (rows || []).forEach((row) => {
+    const name = String(row?.facilitator_name || '').trim();
+    if (!name || name === 'Sin asignar') return;
+    names.add(name);
+  });
+  return names.size;
+}
+
+function openOperationalAgendaSurface({ title, subtitle = '', sessions = [] } = {}) {
+  const rows = (Array.isArray(sessions) ? sessions : [])
+    .slice()
+    .sort((a, b) => (a.start_time || '').localeCompare(b.start_time || ''));
+
+  const facilitatorCount = operationsAgendaFacilitatorCount(rows);
+  const participantsEstimate = rows.reduce((total, row) => total + Math.max(0, Number(row?.estimated_participants || 0)), 0);
+  const participantsLabel = participantsEstimate > 0 ? String(participantsEstimate) : 'Sin estimación';
+  const peakSlot = operationsAgendaPeakSlot(rows);
+
+  const detailBlock = rows.length
+    ? `<section class="dash-agenda-drawer-detail" aria-label="Detalle de encuentros">
+        <div class="dash-table-wrap" role="region" aria-label="Agenda operativa">
+          <table class="dash-table dash-table-agenda-drawer">
+            <thead><tr><th>Hora</th><th>Taller</th><th>Docente</th><th>Tema</th><th>Estado</th><th class="text-right">Acción</th></tr></thead>
+            <tbody>
+              ${rows.map((row) => `<tr><td>${escapeHTML(sessionTimeRangeLabel(row))}</td><td>${escapeHTML(row.workshop_name || 'Taller')}</td><td>${escapeHTML(row.facilitator_name || 'Sin asignar')}</td><td><span class="dash-topic-text ${!row.topic ? 'is-missing' : ''}">${escapeHTML(row.topic || 'Sin tema')}</span></td><td>${sessionStatusChipHTML(row)}</td><td class="text-right"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(row.workshop_id || '')}">Abrir agenda</button></td></tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </section>`
+    : '<section class="dash-agenda-drawer-detail" aria-label="Detalle de encuentros"><div class="dash-empty" role="status"><h3>Sin encuentros</h3><p>No hay encuentros para este día.</p></div></section>';
+
+  const body = `
+    <section class="dash-agenda-drawer-summary ops-detail-agenda-summary" aria-label="Resumen diario">
+      <article class="dash-agenda-summary-item"><span>Encuentros</span><strong>${escapeHTML(String(rows.length))}</strong></article>
+      <article class="dash-agenda-summary-item"><span>Docentes implicados</span><strong>${escapeHTML(String(facilitatorCount))}</strong></article>
+      <article class="dash-agenda-summary-item"><span>Participantes estimados</span><strong>${escapeHTML(participantsLabel)}</strong></article>
+      <article class="dash-agenda-summary-item"><span>Franja pico</span><strong>${escapeHTML(peakSlot)}</strong></article>
+    </section>
+    ${detailBlock}
+  `;
+
+  openOperationalDetailSurface({
+    title,
+    subtitle,
+    body,
+    footer: '',
+  });
+
+  document.getElementById('ops-detail-surface-root')?.querySelectorAll('[data-op-open-agenda]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const workshopId = button.getAttribute('data-op-open-agenda');
+      if (!workshopId) return;
+      closeOperationalDetailSurface({ restoreFocus: false });
+      window.openWorkshopAgenda?.(workshopId);
+    });
+  });
+}
+
+async function loadOperations() {
+  try {
+    renderViewLoading('operations', 'Operaciones');
+    const root = document.querySelector('#view-operations .page-body');
+    if (!root) return;
+
+    closeOperationalSessionDrawer({ restoreFocus: false });
+    closeOperationalDetailSurface({ restoreFocus: false });
+
+    if (operationsLastUpdatedTimer) {
+      clearInterval(operationsLastUpdatedTimer);
+      operationsLastUpdatedTimer = null;
+    }
+
+    const fetchedAt = new Date();
+    const tactical = await api.get('/operations/tactical');
+    const pendingData = tactical?.pending || {};
+    const todayBlock = tactical?.today || {};
+    const tomorrowBlock = tactical?.tomorrow || {};
+    const todaySummary = todayBlock?.summary || {};
+    const tomorrowSummary = tomorrowBlock?.summary || {};
+    const todaySessions = Array.isArray(todayBlock?.sessions) ? todayBlock.sessions : [];
+    const tomorrowSessions = Array.isArray(tomorrowBlock?.sessions) ? tomorrowBlock.sessions : [];
+    const tomorrowHighlights = pickTomorrowHighlights(tomorrowSessions, 2);
+    const sessionById = new Map([...todaySessions, ...tomorrowSessions].map((row) => [String(row.id), row]));
+
+    const tomorrowResourceLabels = [];
+    const seenResources = new Set();
+    tomorrowSessions.forEach((session) => {
+      (session.resources || []).forEach((resource) => {
+        const label = String(resource?.resource_label || '').trim();
+        if (!label) return;
+        const key = label.toLowerCase();
+        if (seenResources.has(key)) return;
+        seenResources.add(key);
+        tomorrowResourceLabels.push(label);
+      });
+    });
+    const tomorrowRiskCount = Number(tomorrowSummary.sessions_requiring_attention_count || 0)
+      + Number(tomorrowSummary.pending_due_count || 0)
+      + Number(tomorrowSummary.pending_unanswered_count || 0);
+    const tomorrowResourcesCount = uniqueResourceCount(tomorrowSessions);
+
+    initializeOperationsContextState();
+
+    // --- Unified attention stream: merge attention_required + urgent pending items ---
+    const weekSummary = tactical?.week?.summary || {};
+    const topFacilitators = tactical?.week?.top_facilitators || [];
+    const topResources = tactical?.week?.top_resources || [];
+    const attentionRows = sortAttentionRows(Array.isArray(tactical?.attention_required) ? tactical.attention_required : []);
+    const snapshot = tactical?.snapshot_weekly || null;
+    const snapshotEmpty = isSnapshotEmpty(snapshot);
+    const recentlyResolved = Array.isArray(tactical?.recently_resolved) ? tactical.recently_resolved : [];
+
+    const allOpenPending = dedupeWorkItems([
+      ...(pendingData.today?.items || []),
+      ...(pendingData.tomorrow?.items || []),
+      ...(pendingData.week?.items || []),
+      ...(pendingData.overdue?.items || []),
+      ...(pendingData.unmanaged?.items || []),
+      ...(pendingData.unanswered?.items || []),
+    ]);
+    const pendingById = new Map([
+      ...allOpenPending.map((item) => [String(item.id), item]),
+      ...recentlyResolved.map((item) => [String(item.id), item]),
+    ]);
+
+    // Build unified "Para atender ahora" items from attention + today/overdue/unmanaged/unanswered pending
+    const urgentPendingItems = [
+      ...(pendingData.overdue?.items || []),
+      ...(pendingData.unmanaged?.items || []),
+      ...(pendingData.unanswered?.items || []),
+      ...(pendingData.today?.items || []),
+    ];
+    // Deduplicate: remove pending items already represented in attention rows
+    const attentionWorkItemIds = new Set(attentionRows.filter((r) => r.work_item_id).map((r) => String(r.work_item_id)));
+    const extraPendingItems = urgentPendingItems.filter((item) => !attentionWorkItemIds.has(String(item.id)));
+
+    // Unified count for section header
+    const unifiedAttentionCount = attentionRows.length + extraPendingItems.length;
+
+    const horizonGroup = OPERATION_PENDING_HORIZON_GROUPS.includes(state.operationsPendingGroup)
+      ? state.operationsPendingGroup
+      : 'today';
+    const pendingView = state.operationsPendingView === 'management' ? 'management' : 'horizon';
+    const managementFilter = OPERATION_PENDING_MANAGEMENT_GROUPS.includes(state.operationsPendingManagement)
+      ? state.operationsPendingManagement
+      : 'new';
+
+    let pendingRowsForTable = [];
+    if (pendingView === 'horizon') {
+      pendingRowsForTable = pendingData[horizonGroup]?.items || [];
+    } else if (managementFilter === 'new') {
+      pendingRowsForTable = allOpenPending.filter((item) => item?.status === 'new');
+    } else if (managementFilter === 'unanswered') {
+      pendingRowsForTable = pendingData.unanswered?.items || [];
+    } else if (managementFilter === 'tracking') {
+      pendingRowsForTable = allOpenPending.filter((item) => ['triaged', 'in_progress', 'waiting_response'].includes(item?.status));
+    } else {
+      pendingRowsForTable = recentlyResolved;
+    }
+
+    const pageData = paginateRows(pendingRowsForTable, 'operations', 10);
+    const pagination = tablePaginationHTML('operations', pageData, 'items');
+
+    // Pending total across all groups for reference
+    const pendingTotalCount = OPERATION_PENDING_GROUPS.reduce((total, key) => total + Number(pendingData[key]?.count || 0), 0);
+
+    // Today sessions preview
+    const todayPreview = pickTodaySessionsForPreview(todaySessions, 3);
+    const nowMinutes = nowMinutesInOperationsTZ();
+
+    const tomorrowCollapsed = Boolean(state.operationsContextSections?.tomorrow);
+    const weekCollapsed = Boolean(state.operationsContextSections?.week);
+
+    const pendingTableLabel = pendingView === 'horizon'
+      ? OPERATION_PENDING_GROUP_LABELS[horizonGroup]
+      : OPERATION_PENDING_MANAGEMENT_LABELS[managementFilter];
+
+    root.innerHTML = `
+      <div class="dashboard-v2 dashboard-v2-institutional dashboard-v2-operations">
+        <div class="dash-container">
+          <header class="dash-page-header dash-page-header-dashboard">
+            <div class="dash-page-headline">
+              <p class="dash-kicker">Coordinación táctica</p>
+              <h2 class="dash-page-title">Operaciones</h2>
+              <p class="dash-page-subtitle">Qué coordinar, preparar o atender hoy, mañana y esta semana.</p>
+              <p class="dash-page-subtitle ops-last-updated" id="op-last-updated"></p>
+            </div>
+            <div class="dash-actions">
+              <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" id="op-refresh">Actualizar</button>
+              <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" id="op-rebuild-snapshot">Recalcular resumen</button>
+            </div>
+          </header>
+
+          <!-- §1 — Para atender ahora (atención + pendientes) -->
+          <section class="dash-section ops-tactical-section ops-attention-section" data-section="ops_attention">
+            <header class="dash-section-header">
+              <div>
+                <h2 class="dash-section-title">Para atender ahora</h2>
+                <p class="dash-section-description">Prioridades del día y seguimiento de pendientes abiertos.</p>
+                ${unifiedAttentionCount > 0 ? `<p class="dash-page-subtitle">${escapeHTML(String(unifiedAttentionCount))} puntos abiertos para coordinar</p>` : ''}
+              </div>
+              <div class="dash-section-actions">
+                <button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" id="op-open-today-agenda">Ver agenda completa (${escapeHTML(String(todaySessions.length || 0))})</button>
+              </div>
+            </header>
+            <div class="dash-section-content" data-section-content="ops_attention">
+              <div class="dash-kpis ops-kpis-compact ops-kpis-inline">
+                <div class="dash-kpi"><span class="dash-kpi-label">Encuentros hoy</span><span class="dash-kpi-value">${escapeHTML(String(todaySummary.sessions_count || 0))}</span></div>
+                <button type="button" class="dash-kpi ops-kpi-critical ops-kpi-actionable" data-op-open-resources-detail="today"><span class="dash-kpi-label">Recursos por confirmar</span><span class="dash-kpi-value">${escapeHTML(String(todaySummary.critical_resources_count || 0))}</span></button>
+                <button type="button" class="dash-kpi ops-kpi-critical ops-kpi-actionable" data-op-open-alerts-detail="today"><span class="dash-kpi-label">Puntos a revisar</span><span class="dash-kpi-value">${escapeHTML(String((todaySummary.sessions_requiring_attention_count || 0) + (todaySummary.pending_due_count || 0)))}</span></button>
+              </div>
+              ${attentionRows.length
+        ? `<div class="dash-table-wrap" role="region" aria-label="Para atender ahora"><table class="dash-table dash-table-compact"><thead><tr><th>Prioridad</th><th>Tipo</th><th>Detalle</th><th>Fecha</th><th class="text-right">Acciones</th></tr></thead><tbody>${attentionRows.map((row) => {
+          const workItem = row.work_item_id ? pendingById.get(String(row.work_item_id)) : null;
+          const actionsByState = workItem ? pendingActionSet(workItem.status).slice(0, 2) : [];
+          const attendedAction = row.work_item_id
+            ? actionsByState.map((action) => `<button type="button" class="dash-btn dash-btn-${action.variant} dash-btn-sm" data-op-transition="${escapeHTML(row.work_item_id)}" data-op-target-status="${escapeHTML(action.status)}">${escapeHTML(action.label)}</button>`).join('')
+            : `<button type="button" class="dash-btn dash-btn-secondary dash-btn-sm" data-op-dismiss-attention="1">Marcar revisado</button>`;
+          const agendaAction = row.workshop_id
+            ? row.session_id
+              ? `<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-session="${escapeHTML(row.session_id)}">Abrir encuentro</button>`
+              : `<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(row.workshop_id)}">Abrir agenda</button>`
+            : '';
+          const pendingAction = row.work_item_id
+            ? `<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-focus-pending="${escapeHTML(row.work_item_id)}" data-op-pending-group="${escapeHTML(attentionPendingGroup(row.kind))}">Ver pendiente</button>`
+            : '';
+          const dueLabel = row.due_at
+            ? formatDateTime(row.due_at)
+            : row.date
+              ? `${row.date} ${row.start_time || ''}`.trim()
+              : '-';
+          const actions = [attendedAction, agendaAction, pendingAction].filter(Boolean).join('');
+          return `<tr><td>${attentionPriorityChipHTML(row.priority)}</td><td>${escapeHTML(attentionKindLabel(row.kind))}</td><td><strong>${escapeHTML(row.title || 'Punto a atender')}</strong><br><small class="dash-page-subtitle">${escapeHTML(row.subtitle || '')}</small></td><td>${escapeHTML(dueLabel)}</td><td class="text-right"><div class="dash-row-actions">${actions || '-'}</div></td></tr>`;
+        }).join('')}</tbody></table></div>`
+        : ''}
+              ${!attentionRows.length && !allOpenPending.length ? '<div class="dash-empty ops-empty-compact" role="status"><h3>Todo en orden</h3><p>No hay puntos que requieran intervención inmediata. Es un buen momento para preparar mañana.</p></div>' : ''}
+            </div>
+          </section>
+
+          <!-- §2 — Hoy (sessions preview) -->
+          <section class="dash-section ops-tactical-section" data-section="ops_today">
+            <header class="dash-section-header">
+              <div>
+                <h2 class="dash-section-title">Hoy</h2>
+                <p class="dash-section-description">Encuentros del día y estado operativo.</p>
+              </div>
+            </header>
+            <div class="dash-section-content" data-section-content="ops_today">
+              ${todayPreview.length
+        ? `<div class="ops-mini-list" role="list" aria-label="Encuentros de hoy">
+                    ${todayPreview.map((row) => `<article class="ops-mini-item" role="listitem"><div><p class="ops-session-time">${escapeHTML(sessionTimeRangeLabel(row))}</p><h3 class="ops-session-title">${escapeHTML(row.workshop_name || 'Taller')}</h3><p class="ops-session-meta">${escapeHTML(row.facilitator_name || 'Sin asignar')}</p><p class="ops-session-note">${escapeHTML(sessionConditionNote(row) || '')}</p></div><div class="ops-session-side">${sessionStatusChipHTML(row, nowMinutes)}<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-session="${escapeHTML(row.id)}">Abrir detalle</button></div></article>`).join('')}
+                  </div>
+                  ${todaySessions.length > todayPreview.length ? `<div class="ops-inline-actions"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" id="op-open-today-agenda-bottom">Ver todos los encuentros (${escapeHTML(String(todaySessions.length))})</button></div>` : ''}`
+        : '<div class="dash-empty ops-empty-compact" role="status"><h3>Sin encuentros hoy</h3><p>No hay encuentros programados para hoy.</p></div>'}
+            </div>
+          </section>
+
+          <!-- Separador: contexto semanal -->
+          <div class="ops-zone-divider" role="separator" aria-label="Preparación y contexto semanal">
+            <button type="button" class="ops-zone-divider-toggle" id="op-toggle-context" aria-expanded="${state.operationsContextCollapsed ? 'false' : 'true'}">
+              <span class="ops-chevron" aria-hidden="true">${state.operationsContextCollapsed ? '▸' : '▾'}</span>
+              <span class="ops-zone-label">Preparación y contexto semanal</span>
+            </button>
+          </div>
+
+          <!-- §3 — Por preparar (ex Mañana, reoriented to preparation) -->
+          <section class="dash-section ops-tactical-section ops-context-section ${tomorrowCollapsed ? 'ops-section-collapsed' : ''}" data-section="ops_tomorrow">
+            <header class="dash-section-header">
+              <div>
+                <h2 class="dash-section-title">Por preparar</h2>
+                <p class="dash-section-description">Qué dejar listo para que mañana comience sin fricción.</p>
+              </div>
+              <div class="dash-section-actions">
+                <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm ops-section-collapser" data-op-toggle-section="tomorrow" aria-expanded="${tomorrowCollapsed ? 'false' : 'true'}">${tomorrowCollapsed ? '▸' : '▾'}</button>
+              </div>
+            </header>
+            <div class="dash-section-content" data-section-content="ops_tomorrow">
+              ${Number(tomorrowSummary.sessions_count || 0) > 0
+        ? `
+                  <div class="dash-kpis ops-kpis-prep">
+                    <div class="dash-kpi"><span class="dash-kpi-label">Encuentros mañana</span><span class="dash-kpi-value">${escapeHTML(String(tomorrowSummary.sessions_count || 0))}</span></div>
+                    <div class="dash-kpi"><span class="dash-kpi-label">Docentes asignados</span><span class="dash-kpi-value">${escapeHTML(String(tomorrowSummary.facilitators_count || 0))}</span></div>
+                    <div class="dash-kpi"><span class="dash-kpi-label">Participantes estimados</span><span class="dash-kpi-value">${escapeHTML(String(tomorrowSummary.participants_estimated || 0))}</span></div>
+                    <button type="button" class="dash-kpi ops-kpi-critical ops-kpi-actionable" data-op-open-resources-detail="tomorrow"><span class="dash-kpi-label">Recursos a preparar</span><span class="dash-kpi-value">${escapeHTML(String(tomorrowResourcesCount))}</span></button>
+                    <button type="button" class="dash-kpi ops-kpi-critical ops-kpi-actionable" data-op-open-alerts-detail="tomorrow"><span class="dash-kpi-label">Puntos a confirmar</span><span class="dash-kpi-value">${escapeHTML(String(tomorrowRiskCount))}</span></button>
+                  </div>
+                  <div class="ops-block-divider" role="separator" aria-hidden="true"></div>
+                  <div class="ops-mini-list" role="list" aria-label="Encuentros destacados para preparar">
+                    ${tomorrowHighlights.map((row) => `<article class="ops-mini-item" role="listitem"><div><p class="ops-session-time">${escapeHTML(sessionTimeRangeLabel(row))}</p><h3 class="ops-session-title">${escapeHTML(row.workshop_name || 'Taller')}</h3><p class="ops-session-meta">${escapeHTML(row.facilitator_name || 'Sin asignar')}</p><p class="ops-session-note">${escapeHTML(sessionConditionNote(row) || 'Sin observaciones')}</p></div><div class="ops-session-side">${sessionStatusChipHTML(row)}<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(row.workshop_id || '')}">Ver agenda</button></div></article>`).join('')}
+                  </div>
+                  ${tomorrowResourceLabels.length ? `<p class="dash-page-subtitle">Recursos principales a preparar: ${escapeHTML(tomorrowResourceLabels.slice(0, 4).join(', '))}${tomorrowResourceLabels.length > 4 ? ` (+${tomorrowResourceLabels.length - 4} más)` : ''}.</p>` : ''}
+                `
+        : '<div class="dash-empty ops-empty-compact" role="status"><h3>No hay actividad prevista para mañana</h3><p>No hay encuentros programados. Buen momento para adelantar preparación semanal.</p></div>'}
+            </div>
+          </section>
+
+          <!-- §4 — Pendientes y cierre -->
+          <section class="dash-section ops-tactical-section" data-section="ops_pending_close">
+            <header class="dash-section-header">
+              <div>
+                <h2 class="dash-section-title">Pendientes y cierre</h2>
+                <p class="dash-section-description">Seguimiento de pendientes abiertos y cierre reciente.</p>
+              </div>
+            </header>
+            <div class="dash-section-content" data-section-content="ops_pending_close">
+              ${(allOpenPending.length > 0 || recentlyResolved.length > 0) ? `
+              <div class="ops-pending-inline" data-section-content="ops_pending_inline">
+                <h3 class="ops-pending-title">Pendientes operativos <span class="dash-page-subtitle">(${escapeHTML(String(pendingTotalCount))} abiertos)</span></h3>
+                <div class="ops-pending-controls">
+                  <div class="dash-segmented" role="tablist" aria-label="Vista de pendientes">
+                    <button type="button" class="dash-segmented-btn ${pendingView === 'horizon' ? 'is-active' : ''}" data-op-pending-view="horizon">Horizonte</button>
+                    <button type="button" class="dash-segmented-btn ${pendingView === 'management' ? 'is-active' : ''}" data-op-pending-view="management">Gestión</button>
+                  </div>
+                  ${pendingView === 'horizon'
+          ? `<div class="dash-segmented" role="tablist" aria-label="Horizonte de pendientes">${OPERATION_PENDING_HORIZON_GROUPS.map((key) => `<button type="button" class="dash-segmented-btn ${horizonGroup === key ? 'is-active' : ''}" data-op-pending-filter="${key}">${escapeHTML(OPERATION_PENDING_GROUP_LABELS[key])} (${escapeHTML(String(pendingData[key]?.count || 0))})</button>`).join('')}</div>`
+          : `<div class="dash-segmented" role="tablist" aria-label="Gestión de pendientes">${OPERATION_PENDING_MANAGEMENT_GROUPS.map((key) => `<button type="button" class="dash-segmented-btn ${managementFilter === key ? 'is-active' : ''}" data-op-pending-management="${key}">${escapeHTML(OPERATION_PENDING_MANAGEMENT_LABELS[key])}</button>`).join('')}</div>`}
+                </div>
+                <p class="dash-page-subtitle">Mostrando: ${escapeHTML(pendingTableLabel)} (${escapeHTML(String(pendingRowsForTable.length))})</p>
+                <div class="dash-table-wrap" role="region" aria-label="Pendientes operativos"><table class="dash-table dash-table-compact"><thead><tr><th>Título</th><th>Situación</th><th>Prioridad</th><th>Vence</th><th>Responsable</th><th class="text-right">Acciones</th></tr></thead><tbody>${pageData.items.map((row) => {
+          const dueLabel = row.due_at ? formatDateTime(row.due_at) : '-';
+          const assigned = row.assigned_admin_name || 'Sin asignar';
+          const canRespond = Boolean(row.response_required) && !row.first_response_at;
+          const actions = pendingActionSet(row.status)
+            .slice(0, 2)
+            .map((action) => `<button type="button" class="dash-btn dash-btn-${action.variant} dash-btn-sm" data-op-transition="${escapeHTML(row.id)}" data-op-target-status="${escapeHTML(action.status)}">${escapeHTML(action.label)}</button>`)
+            .join('');
+          return `<tr><td><strong>${escapeHTML(row.title || 'Sin título')}</strong></td><td><span class="dash-chip">${escapeHTML(workItemStatusLabel(row.status))}</span></td><td>${escapeHTML(workItemPriorityLabel(row.priority))}</td><td>${escapeHTML(dueLabel)}</td><td>${escapeHTML(assigned)}</td><td class="text-right"><div class="dash-row-actions">${actions}${canRespond ? `<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-respond="${escapeHTML(row.id)}">Responder</button>` : ''}<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-events="${escapeHTML(row.id)}" data-op-title="${escapeHTML(row.title || 'Pendiente')}">Historial</button></div></td></tr>`;
+        }).join('')}</tbody></table></div>${pagination}
+              </div>
+
+              <details class="ops-resolved-collapsible">
+                <summary class="ops-resolved-summary">Resueltos recientes (${escapeHTML(String(recentlyResolved.length))})</summary>
+                ${recentlyResolved.length
+          ? `<div class="dash-table-wrap" role="region" aria-label="Resueltos recientes"><table class="dash-table dash-table-compact"><thead><tr><th>Título</th><th>Estado</th><th>Resuelto</th><th class="text-right">Acciones</th></tr></thead><tbody>${recentlyResolved.slice(0, 5).map((row) => {
+            const resolvedDate = row.updated_at ? formatDateTime(row.updated_at) : '-';
+            const actions = pendingActionSet(row.status)
+              .slice(0, 1)
+              .map((action) => `<button type="button" class="dash-btn dash-btn-${action.variant} dash-btn-sm" data-op-transition="${escapeHTML(row.id)}" data-op-target-status="${escapeHTML(action.status)}">${escapeHTML(action.label)}</button>`)
+              .join('');
+            return `<tr><td><strong>${escapeHTML(row.title || 'Sin título')}</strong></td><td><span class="dash-chip ops-chip-resolved">${escapeHTML(workItemStatusLabel(row.status))}</span></td><td>${escapeHTML(resolvedDate)}</td><td class="text-right"><div class="dash-row-actions">${actions}<button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-events="${escapeHTML(row.id)}" data-op-title="${escapeHTML(row.title || 'Resuelto')}">Historial</button></div></td></tr>`;
+          }).join('')}</tbody></table></div>${recentlyResolved.length > 5 ? `<p class="dash-page-subtitle">Mostrando 5 de ${escapeHTML(String(recentlyResolved.length))} resueltos recientes.</p>` : ''}`
+          : '<div class="dash-empty ops-empty-compact" role="status"><h3>Sin resueltos recientes</h3><p>Los puntos resueltos aparecerán aquí para referencia.</p></div>'}
+              </details>
+              ` : '<div class="dash-empty ops-empty-compact" role="status"><h3>Sin pendientes activos</h3><p>No hay pendientes ni resueltos recientes para mostrar.</p></div>'}
+            </div>
+          </section>
+
+          <!-- §5 — Contexto semanal -->
+          <section class="dash-section ops-tactical-section ops-context-section ${weekCollapsed ? 'ops-section-collapsed' : ''}" data-section="ops_week">
+            <header class="dash-section-header">
+              <div>
+                <h2 class="dash-section-title">Contexto semanal</h2>
+                <p class="dash-section-description">Lectura de contexto y sintesis semanal para planificar sin competir con la cola tactica.</p>
+              </div>
+              <div class="dash-section-actions">
+                <button type="button" class="dash-btn dash-btn-ghost dash-btn-sm ops-section-collapser" data-op-toggle-section="week" aria-expanded="${weekCollapsed ? 'false' : 'true'}">${weekCollapsed ? '▸' : '▾'}</button>
+              </div>
+            </header>
+            <div class="dash-section-content" data-section-content="ops_week">
+              <div class="dash-kpis ops-kpis-compact">
+                <div class="dash-kpi"><span class="dash-kpi-label">Encuentros semanales</span><span class="dash-kpi-value">${escapeHTML(String(weekSummary.sessions_count || 0))}</span></div>
+                <div class="dash-kpi"><span class="dash-kpi-label">Talleres activos</span><span class="dash-kpi-value">${escapeHTML(String(weekSummary.workshops_count || 0))}</span></div>
+                <div class="dash-kpi"><span class="dash-kpi-label">Docentes implicados</span><span class="dash-kpi-value">${escapeHTML(String(weekSummary.facilitators_count || 0))}</span></div>
+                <div class="dash-kpi"><span class="dash-kpi-label">Pico de actividad</span><span class="dash-kpi-value">${escapeHTML(weekSummary.peak_day || '-')}</span></div>
+                <div class="dash-kpi"><span class="dash-kpi-label">Franja pico</span><span class="dash-kpi-value">${escapeHTML(weekSummary.peak_time_slot || '-')}</span></div>
+                <button type="button" class="dash-kpi ops-kpi-critical ops-kpi-actionable" data-op-open-week-completeness="1"><span class="dash-kpi-label">Información por completar</span><span class="dash-kpi-value">${escapeHTML(String((weekSummary.sessions_without_facilitator_count || 0) + (weekSummary.sessions_without_topic_count || 0) + (weekSummary.sessions_without_resources_count || 0)))}</span></button>
+              </div>
+              <p class="dash-page-subtitle">Docente por asignar: ${escapeHTML(String(weekSummary.sessions_without_facilitator_count || 0))} · Tema por definir: ${escapeHTML(String(weekSummary.sessions_without_topic_count || 0))} · Recursos por asignar: ${escapeHTML(String(weekSummary.sessions_without_resources_count || 0))}</p>
+              <div class="ops-week-grid">
+                <article class="dash-card">
+                  <header class="dash-card-header"><div class="dash-card-title-wrap"><h3 class="dash-card-title">Docentes con más carga</h3></div></header>
+                  <div class="dash-card-body">
+                    ${topFacilitators.length
+        ? `<div class="dash-table-wrap" role="region" aria-label="Docentes con más carga"><table class="dash-table dash-table-compact"><thead><tr><th>Docente</th><th>Encuentros</th></tr></thead><tbody>${topFacilitators.map((row) => `<tr><td>${escapeHTML(row.facilitator_name || 'Docente')}</td><td>${escapeHTML(String(row.sessions_count || 0))}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="dash-page-subtitle">Sin datos de carga docente.</p>'}
+                  </div>
+                </article>
+                <article class="dash-card">
+                  <header class="dash-card-header"><div class="dash-card-title-wrap"><h3 class="dash-card-title">Recursos más demandados</h3></div></header>
+                  <div class="dash-card-body">
+                    ${topResources.length
+        ? `<div class="dash-table-wrap" role="region" aria-label="Recursos más demandados"><table class="dash-table dash-table-compact"><thead><tr><th>Recurso</th><th>Total</th><th>Unidad</th></tr></thead><tbody>${topResources.map((row) => `<tr><td>${escapeHTML(row.resource_label || 'Recurso')}</td><td>${escapeHTML(String(row.total_required ?? 0))}</td><td>${escapeHTML(row.unit || '-')}</td></tr>`).join('')}</tbody></table></div>`
+        : '<p class="dash-page-subtitle">Sin demanda de recursos para la semana.</p>'}
+                  </div>
+                </article>
+              </div>
+              <details class="ops-snapshot-collapsible">
+                <summary class="ops-resolved-summary">Resumen semanal ejecutivo</summary>
+                ${snapshot
+        ? (snapshotEmpty
+          ? `<div class="ops-snapshot-empty" role="status"><span>Resumen semanal sin base suficiente todavia</span><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" id="op-rebuild-snapshot-inline">Recalcular</button></div>`
+          : `<div class="ops-summary-narrative">
+                <p class="ops-summary-headline">${(() => {
+            const sc = Number(snapshot.sessions_scheduled_week_count || weekSummary.sessions_count || 0);
+            const wr = Number(snapshot.work_items_resolved_count || 0);
+            const wc = Number(snapshot.work_items_created_count || 0);
+            const bo = Number(snapshot.backlog_open_end_count || 0);
+            return `Semana del ${escapeHTML(snapshot.week_start)} al ${escapeHTML(snapshot.week_end)}: ${sc} encuentro${sc !== 1 ? 's' : ''}, ${wr} pendiente${wr !== 1 ? 's' : ''} resuelto${wr !== 1 ? 's' : ''}, ${wc} creado${wc !== 1 ? 's' : ''} y ${bo} abierto${bo !== 1 ? 's' : ''}.`;
+          })()}</p>
+                <div class="dash-kpis ops-kpis-compact">
+                  <div class="dash-kpi"><span class="dash-kpi-label">Encuentros programados</span><span class="dash-kpi-value">${escapeHTML(String(snapshot.sessions_scheduled_week_count || weekSummary.sessions_count || 0))}</span></div>
+                  <div class="dash-kpi"><span class="dash-kpi-label">Pendientes creados</span><span class="dash-kpi-value">${escapeHTML(String(snapshot.work_items_created_count || 0))}</span></div>
+                  <div class="dash-kpi"><span class="dash-kpi-label">Pendientes resueltos</span><span class="dash-kpi-value">${escapeHTML(String(snapshot.work_items_resolved_count || 0))}</span></div>
+                  <div class="dash-kpi"><span class="dash-kpi-label">Backlog abierto</span><span class="dash-kpi-value">${escapeHTML(String(snapshot.backlog_open_end_count || 0))}</span></div>
+                  ${Number(snapshot.backlog_overdue_end_count || 0) > 0 ? `<div class="dash-kpi ops-kpi-critical"><span class="dash-kpi-label">Con fecha vencida</span><span class="dash-kpi-value">${escapeHTML(String(snapshot.backlog_overdue_end_count))}</span></div>` : ''}
+                </div>
+                ${topFacilitators.length ? `<p class="dash-page-subtitle">Docentes con mas carga: ${escapeHTML(topFacilitators.slice(0, 3).map((f) => f.facilitator_name + ' (' + f.sessions_count + ')').join(', '))}.</p>` : ''}
+                ${topResources.length ? `<p class="dash-page-subtitle">Recursos mas demandados: ${escapeHTML(topResources.slice(0, 3).map((r) => r.resource_label).join(', '))}.</p>` : ''}
+                ${weekSummary.peak_day ? `<p class="dash-page-subtitle">Pico de actividad: ${escapeHTML(weekSummary.peak_day)} · Franja mas cargada: ${escapeHTML(weekSummary.peak_time_slot || '-')}.</p>` : ''}
+                <p class="dash-page-subtitle ops-summary-timestamp">Actualizado: ${escapeHTML(formatDateTime(snapshot.generated_at))}</p>
+              </div>
+              <div class="dash-grid ops-summary-chart-grid">
+                <div class="dash-col-12">
+                  <article class="dash-card">
+                    <header class="dash-card-header"><div class="dash-card-title-wrap"><h3 class="dash-card-title">Encuentros por dia</h3></div></header>
+                    <div class="dash-card-body" id="ops-snapshot-chart-container">
+                      <canvas id="ops-snapshot-chart" data-chart-canvas="ops-snapshot-chart" aria-label="Encuentros por dia de la semana"></canvas>
+                    </div>
+                  </article>
+                </div>
+              </div>`)
+        : '<div class="dash-empty ops-empty-compact" role="status"><h3>Resumen semanal</h3><p>Todavia no hay datos suficientes para generar la sintesis semanal.</p></div>'}
+              </details>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    `;
+
+    bindOperationsUpdatedAgo(root, fetchedAt);
+
+    root.querySelector('#op-refresh')?.addEventListener('click', () => loadOperations());
+    root.querySelector('#op-open-today-agenda')?.addEventListener('click', () => {
+      openOperationalAgendaSurface({
+        title: 'Agenda completa de hoy',
+        subtitle: operationsAgendaDateLabel(0),
+        sessions: todaySessions,
+      });
+    });
+    root.querySelector('#op-open-today-agenda-bottom')?.addEventListener('click', () => {
+      openOperationalAgendaSurface({
+        title: 'Agenda completa de hoy',
+        subtitle: operationsAgendaDateLabel(0),
+        sessions: todaySessions,
+      });
+    });
+
+    root.querySelector('#op-toggle-context')?.addEventListener('click', async () => {
+      setOperationsContextCollapsed(!state.operationsContextCollapsed);
+      await loadOperations();
+    });
+
+    root.querySelectorAll('[data-op-toggle-section]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const sectionKey = button.getAttribute('data-op-toggle-section') || '';
+        toggleOperationsContextSection(sectionKey);
+        await loadOperations();
+      });
+    });
+
+    root.querySelectorAll('[data-op-pending-view]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextView = button.getAttribute('data-op-pending-view');
+        if (!['horizon', 'management'].includes(nextView || '')) return;
+        state.operationsPendingView = nextView;
+        resetTablePage('operations');
+        syncViewParams();
+        await loadOperations();
+      });
+    });
+
+    root.querySelectorAll('[data-op-pending-filter]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextGroup = button.getAttribute('data-op-pending-filter');
+        if (!nextGroup || !OPERATION_PENDING_HORIZON_GROUPS.includes(nextGroup)) return;
+        state.operationsPendingGroup = nextGroup;
+        resetTablePage('operations');
+        syncViewParams();
+        await loadOperations();
+      });
+    });
+
+    root.querySelectorAll('[data-op-pending-management]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextManagement = button.getAttribute('data-op-pending-management');
+        if (!nextManagement || !OPERATION_PENDING_MANAGEMENT_GROUPS.includes(nextManagement)) return;
+        state.operationsPendingManagement = nextManagement;
+        resetTablePage('operations');
+        syncViewParams();
+        await loadOperations();
+      });
+    });
+
+    root.querySelectorAll('[data-op-focus-pending]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const nextGroup = button.getAttribute('data-op-pending-group') || 'today';
+        if (OPERATION_PENDING_HORIZON_GROUPS.includes(nextGroup)) {
+          state.operationsPendingView = 'horizon';
+          state.operationsPendingGroup = nextGroup;
+        }
+        resetTablePage('operations');
+        syncViewParams();
+        await loadOperations();
+        document.querySelector('#view-operations [data-section-content="ops_pending_inline"]')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      });
+    });
+
+    root.querySelectorAll('[data-op-open-session]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const sessionId = button.getAttribute('data-op-open-session');
+        if (!sessionId) return;
+        const session = sessionById.get(String(sessionId));
+        if (!session) {
+          toast('No se encontró el encuentro seleccionado', 'error');
+          return;
+        }
+        openOperationalSessionDrawer(session, todaySummary);
+      });
+    });
+
+    root.querySelectorAll('[data-op-open-agenda]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const workshopId = button.getAttribute('data-op-open-agenda');
+        if (!workshopId) return;
+        window.openWorkshopAgenda?.(workshopId);
+      });
+    });
+
+    root.querySelectorAll('[data-op-transition]').forEach((button) => {
+      button.addEventListener('click', () => withButtonBusy(button, 'Actualizando...', async () => {
+        const workItemId = button.getAttribute('data-op-transition');
+        const targetStatus = button.getAttribute('data-op-target-status');
+        if (!workItemId || !targetStatus) return;
+        await api.post(`/work-items/${workItemId}/transition`, {
+          target_status: targetStatus,
+          note: 'Actualización desde Operaciones',
+        });
+        toast('Estado actualizado', 'success');
+        await loadOperations();
+      }));
+    });
+
+    root.querySelectorAll('[data-op-dismiss-attention]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const row = button.closest('tr');
+        if (row) {
+          row.style.transition = 'opacity 0.35s ease, transform 0.35s ease';
+          row.style.opacity = '0';
+          row.style.transform = 'translateX(12px)';
+          setTimeout(() => {
+            row.remove();
+            toast('Marcado como atendido', 'success');
+          }, 380);
+        }
+      });
+    });
+
+    // KPI surface: recursos por confirmar/preparar
+    root.querySelectorAll('[data-op-open-resources-detail]').forEach((kpi) => {
+      kpi.addEventListener('click', () => {
+        const scope = kpi.getAttribute('data-op-open-resources-detail');
+        const sessions = scope === 'tomorrow' ? tomorrowSessions : todaySessions;
+        const criticalRows = sessions.flatMap((session) => (session.resources || [])
+          .filter((resource) => resource.criticality === 'high' || session.attention_flags?.includes('critical_resources'))
+          .map((resource) => ({ session, resource })));
+        const body = criticalRows.length
+          ? `<div class="dash-table-wrap" role="region" aria-label="Detalle de recursos por confirmar"><table class="dash-table dash-table-compact"><thead><tr><th>Recurso</th><th>Encuentro</th><th>Horario</th><th>Docente</th><th>Estado</th><th>Acción sugerida</th></tr></thead><tbody>${criticalRows.map(({ session, resource }) => `<tr><td><strong>${escapeHTML(resource.resource_label || 'Recurso')}</strong><br><small class="dash-page-subtitle">${escapeHTML(String(resource.effective_quantity ?? resource.quantity_required ?? 0))} ${escapeHTML(resource.unit || '')}</small></td><td>${escapeHTML(session.workshop_name || 'Taller')}</td><td>${escapeHTML(sessionTimeRangeLabel(session))}</td><td>${escapeHTML(session.facilitator_name || 'Sin docente asignado')}</td><td><span class="dash-chip ops-chip-attention">Pendiente de confirmación</span></td><td><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(session.workshop_id || '')}">Ver en agenda</button></td></tr>`).join('')}</tbody></table></div>`
+          : '<div class="dash-empty" role="status"><h3>Sin recursos pendientes</h3><p>No hay recursos por confirmar para este tramo.</p></div>';
+
+        openOperationalDetailSurface({
+          title: `Recursos por confirmar — ${scope === 'tomorrow' ? 'Mañana' : 'Hoy'}`,
+          subtitle: 'Detalle operativo para dejar la preparación lista.',
+          body,
+        });
+
+        document.getElementById('ops-detail-surface-root')?.querySelectorAll('[data-op-open-agenda]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            closeOperationalDetailSurface({ restoreFocus: false });
+            window.openWorkshopAgenda?.(btn.getAttribute('data-op-open-agenda'));
+          });
+        });
+      });
+    });
+
+    // KPI surface: puntos a revisar/confirmar
+    root.querySelectorAll('[data-op-open-alerts-detail]').forEach((kpi) => {
+      kpi.addEventListener('click', () => {
+        const scope = kpi.getAttribute('data-op-open-alerts-detail');
+        const sessions = scope === 'tomorrow' ? tomorrowSessions : todaySessions;
+        const atRiskSessions = sessions.filter(s => s.operational_status === 'incomplete' || s.operational_status === 'at_risk');
+        const body = atRiskSessions.length
+          ? `<div class="dash-table-wrap" role="region" aria-label="Detalle de puntos a revisar"><table class="dash-table dash-table-compact"><thead><tr><th>Punto a revisar</th><th>Encuentro</th><th>Afecta a</th><th>Momento</th><th>Acción recomendada</th><th>Estado</th></tr></thead><tbody>${atRiskSessions.map(s => {
+            const flags = (s.attention_flags || []).map(f => ({ 'missing_facilitator': 'Asignación docente', 'missing_topic': 'Planificación temática', 'missing_resources': 'Preparación de recursos', 'critical_resources': 'Confirmación de recursos' }[f] || f));
+            const summary = flags.length ? flags.join(', ') : 'Revisión operativa general';
+            return `<tr><td><strong>${escapeHTML(summary)}</strong><br><small class="dash-page-subtitle">${escapeHTML(sessionConditionNote(s) || 'Revisión sugerida')}</small></td><td>${escapeHTML(s.workshop_name || 'Taller')}</td><td>${escapeHTML(s.facilitator_name || 'Equipo de coordinación')}</td><td>${escapeHTML(String(s.date || ''))} · ${escapeHTML(sessionTimeRangeLabel(s))}</td><td><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(s.workshop_id || '')}">Ver en agenda</button></td><td><span class="dash-chip ops-chip-attention">Por revisar</span></td></tr>`;
+          }).join('')}</tbody></table></div>`
+          : '<div class="dash-empty" role="status"><h3>Todo en orden</h3><p>No hay puntos a revisar en este tramo.</p></div>';
+        openOperationalDetailSurface({
+          title: `Puntos a revisar — ${scope === 'tomorrow' ? 'Mañana' : 'Hoy'}`,
+          subtitle: 'Detalle contextual para coordinar acciones de cierre.',
+          body,
+        });
+        document.getElementById('ops-detail-surface-root')?.querySelectorAll('[data-op-open-agenda]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            closeOperationalDetailSurface({ restoreFocus: false });
+            window.openWorkshopAgenda?.(btn.getAttribute('data-op-open-agenda'));
+          });
+        });
+      });
+    });
+
+    // KPI surface: información por completar (semana)
+    root.querySelectorAll('[data-op-open-week-completeness]').forEach((kpi) => {
+      kpi.addEventListener('click', () => {
+        const allWeekSessions = [...todaySessions, ...tomorrowSessions];
+        const incompleteSessions = allWeekSessions.filter(s => s.operational_status === 'incomplete');
+        const body = incompleteSessions.length
+          ? `<p class="dash-page-subtitle ops-detail-inline-hint">Sesiones de la semana con información por completar:</p>
+            <div class="dash-table-wrap" role="region"><table class="dash-table dash-table-compact"><thead><tr><th>Fecha</th><th>Horario</th><th>Taller</th><th>Falta completar</th><th class="text-right">Acción recomendada</th></tr></thead><tbody>${incompleteSessions.map(s => {
+            const missing = [];
+            if (s.attention_flags?.includes('missing_facilitator')) missing.push('Docente');
+            if (s.attention_flags?.includes('missing_topic')) missing.push('Tema');
+            if (s.attention_flags?.includes('missing_resources')) missing.push('Recursos');
+            return `<tr><td>${escapeHTML(String(s.date || ''))}</td><td>${escapeHTML(sessionTimeRangeLabel(s))}</td><td>${escapeHTML(s.workshop_name || 'Taller')}</td><td>${escapeHTML(missing.join(', ') || '-')}</td><td class="text-right"><button type="button" class="dash-btn dash-btn-ghost dash-btn-sm" data-op-open-agenda="${escapeHTML(s.workshop_id || '')}">Completar en agenda</button></td></tr>`;
+          }).join('')}</tbody></table></div>`
+          : '<div class="dash-empty" role="status"><h3>Información completa</h3><p>Las sesiones de la semana ya tienen docente, tema y recursos cargados.</p></div>';
+        openOperationalDetailSurface({
+          title: 'Información por completar — Semana',
+          subtitle: 'Chequeo rápido de preparación semanal.',
+          body,
+        });
+        document.getElementById('ops-detail-surface-root')?.querySelectorAll('[data-op-open-agenda]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            closeOperationalDetailSurface({ restoreFocus: false });
+            window.openWorkshopAgenda?.(btn.getAttribute('data-op-open-agenda'));
+          });
+        });
+      });
+    });
+
+    root.querySelectorAll('[data-op-respond]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const workItemId = button.getAttribute('data-op-respond');
+        if (!workItemId) return;
+        const message = prompt('Mensaje de respuesta (opcional)', 'Respondido desde operaciones');
+        if (message === null) return;
+        try {
+          await api.post(`/work-items/${workItemId}/respond`, { message });
+          toast('Respuesta registrada', 'success');
+          await loadOperations();
+        } catch (err) {
+          toast(err.message || 'No se pudo registrar la respuesta', 'error');
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-op-events]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const workItemId = button.getAttribute('data-op-events');
+        const title = button.getAttribute('data-op-title') || 'Pendiente';
+        if (!workItemId) return;
+        try {
+          const events = await api.get(`/work-items/${workItemId}/events`);
+          const rowsHtml = (events || []).length
+            ? events.map((event) => `<tr><td>${escapeHTML(formatDateTime(event.occurred_at))}</td><td>${escapeHTML(eventTypeLabel(event.event_type))}</td><td>${escapeHTML(workItemStatusLabel(event.from_status) || '-')}</td><td>${escapeHTML(workItemStatusLabel(event.to_status) || '-')}</td><td>${escapeHTML(event.note || '-')}</td></tr>`).join('')
+            : '<tr><td colspan="5">Sin eventos registrados.</td></tr>';
+          openOperationalDetailSurface({
+            title: `Eventos: ${title}`,
+            subtitle: 'Historial de acciones sobre el pendiente seleccionado.',
+            body: `<section class="dash-agenda-drawer-detail" aria-label="Eventos de pendiente"><div class="dash-table-wrap" role="region"><table class="dash-table dash-table-compact"><thead><tr><th>Fecha</th><th>Tipo</th><th>Desde</th><th>Hacia</th><th>Nota</th></tr></thead><tbody>${rowsHtml}</tbody></table></div></section>`,
+          });
+        } catch (err) {
+          toast(err.message || 'No se pudieron cargar los eventos', 'error');
+        }
+      });
+    });
+
+    [root.querySelector('#op-rebuild-snapshot'), root.querySelector('#op-rebuild-snapshot-inline')].forEach((rebuildButton) => {
+      if (!rebuildButton) return;
+      rebuildButton.addEventListener('click', () => withButtonBusy(rebuildButton, 'Recalculando...', async () => {
+        await api.post('/executive-snapshots/weekly/rebuild', {});
+        toast('Snapshot semanal actualizado', 'success');
+        await loadOperations();
+      }));
+    });
+
+    const charts = window.DashboardCharts;
+    const chartContainer = root.querySelector('#ops-snapshot-chart-container');
+    const useCanvasCharts = Boolean(chartContainer && charts?.isAvailable?.());
+
+    if (charts?.destroyRootCharts) {
+      charts.destroyRootCharts(root);
+    }
+
+    if (useCanvasCharts && tactical?.week?.daily_sessions?.length) {
+      const chartRows = tactical.week.daily_sessions.map(d => {
+        const dateObj = new Date(d.date + 'T00:00:00');
+        const dayName = new Intl.DateTimeFormat('es-AR', { weekday: 'short' }).format(dateObj);
+        return {
+          label: dayName.charAt(0).toUpperCase() + dayName.slice(1),
+          value: d.count
+        };
+      });
+
+      const spec = charts.makeBarSpec({
+        key: 'ops-snapshot-week',
+        selector: '#ops-snapshot-chart',
+        rows: chartRows,
+        horizontal: false,
+        rowColorMode: 'single',
+        datasetLabel: 'Encuentros',
+        singleColor: 'var(--chart-2)'
+      });
+      charts.mount(root, [spec]);
+    }
+
+  } catch (err) {
+    toast(err.message || 'Error al cargar operaciones', 'error');
+  }
+}
+
 const routeLoaders = {
   dashboard: () => loadDashboard(),
   insights: () => loadInsights(),
@@ -5601,6 +7149,7 @@ const routeLoaders = {
   participants: () => loadParticipants(),
   enrollments: (params) => loadEnrollments(params?.workshop || ''),
   communications: () => loadCommunications(),
+  operations: () => loadOperations(),
   team: () => loadTeam(),
   admins: () => loadAdmins(),
 };
@@ -5612,6 +7161,8 @@ async function applyRoute() {
     return;
   }
   const { view, params } = parseHash();
+  closeOperationalSessionDrawer({ restoreFocus: false });
+  closeOperationalDetailSurface({ restoreFocus: false });
   window.AppRouteState?.applyFromRoute?.(state, view, params, {
     onDashboardMode: renderDashboardMode,
     onInsightsMode: renderInsightsMode,
